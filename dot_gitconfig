@@ -1,0 +1,11 @@
+[user]
+# Please adapt and uncomment the following lines:
+	name = iwasa-kosui 
+	email = dev@kosui.me 
+[pull]
+	ff = only
+[ghq]
+	root = ~/ghq
+[core]
+	editor = vim -c \"set fenc=utf-8\"
+
