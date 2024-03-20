@@ -15,6 +15,5 @@ eval "$(sheldon source)"
 eval "$(~/.local/bin/mise activate zsh)"
 eval "$(starship init zsh)"
 
-source ~/.config/zsh/ghq.zsh
-source ~/.config/zsh/history.zsh
+source ~/.config/zsh/*.zsh
 source ~/.zshrc_local
