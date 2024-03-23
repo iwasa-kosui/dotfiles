@@ -11,6 +11,8 @@ export FZF_CTRL_R_OPTS="
   
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
   
+autoload -U compinit
+compinit -u
 eval "$(sheldon source)"
 eval "$(~/.local/bin/mise activate zsh)"
 eval "$(starship init zsh)"
