@@ -2,9 +2,11 @@ export PATH="$PATH:/opt/homebrew/bin"
 
 autoload -U compinit
 compinit -u
+
 eval "$(sheldon source)"
 eval "$(~/.local/bin/mise activate zsh)"
 eval "$(starship init zsh)"
+eval "$(direnv hook zsh)"
 
 source ~/.config/zsh/alias.zsh
 source ~/.config/zsh/fzf.zsh
