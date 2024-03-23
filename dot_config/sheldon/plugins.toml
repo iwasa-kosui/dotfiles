@@ -23,3 +23,7 @@ apply = ['defer']
 [plugins.zsh-aws-vault]
 github = 'blimmer/zsh-aws-vault'
 apply = ['defer', 'fpath']
+
+[plugins.zsh-dotenv]
+github = 'cpitt/zsh-dotenv'
+apply = ['defer']
