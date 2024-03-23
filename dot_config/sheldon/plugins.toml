@@ -19,3 +19,7 @@ apply = ['defer']
 [plugins.zsh-syntax-highlighting]
 github = 'zsh-users/zsh-syntax-highlighting'
 apply = ['defer']
+
+[plugins.zsh-aws-vault]
+github = 'blimmer/zsh-aws-vault'
+apply = ['defer', 'fpath']
