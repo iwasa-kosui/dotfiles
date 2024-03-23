@@ -4,6 +4,8 @@
 	email = dev@kosui.me 
 [pull]
 	ff = only
+[push]
+	autoSetupRemote = true
 [ghq]
 	root = ~/ghq
 [core]
