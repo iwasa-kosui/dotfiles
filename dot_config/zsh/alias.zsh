@@ -64,3 +64,7 @@ gpo() {
   echocmd 'git push origin HEAD' $@;
   git push origin HEAD "$@";
 }
+gf() {
+  echocmd 'git fetch' $@;
+  git fetch "$@";
+}
