@@ -68,3 +68,7 @@ gf() {
   echocmd 'git fetch' $@;
   git fetch "$@";
 }
+gc() {
+  echocmd 'git commit' $@;
+  git commit "$@";
+}
