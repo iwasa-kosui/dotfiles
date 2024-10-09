@@ -1,0 +1,33 @@
+{
+  "filters": {
+    "comments": true,
+    "allowlist": {
+      "allow": [
+        "要配慮個人情報",
+        "個人情報保護法"
+      ]
+    }
+  },
+  "rules": {
+    "preset-ja-technical-writing": {
+      "sentence-length": {
+        "skipPatterns": [
+          "/.*https.*/"
+        ]
+      },
+      "no-exclamation-question-mark": {
+        "allows": [
+          "/https?:\\/\\/(?:www\\.)?[-a-zA-Z0-9@:%._\\+~#=]{1,256}\\.[a-zA-Z0-9()]{1,6}\\b(?:[-a-zA-Z0-9()@:%_\\+.~#?&\/=]*)/"
+        ]
+      },
+      "ja-no-mixed-period": {
+        "periodMark": "。",
+        "allowPeriodMarks": [
+          "]",
+          ":",
+          "："
+        ]
+      }
+    }
+  }
+}
