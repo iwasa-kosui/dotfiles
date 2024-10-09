@@ -1,2 +1,5 @@
 bind status  S !git stash push --staged
 bind generic y @sh -c "git show --pretty='format:%C(auto)%h %s' --no-patch %(commit) | pbcopy"
+bind generic + !git commit --amend --allow-empty
+bind main    ! ?git revert %(commit)
+bind status  C !zsh -c "gcz"
