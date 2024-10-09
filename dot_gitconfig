@@ -1,7 +1,8 @@
 [user]
 # Please adapt and uncomment the following lines:
-	name = iwasa-kosui 
-	email = dev@kosui.me 
+	name = Kosui Iwasa 
+	email = 24590869+iwasa-kosui@users.noreply.github.com
+	signingkey = 049E510C29DA463F
 [pull]
 	ff = only
 [push]
@@ -9,9 +10,13 @@
 [ghq]
 	root = ~/ghq
 [core]
-	editor = vim -c \"set fenc=utf-8\"
+	editor = code --wait
 [filter "lfs"]
 	clean = git-lfs clean -- %f
 	smudge = git-lfs smudge -- %f
 	process = git-lfs filter-process
 	required = true
+[commit]
+	gpgsign = true
+[gpg]
+	program = /usr/local/bin/gpg
