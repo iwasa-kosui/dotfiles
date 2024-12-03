@@ -72,6 +72,10 @@ gc() {
   echocmd 'git commit' $@;
   git commit "$@";
 }
+gb() {
+  echocmd 'git branch' $@;
+  git branch "$@";
+}
 
 # ------------------------------------------------------------------------------
 # misc
