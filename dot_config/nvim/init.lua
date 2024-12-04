@@ -8,7 +8,8 @@ else
   vim.o.tabstop = 2
   vim.o.shiftwidth = 2
   vim.api.nvim_set_keymap('n', '<Leader>t', ':NERDTreeFocus<CR>', {noremap=true})
-  vim.api.nvim_set_keymap('n', '<Leader>f', ':NERDTreeFind<CR>', {noremap=true})
+  vim.api.nvim_set_keymap('n', '<Leader>f', ':Files<CR>', {noremap=true})
+
 
   vim.cmd [[packadd packer.nvim]]
   return require('packer').startup(function(use)
@@ -20,6 +21,8 @@ else
     use 'Xuyuanp/nerdtree-git-plugin'
     use 'airblade/vim-gitgutter'
     use 'preservim/nerdtree'
+    use { 'junegunn/fzf', run = ":call fzf#install()" }
+    use { 'junegunn/fzf.vim' }
   end)
 end
 
