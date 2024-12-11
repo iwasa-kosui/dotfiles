@@ -76,6 +76,10 @@ gb() {
   echocmd 'git branch' $@;
   git branch "$@";
 }
+gcp() {
+  echocmd 'gh pr create --draft --editor' $@;
+  git branch "$@";
+}
 
 # ------------------------------------------------------------------------------
 # misc
