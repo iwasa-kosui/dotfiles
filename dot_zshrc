@@ -12,6 +12,7 @@ source ~/.config/zsh/alias.zsh
 source ~/.config/zsh/fzf.zsh
 source ~/.config/zsh/ghq.zsh
 source ~/.config/zsh/history.zsh
+source ~/.config/zsh/gh.zsh
 source ~/.zshrc_local
 
 zstyle ':completion:*' menu select
