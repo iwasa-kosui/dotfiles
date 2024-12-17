@@ -78,7 +78,7 @@ gb() {
 }
 gcp() {
   echocmd 'gh pr create --draft --editor' $@;
-  git branch "$@";
+  gh pr create --draft --editor "$@";
 }
 
 # ------------------------------------------------------------------------------
