@@ -10,8 +10,7 @@
 [ghq]
 	root = ~/ghq
 [core]
-# editor = code --wait
-  editor = vim
+	editor = code --wait
 [commit]
 	gpgsign = true
 [gpg]
