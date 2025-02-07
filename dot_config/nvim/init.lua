@@ -18,11 +18,13 @@ else
       'neoclide/coc.nvim',
       branch = 'release',
     }
+    require('user.coc')
     use 'Xuyuanp/nerdtree-git-plugin'
     use 'airblade/vim-gitgutter'
     use 'preservim/nerdtree'
     use { 'junegunn/fzf', run = ":call fzf#install()" }
     use 'junegunn/fzf.vim'
+    use 'antoinemadec/coc-fzf'
   end)
 end
 
