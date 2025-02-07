@@ -1,6 +1,6 @@
 if vim.g.vscode then
   -- VSCode Neovim
-  require "user.vscode_keymaps"
+  require('user.vscode_keymaps')
 else
   -- Ordinary Neovim
   vim.g.mapleader = ' ' 
@@ -22,7 +22,7 @@ else
     use 'airblade/vim-gitgutter'
     use 'preservim/nerdtree'
     use { 'junegunn/fzf', run = ":call fzf#install()" }
-    use { 'junegunn/fzf.vim' }
+    use 'junegunn/fzf.vim'
   end)
 end
 
