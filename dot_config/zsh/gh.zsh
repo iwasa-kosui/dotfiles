@@ -1,1 +1,1 @@
-export GIT_EDITOR=nvim
+gh config set editor "code --wait"
