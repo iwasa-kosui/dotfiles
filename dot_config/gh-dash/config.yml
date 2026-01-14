@@ -20,45 +20,10 @@ repo:
 defaults:
   preview:
     open: true
-    width: 50
   prsLimit: 20
-  prApproveComment: LGTM
-  issuesLimit: 20
+  prApproveComment: LGTM!
+  issuesLimit: 5
   view: prs
-  layout:
-    prs:
-      updatedAt:
-        width: 5
-      createdAt:
-        width: 5
-      repo:
-        width: 20
-      author:
-        width: 15
-      authorIcon:
-        hidden: false
-      assignees:
-        width: 20
-        hidden: true
-      base:
-        width: 15
-        hidden: true
-      lines:
-        width: 15
-    issues:
-      updatedAt:
-        width: 5
-      createdAt:
-        width: 5
-      repo:
-        width: 15
-      creator:
-        width: 10
-      creatorIcon:
-        hidden: false
-      assignees:
-        width: 20
-        hidden: true
   refetchIntervalMinutes: 30
 keybindings:
   prs:
