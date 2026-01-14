@@ -1,8 +1,6 @@
 [user]
-# Please adapt and uncomment the following lines:
 	name = Kosui Iwasa 
 	email = 24590869+iwasa-kosui@users.noreply.github.com
-	signingkey = 049E510C29DA463F
 [pull]
 	ff = only
 [push]
@@ -10,4 +8,5 @@
 [ghq]
 	root = ~/ghq
 [core]
-	editor = code --wait
+	editor = nvim
+
