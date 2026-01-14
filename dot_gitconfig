@@ -11,7 +11,3 @@
 	root = ~/ghq
 [core]
 	editor = code --wait
-[commit]
-	gpgsign = true
-[gpg]
-	program = /usr/local/bin/gpg

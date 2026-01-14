@@ -1,3 +1,5 @@
 **/.vscode/
 **/.dbx/sync/
 typings/
+
+**/.claude/settings.local.json
