@@ -1,10 +1,10 @@
 prSections:
   - title: open
     filters: is:open
-  - title: My Pull Requests
-    filters: is:open author:@me
   - title: Needs My Review
     filters: is:open review-requested:@me
+  - title: My Pull Requests
+    filters: is:open author:@me
   - title: Involved
     filters: is:open involves:@me -author:@me
 issuesSections:
@@ -35,7 +35,7 @@ keybindings:
       command: |-
         gh pr checkout {{.PrNumber}} &&
           nvim -c ":Octo pr edit {{.PrNumber}}"
-repoPaths: { kkhs/*: ~/ghq/github.com/kkhs/* }
+repoPaths: { "*": ~/ghq/github.com/* }
 theme:
   ui:
     sectionsShowCount: true
