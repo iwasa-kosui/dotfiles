@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:cspell.org)",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}
