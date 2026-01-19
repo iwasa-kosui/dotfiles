@@ -121,7 +121,15 @@
       "Bash(source:*)",
       "Bash(env)",
       "Bash(printenv:*)",
-      "mcp__*"
+      "mcp__*",
+      "WebFetch(domain:developer.atlassian.com)",
+      "WebSearch",
+      "Bash(xargs cat:*)",
+      "Skill(create-pr)",
+      "Bash(jira edit --help:*)",
+      "Skill(pr)",
+      "Bash(bunx tsc:*)",
+      "Bash(jira get:*)"
     ],
     "deny": [
       "Bash(rm -rf /*)",
@@ -141,6 +149,21 @@
       "Bash(halt:*)",
       "Bash(systemctl:*)",
       "Bash(service:*)"
+    ],
+    "defaultMode": "default"
+  },
+  "hooks": {
+    "Notification": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "osascript -e 'display notification \"Claude Codeから通知\" with title \"Claude Code\" sound name \"Glass\"'"
+          }
+        ]
+      }
     ]
-  }
+  },
+  "language": "日本語"
 }
