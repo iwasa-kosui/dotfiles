@@ -1,0 +1,104 @@
+prSections:
+{{- if eq .profile "work" }}
+  - title: "My PRs"
+    filters: "is:open author:@me org:kkhs repo:*"
+  - title: "Review Requested"
+    filters: "is:open user-review-requested:@me org:kkhs repo:*"
+  - title: "My Team"
+    filters: "is:open org:kkhs label:chikara"
+  - title: "Involved"
+    filters: "is:open involves:@me -author:@me org:kkhs repo:*"
+{{- else }}
+  - title: open
+    filters: is:open
+  - title: Needs My Review
+    filters: is:open review-requested:@me
+  - title: My Pull Requests
+    filters: is:open author:@me
+  - title: Involved
+    filters: is:open involves:@me -author:@me
+{{- end }}
+repo:
+  branchesRefetchIntervalSeconds: 30
+  prsRefetchIntervalSeconds: 60
+notificationsSections:
+  - title: All
+    filters: ""
+  - title: Created
+    filters: "reason:author"
+  - title: Participating
+    filters: "reason:participating"
+  - title: Mentioned
+    filters: "reason:mention"
+  - title: Review Requested
+    filters: "reason:review-requested"
+  - title: Assigned
+    filters: "reason:assign"
+  - title: Subscribed
+    filters: "reason:subscribed"
+  - title: Team Mentioned
+    filters: "reason:team-mention"
+defaults:
+  preview:
+    open: false
+  prsLimit: 20
+  prApproveComment: LGTM!
+  issuesLimit: 5
+  view: prs
+  refetchIntervalMinutes: 30
+  layout:
+    prs:
+      updatedAt:
+        width: 7
+      repo:
+        width: 15
+      author:
+        width: 15
+      assignees:
+        width: 20
+        hidden: true
+      base:
+        width: 15
+        hidden: true
+      lines:
+        width: 16
+    issues:
+      updatedAt:
+        width: 7
+      repo:
+        width: 15
+      creator:
+        width: 10
+      assignees:
+        width: 20
+        hidden: true
+keybindings:
+  prs:
+    - key: d
+      command: |-
+        cd "$(ghq root)"/github.com/{{`{{.RepoName}}`}} &&
+          cd $(git wt $(gh pr view {{`{{.PrNumber}}`}} --json headRefName | jq -r '.headRefName')) &&
+          nvim -c ":DiffviewOpen origin/$(gh pr status --json baseRefName -q '.currentBranch.baseRefName')...{{`{{.HeadRefName}}`}}"
+    - key: C
+      command: |-
+        cd "$(ghq root)"/github.com/{{`{{.RepoName}}`}} &&
+          cd $(git wt $(gh pr view {{`{{.PrNumber}}`}} --json headRefName | jq -r '.headRefName')) &&
+          nvim -c ":Octo pr edit {{`{{.PrNumber}}`}}"
+    - key: E
+      command: |-
+        cd "$(ghq root)"/github.com/{{`{{.RepoName}}`}} &&
+          cd $(git wt $(gh pr view {{`{{.PrNumber}}`}} --json headRefName | jq -r '.headRefName')) &&
+          nvim
+
+repoPaths: { "*": ~/ghq/github.com/* }
+theme:
+  ui:
+    sectionsShowCount: true
+    table:
+      showSeparator: true
+      compact: false
+pager:
+  diff: ""
+confirmQuit: false
+showAuthorIcons: true
+smartFilteringAtLaunch: false

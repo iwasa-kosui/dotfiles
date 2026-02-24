@@ -7,7 +7,17 @@ github = "romkatv/zsh-defer"
 defer = "{{ hooks?.pre | nl }}{% for file in files %}zsh-defer source \"{{ file }}\"\n{% endfor %}{{ hooks?.post | nl }}"
 
 [plugins.compinit]
-inline = 'autoload -Uz compinit && zsh-defer compinit'
+inline = '''
+autoload -Uz compinit
+# compinit を遅延実行するため、先に compdef をキューに溜めるスタブを定義
+typeset -a __compdef_queue
+compdef() { __compdef_queue+=("${(j: :)@}") }
+zsh-defer -c '
+  compinit
+  for def in "${__compdef_queue[@]}"; do compdef $def; done
+  unset __compdef_queue
+'
+'''
 
 [plugins.colors]
 inline = 'autoload -Uz colors && zsh-defer colors'
