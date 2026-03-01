@@ -32,7 +32,7 @@ If currently on main or master branch:
 
 If there are uncommitted changes:
 
-- Stage all changes with `git add -A`
+- Stage changes by adding specific files by name (do NOT use `git add -A` to avoid accidentally staging sensitive files like `.env`)
 - Create a commit using **Conventional Commits** format with a **required scope**:
   - Format: `<type>(<scope>): <description>`
   - Types: `feat`, `fix`, `docs`, `style`, `refactor`, `test`, `chore`, `perf`, `ci`, `build`
