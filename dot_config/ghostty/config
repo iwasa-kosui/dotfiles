@@ -2,7 +2,12 @@ theme = TokyoNight
 window-padding-x = 20
 window-padding-y = 5
 window-padding-balance = true
-background-opacity = 0.85
+background-opacity = 1
 background-blur-radius = 20
 macos-titlebar-style = transparent
-font-family = "JetBrains Mono,BIZ UDGothic"
+font-family = JetBrains Mono
+font-family = BIZ UDGothic
+font-family = Hack Nerd Font Mono
+font-size = 14
+font-thicken = true
+
