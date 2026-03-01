@@ -8,3 +8,6 @@ LICENSE
 # Neovim starter template remnants
 dot_config/nvim/LICENSE
 dot_config/nvim/README.md
+
+# macOS artifacts
+**/.DS_Store
