@@ -1,0 +1,10 @@
+#!/bin/bash
+{{ if eq .chezmoi.os "darwin" -}}
+# sheldon plugins.toml hash: {{ include "dot_config/sheldon/plugins.toml" | sha256sum }}
+set -euo pipefail
+
+if command -v sheldon &> /dev/null; then
+  echo "Sheldon plugins changed, running sheldon lock..."
+  sheldon lock
+fi
+{{ end -}}

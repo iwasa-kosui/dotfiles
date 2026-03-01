@@ -1,0 +1,10 @@
+#!/bin/bash
+{{ if eq .chezmoi.os "darwin" -}}
+# aerospace config hash: {{ include "dot_aerospace.toml" | sha256sum }}
+set -euo pipefail
+
+if command -v aerospace &> /dev/null; then
+  echo "AeroSpace config changed, reloading..."
+  aerospace reload-config
+fi
+{{ end -}}
