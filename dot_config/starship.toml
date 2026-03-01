@@ -1,1 +1,11 @@
 "$schema" = 'https://starship.rs/config-schema.json'
+
+format = """$all"""
+
+[custom.gh_review]
+command = "~/.config/zsh/gh-review-count.sh"
+when = "command -v gh"
+format = "[ $output]($style) "
+style = "bold yellow"
+shell = ["bash", "--noprofile", "--norc"]
+ignore_timeout = true
