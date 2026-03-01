@@ -1,13 +1,4 @@
 # ------------------------------------------------------------------------------
-# completion
-# ------------------------------------------------------------------------------
-
-zstyle ':completion:*' verbose yes
-zstyle ':completion:*' format '%B%d%b'
-zstyle ':completion:*:warnings' format 'No matches for: %d'
-zstyle ':completion:*' group-name ''
-
-# ------------------------------------------------------------------------------
 # A-Z
 # ------------------------------------------------------------------------------
 
@@ -51,10 +42,6 @@ gm() {
 gmo() {
   echocmd 'git merge origin/`git rev-parse --abbrev-ref @`';
   git merge origin/`git rev-parse --abbrev-ref @`;
-}
-gco() {
-  echocmd 'git switch' $@;
-  git switch "$@";
 }
 gsw() {
   echocmd 'git switch' $@;

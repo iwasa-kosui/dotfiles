@@ -1,24 +1,31 @@
 export PATH="/opt/homebrew/bin:$PATH"
+export PATH="$HOME/.local/bin:$PATH"
 
 # OpenSpec shell completions
 fpath=("$HOME/.zsh/completions" $fpath)
 fpath+=~/.zfunc
 
-eval "$(sheldon source)"
-eval "$(~/.local/bin/mise activate zsh)"
-eval "$(starship init zsh)"
-eval "$(direnv hook zsh)"
-eval "$(git wt --init zsh)"
+# Tool initializations (with existence guards)
+command -v sheldon > /dev/null && eval "$(sheldon source)"
+command -v mise > /dev/null && eval "$(mise activate zsh)"
+command -v starship > /dev/null && eval "$(starship init zsh)"
+command -v direnv > /dev/null && eval "$(direnv hook zsh)"
+command -v git-wt > /dev/null && eval "$(git wt --init zsh)"
 
 source ~/.config/zsh/alias.zsh
 source ~/.config/zsh/fzf.zsh
 source ~/.config/zsh/ghq.zsh
 source ~/.config/zsh/history.zsh
-source ~/.config/zsh/gh.zsh
-source ~/.config/zsh/misc.zsh
-source ~/.zshrc_local
+[ -f ~/.zshrc_local ] && source ~/.zshrc_local
 
+setopt interactivecomments
+
+# Completion
 zstyle ':completion:*' menu select
+zstyle ':completion:*' verbose yes
+zstyle ':completion:*' format '%B%d%b'
+zstyle ':completion:*:warnings' format 'No matches for: %d'
+zstyle ':completion:*' group-name ''
 
 # bun completions
 [ -s "$HOME/.bun/_bun" ] && source "$HOME/.bun/_bun"
