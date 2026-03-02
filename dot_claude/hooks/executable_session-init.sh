@@ -17,6 +17,23 @@ if command -v git-wt >/dev/null 2>&1 && git -C "$cwd" rev-parse --is-inside-work
     wt_path=$(cd "$cwd" && git-wt "$branch_name" --nocd 2>/dev/null || true)
 
     if [ -n "$wt_path" ] && [ -d "$wt_path" ]; then
+      # worktree内に.claude/settings.local.jsonを生成し、メインリポジトリへのアクセスを許可
+      MAIN_REPO=$(cd "$cwd" && pwd)
+      mkdir -p "$wt_path/.claude"
+      if [ -f "$cwd/.claude/settings.local.json" ]; then
+        jq --arg dir "$MAIN_REPO" \
+          '.permissions.additionalDirectories = [$dir]' \
+          "$cwd/.claude/settings.local.json" > "$wt_path/.claude/settings.local.json"
+      else
+        cat > "$wt_path/.claude/settings.local.json" <<SETTINGS
+{
+  "permissions": {
+    "additionalDirectories": ["$MAIN_REPO"]
+  }
+}
+SETTINGS
+      fi
+
       output+="## Worktree (自動作成)
 - パス: ${wt_path}
 - ブランチ: ${branch_name}
