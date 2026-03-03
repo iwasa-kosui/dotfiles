@@ -34,6 +34,7 @@ if command -v git-wt >/dev/null 2>&1 && git -C "$cwd" rev-parse --is-inside-work
 SETTINGS
       fi
 
+      echo "$wt_path" > "$HOME/.claude/last-worktree"
       output+="## Worktree (自動作成)
 - パス: ${wt_path}
 - ブランチ: ${branch_name}
