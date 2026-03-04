@@ -47,6 +47,7 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 ## Worktree Workflow
 
 - セッション開始時に SessionStart hookが `git-wt` でworktreeを自動作成する
+- 既にworktree内でセッションを開始した場合は、新規作成せずそのworktreeで作業を続行する
 - hookの出力にworktreeパスが含まれている場合、最初のアクションとして `cd <worktreeパス>` を実行すること
 - 以降のすべてのファイル操作（Read, Edit, Write, Glob, Grep等）はworktree内の絶対パスを使用すること
 - セッション終了後のworktree削除は `git wt -d <ブランチ名>` で手動管理
