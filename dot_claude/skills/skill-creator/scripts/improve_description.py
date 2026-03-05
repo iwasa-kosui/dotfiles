@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Improve a skill description based on eval results.
 
-Takes eval results (from run_eval.py) and generates an improved description
+Takes eval results (from eval_runner.py) and generates an improved description
 using Claude with extended thinking.
 """
 
@@ -192,7 +192,7 @@ Please respond with only the new description text in <new_description> tags, not
 
 def main():
     parser = argparse.ArgumentParser(description="Improve a skill description based on eval results")
-    parser.add_argument("--eval-results", required=True, help="Path to eval results JSON (from run_eval.py)")
+    parser.add_argument("--eval-results", required=True, help="Path to eval results JSON (from eval_runner.py)")
     parser.add_argument("--skill-path", required=True, help="Path to skill directory")
     parser.add_argument("--history", default=None, help="Path to history JSON (previous attempts)")
     parser.add_argument("--model", required=True, help="Model for improvement")

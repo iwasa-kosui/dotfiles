@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Generate an HTML report from run_loop.py output.
+"""Generate an HTML report from loop_runner.py output.
 
-Takes the JSON output from run_loop.py and generates a visual HTML report
+Takes the JSON output from loop_runner.py and generates a visual HTML report
 showing each description attempt with check/x for each test case.
 Distinguishes between train and test queries.
 """
@@ -302,8 +302,8 @@ def generate_html(data: dict, auto_refresh: bool = False, skill_name: str = "") 
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate HTML report from run_loop output")
-    parser.add_argument("input", help="Path to JSON output from run_loop.py (or - for stdin)")
+    parser = argparse.ArgumentParser(description="Generate HTML report from loop_runner output")
+    parser.add_argument("input", help="Path to JSON output from loop_runner.py (or - for stdin)")
     parser.add_argument("-o", "--output", default=None, help="Output HTML file (default: stdout)")
     parser.add_argument("--skill-name", default="", help="Skill name to include in the report title")
     args = parser.parse_args()
