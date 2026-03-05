@@ -1,5 +1,5 @@
 #!/bin/bash
-# SessionStart hook: Worktree自動作成・Jira課題・GitHub PR情報を取得
+# SessionStart hook: Worktree情報・Jira課題・GitHub PR情報を取得
 
 set -euo pipefail
 
@@ -8,12 +8,10 @@ cwd=$(echo "$input" | jq -r '.cwd // "."')
 
 output=""
 
-# --- git-wt でWorktree自動作成 ---
-if command -v git-wt >/dev/null 2>&1 && git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  # メインのワークツリーでのみ作成（既にworktree内にいる場合はスキップ）
+# --- Worktree情報 ---
+if git -C "$cwd" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   git_dir=$(git -C "$cwd" rev-parse --git-dir 2>/dev/null || true)
   if [ -n "$git_dir" ] && echo "$git_dir" | grep -q '/worktrees/'; then
-    # 既にworktree内にいる場合: 現在のworktree情報を出力して続行
     existing_branch=$(git -C "$cwd" symbolic-ref --short HEAD 2>/dev/null || git -C "$cwd" rev-parse --short HEAD 2>/dev/null)
     existing_wt_path=$(cd "$cwd" && pwd)
     output+="## Worktree (既存)
@@ -21,35 +19,10 @@ if command -v git-wt >/dev/null 2>&1 && git -C "$cwd" rev-parse --is-inside-work
 - ブランチ: ${existing_branch}
 - **重要**: 既にworktree内で作業中です。このまま \`${existing_wt_path}\` 内で作業を続行してください。
 "
-  elif [ -n "$git_dir" ]; then
-    branch_name="claude/$(date +%Y%m%d-%H%M%S)"
-    wt_path=$(cd "$cwd" && git-wt "$branch_name" --nocd 2>/dev/null || true)
-
-    if [ -n "$wt_path" ] && [ -d "$wt_path" ]; then
-      # worktree内に.claude/settings.local.jsonを生成し、メインリポジトリへのアクセスを許可
-      MAIN_REPO=$(cd "$cwd" && pwd)
-      mkdir -p "$wt_path/.claude"
-      if [ -f "$cwd/.claude/settings.local.json" ]; then
-        jq --arg dir "$MAIN_REPO" \
-          '.permissions.additionalDirectories = [$dir]' \
-          "$cwd/.claude/settings.local.json" > "$wt_path/.claude/settings.local.json"
-      else
-        cat > "$wt_path/.claude/settings.local.json" <<SETTINGS
-{
-  "permissions": {
-    "additionalDirectories": ["$MAIN_REPO"]
-  }
-}
-SETTINGS
-      fi
-
-      echo "$wt_path" > "$HOME/.claude/last-worktree"
-      output+="## Worktree (自動作成)
-- パス: ${wt_path}
-- ブランチ: ${branch_name}
-- **重要**: セッション開始直後に \`cd ${wt_path}\` を実行し、以降すべてのファイル操作はこのworktree内の絶対パスを使用してください。
+  else
+    output+="## Worktree
+- **未作成**: プロンプト内容に基づいてworktreeを作成してください（CLAUDE.mdのWorktree Workflowを参照）
 "
-    fi
   fi
 fi
 

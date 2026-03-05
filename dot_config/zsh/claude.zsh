@@ -7,7 +7,7 @@ claude() {
     wt_path=$(<"$last_wt")
     rm -f "$last_wt"
     if [[ -d "$wt_path" ]]; then
-      cd "$wt_path"
+      (cd "$wt_path" && exec $SHELL)
     fi
   fi
   return $exit_code
