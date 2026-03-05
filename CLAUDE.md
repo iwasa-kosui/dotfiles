@@ -78,12 +78,7 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
    EOF
    ```
 
-4. **last-worktree の記録**（Claude終了後にシェルがworktreeへ移動するため）
-   ```bash
-   echo "$wt_path" > "$HOME/.claude/last-worktree"
-   ```
-
-5. **worktreeへ移動**
+4. **worktreeへ移動**
    ```bash
    cd "$wt_path"
    ```

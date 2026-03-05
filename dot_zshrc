@@ -16,7 +16,6 @@ source ~/.config/zsh/alias.zsh
 source ~/.config/zsh/fzf.zsh
 source ~/.config/zsh/ghq.zsh
 source ~/.config/zsh/history.zsh
-source ~/.config/zsh/claude.zsh
 [ -f ~/.zshrc_local ] && source ~/.zshrc_local
 
 setopt interactivecomments
