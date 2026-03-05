@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Run the eval + improve loop until all pass or max iterations reached.
 
-Combines run_eval.py and improve_description.py in a loop, tracking history
+Combines eval_runner.py and improve_description.py in a loop, tracking history
 and returning the best description found. Supports train/test split to prevent
 overfitting.
 """
@@ -19,7 +19,7 @@ import anthropic
 
 from scripts.generate_report import generate_html
 from scripts.improve_description import improve_description
-from scripts.run_eval import find_project_root, run_eval
+from scripts.eval_runner import find_project_root, run_eval
 from scripts.utils import parse_skill_md
 
 
