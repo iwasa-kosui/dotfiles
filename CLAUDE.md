@@ -46,11 +46,47 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 
 ## Worktree Workflow
 
-- セッション開始時に SessionStart hookが `git-wt` でworktreeを自動作成する
 - 既にworktree内でセッションを開始した場合は、新規作成せずそのworktreeで作業を続行する
-- hookの出力にworktreeパスが含まれている場合、最初のアクションとして `cd <worktreeパス>` を実行すること
 - 以降のすべてのファイル操作（Read, Edit, Write, Glob, Grep等）はworktree内の絶対パスを使用すること
 - セッション終了後のworktree削除は `git wt -d <ブランチ名>` で手動管理
+
+### Worktree作成手順（セッション開始時にworktreeが未作成の場合）
+
+ユーザーの最初のプロンプトを分析して、以下の手順でworktreeを作成する:
+
+1. **ブランチ名の決定**
+   - プロンプトの内容からConventional Commits風のブランチ名を推定する（例: `fix/nvim-keymap-conflict`, `feat/add-tmux-plugin`）
+   - PRのURLが含まれている場合は `gh pr view <URL> --json headRefName` でブランチ名を取得し、そのリモートブランチをチェックアウトする
+   - 既存の実装や既知のブランチに言及している場合は `git branch -r` で該当するリモートブランチを探す
+   - ブランチ名に迷う場合はユーザーに確認する。ユーザーが空の応答を返した場合は、次のプロンプトまで何もせず待機する
+
+2. **Worktree作成**
+   ```bash
+   # 新規ブランチの場合
+   wt_path=$(git-wt "<ブランチ名>" --nocd)
+
+   # リモートブランチが存在する場合
+   git fetch origin <ブランチ名>
+   wt_path=$(git-wt "<ブランチ名>" "origin/<ブランチ名>" --nocd)
+   ```
+
+3. **settings.local.json の生成**（メインリポジトリへのアクセスを許可）
+   ```bash
+   mkdir -p "$wt_path/.claude"
+   cat > "$wt_path/.claude/settings.local.json" <<EOF
+   {"permissions": {"additionalDirectories": ["<メインリポジトリの絶対パス>"]}}
+   EOF
+   ```
+
+4. **last-worktree の記録**（Claude終了後にシェルがworktreeへ移動するため）
+   ```bash
+   echo "$wt_path" > "$HOME/.claude/last-worktree"
+   ```
+
+5. **worktreeへ移動**
+   ```bash
+   cd "$wt_path"
+   ```
 
 ## Language and Conventions
 
