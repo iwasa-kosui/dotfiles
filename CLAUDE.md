@@ -88,3 +88,16 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 - **Use Japanese** when communicating with the user
 - PR commits follow Conventional Commits format: `<type>(<scope>): <description>`
 - PRs are created as drafts with `Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>`
+
+## Commit Message Rules
+
+- コミットメッセージは変更の「What（何を）」と「Why（なぜ）」を本質的に説明すること
+- 「レビューコメントに基づき」「指摘を反映」「フィードバック対応」のような**トリガー（きっかけ）をメッセージにしてはならない**。これらは変更の内容も理由も伝えない
+- 良い例: `fix(ogas): descriptionからトリガーワード説明を削除し disable-model-invocation との矛盾を解消`
+- 悪い例: `fix: レビューコメントに基づくrunbookスキルと手順書の修正`
+- **amend + force pushは絶対にしない**。メッセージを間違えても新しいコミットで対応する
+
+## PR Review Comment Rules
+
+- PRのレビューコメントに返信する際は、必ず `🤖 Claude Code says: ` で本文を開始する
+- 修正済みの場合はコミットのSHA1ハッシュを本文に含める（例: `🤖 Claude Code says: 修正しました (e4dcbb406)`）
