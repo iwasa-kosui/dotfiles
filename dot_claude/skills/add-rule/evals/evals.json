@@ -1,0 +1,46 @@
+{
+  "skill_name": "add-rule",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Claude Codeでコミットメッセージは必ずConventional Commits形式にするルールを追加して。日本語の説明も入れてほしい",
+      "expected_output": "dot_claude/rules/ にConventional Commitsルールのmdファイルが作成され、frontmatterなし（無条件ルール）、具体的なフォーマット例を含む",
+      "files": [],
+      "expectations": [
+        "dot_claude/rules/ ディレクトリにMarkdownファイルが作成される",
+        "ファイル名がkebab-caseである（例: conventional-commits.md）",
+        "ファイルにConventional Commitsのフォーマット例が含まれる",
+        "frontmatterにpathsフィールドがない（無条件ルール）",
+        "ルール内容が200行以内である",
+        "chezmoi applyの実行またはユーザーへの承認確認が行われる"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "TypeScriptファイルを編集するときだけ有効になるルールを作りたい。strictモードを必須にして、any型の使用を禁止するルールにして",
+      "expected_output": "dot_claude/rules/ にTypeScript用ルールファイルが作成され、paths: ['**/*.ts', '**/*.tsx'] のfrontmatterを含む",
+      "files": [],
+      "expectations": [
+        "dot_claude/rules/ ディレクトリにMarkdownファイルが作成される",
+        "YAMLフロントマターにpathsフィールドが含まれる",
+        "pathsにTypeScript関連のglobパターン（*.tsや*.tsx）が含まれる",
+        "globs や description フィールドが使われていない",
+        "strictモードとany型禁止に関する具体的な指示が含まれる",
+        "ルールに理由（なぜstrictか、なぜanyを避けるか）が添えられている"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "既存のルールファイルに追記したい。今あるルールを見せて、もしコードスタイル系のルールがあればそこにインポート順序のルールを追加して",
+      "expected_output": "既存ルールの一覧が表示され、該当するファイルがあれば編集、なければ新規作成の提案がある",
+      "files": [],
+      "expectations": [
+        "既存のルールファイル一覧を確認するコマンド（ls dot_claude/rules/）が実行される",
+        "既存ルールの内容を読んで確認するステップがある",
+        "同一トピックのルールがあれば編集を提案する（新規作成ではなく）",
+        "インポート順序に関する具体的なルールが含まれる",
+        "ユーザーに変更内容のプレビューが提示される"
+      ]
+    }
+  ]
+}
