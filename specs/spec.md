@@ -11,7 +11,8 @@ dot_claude/skills/rdra-sdd/
     ├── rdra-schemas.md               # RDRA成果物のYAMLスキーマ
     ├── mermaid-templates.md           # Mermaid図テンプレート集
     ├── sdd-templates.md              # PRD/ADR/Spec テンプレート
-    └── analysis-guide.md             # 分析モード詳細ガイド
+    ├── analysis-guide.md             # 分析モード詳細ガイド
+    └── implementation-guide.md       # 実装生成モード詳細ガイド
 ```
 
 ## 2. SKILL.md 構成
@@ -22,12 +23,11 @@ dot_claude/skills/rdra-sdd/
 ---
 name: rdra-sdd
 description: |
-  RDRA 2.0に基づく要件定義と仕様駆動開発（SDD）を支援するスキル。
-  4つのモード（分析/仕様作成/レビュー/更新）で要件の構造化からSDD文書生成までを一貫して実行する。
+  RDRA 3.0に基づく要件定義と仕様駆動開発を支援するスキル。
+  5つのモード（分析/仕様作成/実装生成/レビュー/更新）で要件の構造化からコード生成までを一貫して実行する。
   RDRA、要件定義、仕様書作成、SDD、ビジネスユースケース、ユースケース、業務フロー、
-  情報モデル、状態遷移、トレーサビリティなど、要件定義・仕様策定に関する相談全般でトリガーする。
-  要件定義したい、仕様書を書きたい、仕様をレビューしたい、仕様を更新したいといった
-  漠然とした依頼でも積極的にトリガーすること。
+  情報モデル、状態遷移、トレーサビリティ、タスク分解、コード生成、受け入れテストなど、
+  要件定義・仕様策定・実装生成に関する相談全般でトリガーする。
 ---
 ```
 
@@ -36,7 +36,7 @@ description: |
 ```
 # RDRA-SDD
 
-概要説明（1スキル4モード、RDRAからSDDまで一貫支援）
+概要説明（1スキル5モード、RDRA 3.0からSDD実装まで一貫支援）
 
 ## モード選択
   ユーザーの意図に応じてモードを判定するロジック
@@ -47,10 +47,13 @@ description: |
 ## モード2: 仕様作成（Spec Writing）
   5 Stepフロー概要
 
-## モード3: レビュー（Spec Review）
+## モード3: 実装生成（Implementation Generation）
+  4 Stepフロー概要 + `references/implementation-guide.md` への参照
+
+## モード4: レビュー（Spec Review）
   概要 + `agents/reviewer.md` への委譲
 
-## モード4: 更新（Spec Update）
+## モード5: 更新（Spec Update）
   4 Stepフロー概要
 
 ## 共通事項
@@ -63,7 +66,7 @@ description: |
 
 ### 3.1 分析モード（RDRA Analysis）
 
-ビジネスコンテキスト単位のバーティカルスライスで対話的にヒアリングし、RDRA 4レイヤーを縦貫する成果物を生成する。
+RDRA 3.0のコンテキスト単位のバーティカルスライスで対話的にヒアリングし、4レイヤーを縦貫する成果物を生成する。
 
 #### 全体フロー
 
@@ -72,15 +75,15 @@ Phase 1: スコープ把握
   → プロジェクト概要、主要アクター、システム化の目的をヒアリング
   → overview.md のドラフト生成
 
-Phase 2: ビジネスコンテキストの特定
-  → 主要な業務領域を洗い出し、コンテキスト分割を提案
+Phase 2: コンテキストの特定
+  → 主要な業務領域を洗い出し、RDRA 3.0のコンテキスト分割を提案
   → ユーザーと合意してコンテキスト一覧を確定
 
 Phase 3: コンテキスト別深掘り（各コンテキストについて繰り返し）
   → §価値: ゴール・要求のヒアリング
   → §環境: BUC・業務フローのヒアリング
   → §境界: UC・画面・イベントのヒアリング
-  → §システム: 情報モデル・状態モデルへの参照の特定
+  → §システム: 情報モデル・状態モデル・条件・バリエーションへの参照の特定
   → contexts/{name}.md の生成
 
 Phase 4: 横断モデルの整理
@@ -133,11 +136,45 @@ Step 4: Spec生成
 
 Step 5: トレーサビリティ更新
   → 生成した3文書の仕様項目を traceability.yaml に追記
-  → RDRA要素 → PRD要件 → Spec仕様 の依存チェーンを構築
+  → RDRA要素 → PRD要件 → Spec仕様 の traces_to チェーンを構築
   → カバレッジレポートを出力（RDRA要素のうち仕様に反映されていないものを検出）
 ```
 
-### 3.3 レビューモード（Spec Review）
+### 3.3 実装生成モード（Implementation Generation）
+
+仕様書を入力とし、タスクリスト・実装コード・ADR・受け入れテストを生成する。SDDの「Specify → Plan → Tasks → Implement」ワークフローをRDRAトレーサビリティ付きで実行する。
+
+#### 4 Step フロー
+
+```
+Step 1: 技術スタック・アーキテクチャのヒアリング
+  → 使用言語・フレームワーク・インフラ構成をヒアリング
+  → ADR候補の自動検出（技術選定理由を記録）
+  → 技術的制約・チームの慣習を把握
+
+Step 2: タスク分解
+  → Spec の各仕様項目をタスクに分解
+  → 各タスクに以下を付与:
+    - TASK-NNN ID
+    - traces_to: 対応するSPEC-*/UC-*/FR-* への参照
+    - 受け入れ条件: タスク完了の判定基準
+    - 依存関係: 他タスクへの依存
+  → tasks.md を生成し、ユーザーに実行順序を確認
+
+Step 3: 実装・ADR・テスト生成
+  → 承認されたタスクリストに従い、タスク単位で実行:
+    a. 実装コードの生成（タスクごとに独立してレビュー可能な単位）
+    b. 技術判断が伴う場合はADRを生成
+    c. 対応するBUC/UCの受け入れ条件から受け入れテストを生成
+  → 各生成物に traces_to を付与
+
+Step 4: トレーサビリティ更新・検証
+  → traceability.yaml にタスク・コード・テストの要素を追記
+  → GOAL → REQ → BUC → UC → FR → SPEC → TASK のチェーンが完結していることを検証
+  → カバレッジレポートを出力（Specのうちタスク化されていない項目を検出）
+```
+
+### 3.4 レビューモード（Spec Review）
 
 `agents/reviewer.md` に定義されたサブエージェントに委譲する。4つの観点で仕様書を検証する。
 
@@ -184,7 +221,7 @@ Step 5: トレーサビリティ更新
 - **推奨**: 修正案
 ```
 
-### 3.4 更新モード（Spec Update）
+### 3.5 更新モード（Spec Update）
 
 要件変更が発生した際に影響範囲を分析し、関連する成果物を更新する。
 
@@ -193,13 +230,13 @@ Step 5: トレーサビリティ更新
 ```
 Step 1: 影響分析
   → 変更対象の要素ID（または自然言語記述）を受け取る
-  → traceability.yaml を走査し、直接・間接に影響を受ける要素を特定
+  → traceability.yaml の traces_to を逆引きし、直接・間接に影響を受ける要素を特定
   → 影響範囲をツリー構造で可視化
     例: GOAL-001 を変更
-      → REQ-001, REQ-002 が影響
+      → REQ-001, REQ-002 が影響（traces_to 逆引き）
         → BUC-001 が影響
           → UC-001, UC-002 が影響
-            → SCR-001, INFO-001 が影響
+            → SCR-001, INFO-001, TASK-001 が影響
 
 Step 2: 計画提示
   → 更新が必要なファイルと変更内容の計画をユーザーに提示
@@ -208,7 +245,7 @@ Step 2: 計画提示
 
 Step 3: 更新実行
   → 承認された計画に従ってファイルを更新
-  → RDRA成果物: YAML定義の更新 + Mermaid図の再生成
+  → RDRA成果物: YAML定義の更新 + Mermaid図の再生成（YAML変更を含む場合は必須）
   → SDD文書: 影響箇所の修正
   → traceability.yaml の更新
   → change-log.md に変更履歴を追記
@@ -222,6 +259,7 @@ Step 4: 再検証
 ## 4. RDRA成果物のYAMLスキーマ
 
 各Markdownファイルの先頭にYAMLフロントマターとしてRDRA要素の構造化データを記述する。
+RDRA 3.0に準拠し、条件・バリエーションはシステムレイヤーに配置する。
 
 ### 4.1 overview.md スキーマ
 
@@ -242,7 +280,7 @@ goals:
 contexts:
   - id: "BIZ-001"
     name: "context-name"
-    description: "ビジネスコンテキストの概要"
+    description: "コンテキストの概要"
     primary_actors: ["ACTOR-001"]
     goals: ["GOAL-001"]
 ---
@@ -250,11 +288,11 @@ contexts:
 
 本文には以下のMermaid図を含む:
 - システムコンテキスト図（`graph TB`）: アクター・外部システム・対象システムの関係
-- コンテキスト間関係図（`graph LR`）: ビジネスコンテキスト間の依存関係
+- コンテキスト間関係図（`graph LR`）: コンテキスト間の依存関係
 
 ### 4.2 contexts/{name}.md スキーマ
 
-1ファイルで4レイヤーを縦貫するバーティカルスライス。
+1ファイルで4レイヤーを縦貫するバーティカルスライス。RDRA 3.0のコンテキスト概念に対応。
 
 ```yaml
 ---
@@ -279,10 +317,6 @@ environment:
       actors: ["ACTOR-001"]
       description: "BUCの説明"
       traces_to: ["REQ-001"]
-      variations:
-        - id: "VAR-001"
-          condition: "条件"
-          description: "バリエーションの説明"
 
 # §境界（システム境界レイヤー）
 boundary:
@@ -305,10 +339,21 @@ boundary:
       trigger: "トリガー条件"
       description: "イベントの説明"
 
-# §システム（システムレイヤー ― shared/ への参照）
+# §システム（システムレイヤー ― shared/ への参照 + 条件・バリエーション）
 system:
   information: ["INFO-001", "INFO-002"]  # shared/information-model.md の要素への参照
   states: ["STATE-001"]                  # shared/state-models.md の要素への参照
+  conditions:
+    - id: "COND-001"
+      name: "条件名"
+      description: "条件の説明"
+      traces_to: ["UC-001"]
+  variations:
+    - id: "VAR-001"
+      name: "バリエーション名"
+      values: ["値A", "値B"]
+      description: "バリエーションの説明"
+      traces_to: ["UC-001"]
 ---
 ```
 
@@ -335,7 +380,7 @@ entities:
       - target: "INFO-002"
         type: "1:N" | "N:1" | "1:1" | "N:M"
         label: "関連名"
-    referenced_by: ["UC-001", "SCR-001"]  # この情報を参照するUC・画面
+    traces_to: ["UC-001", "SCR-001"]  # この情報を参照するUC・画面
 ---
 ```
 
@@ -359,13 +404,15 @@ models:
         to: "状態B"
         trigger: "EVT-001 | UC-001"  # トリガーとなるイベントまたはUC
         condition: "遷移条件（任意）"
-    referenced_by: ["UC-001"]
+    traces_to: ["UC-001"]
 ---
 ```
 
 本文には状態遷移図（`stateDiagram-v2`）を含む。
 
 ### 4.5 traceability.yaml スキーマ
+
+`traces_to` のみを保持し、`traced_from` は保持しない。下流方向の走査が必要な場合は `traces_to` の逆引きで動的に算出する。
 
 ```yaml
 # traceability.yaml - 全要素のトレーサビリティマトリックス
@@ -378,28 +425,42 @@ elements:
     name: "ゴール名"
     defined_in: "rdra/overview.md"
     traces_to: []  # 最上位要素
-    traced_from: ["REQ-001", "REQ-002"]
 
   - id: "REQ-001"
     type: requirement
     name: "要求名"
     defined_in: "rdra/contexts/context-name.md"
     traces_to: ["GOAL-001"]
-    traced_from: ["BUC-001"]
 
   - id: "BUC-001"
     type: business_usecase
     name: "BUC名"
     defined_in: "rdra/contexts/context-name.md"
     traces_to: ["REQ-001"]
-    traced_from: ["UC-001"]
 
   - id: "UC-001"
     type: usecase
     name: "UC名"
     defined_in: "rdra/contexts/context-name.md"
     traces_to: ["BUC-001"]
-    traced_from: []
+
+  - id: "FR-001"
+    type: functional_requirement
+    name: "機能要件名"
+    defined_in: "specs/prd.md"
+    traces_to: ["UC-001"]
+
+  - id: "SPEC-001"
+    type: specification
+    name: "仕様名"
+    defined_in: "specs/spec.md"
+    traces_to: ["FR-001"]
+
+  - id: "TASK-001"
+    type: task
+    name: "タスク名"
+    defined_in: "specs/tasks.md"
+    traces_to: ["SPEC-001", "UC-001"]
 
 coverage:
   total_goals: 1
@@ -409,6 +470,9 @@ coverage:
   total_bucs: 1
   bucs_with_ucs: 1
   total_ucs: 1
+  ucs_with_specs: 1
+  total_specs: 1
+  specs_with_tasks: 1
   orphaned_elements: []  # traces_to チェーンがGOALに到達しない要素
 ```
 
@@ -418,9 +482,9 @@ coverage:
 
 ```mermaid
 graph TB
-    actor1["👤 アクター名"]
-    ext1["🖥️ 外部システム名"]
-    system["🎯 対象システム名"]
+    actor1["アクター名"]
+    ext1["外部システム名"]
+    system["対象システム名"]
 
     actor1 --> system
     ext1 <--> system
@@ -430,9 +494,9 @@ graph TB
 
 ```mermaid
 graph LR
-    actor1["👤 アクター名"]
+    actor1["アクター名"]
 
-    subgraph biz1["📋 ビジネスコンテキスト名"]
+    subgraph biz1["ビジネスコンテキスト名"]
         buc1["BUC-001: BUC名"]
         buc2["BUC-002: BUC名"]
     end
@@ -445,9 +509,9 @@ graph LR
 
 ```mermaid
 sequenceDiagram
-    actor User as 👤 ユーザー
-    participant S as 🎯 システム
-    participant Ext as 🖥️ 外部システム
+    actor User as ユーザー
+    participant S as システム
+    participant Ext as 外部システム
 
     User->>S: 操作を行う
     activate S
@@ -471,15 +535,15 @@ flowchart LR
     classDef control fill:#e3f2fd,stroke:#2196f3,stroke-width:2px
     classDef entity fill:#e6ee9c,stroke:#4caf50,stroke-width:2px
 
-    actor["👤 アクター名"]
+    actor["アクター名"]
 
     subgraph boundarySg["バウンダリ"]
-        scr1["🖥️ SCR-001: 画面名"]:::boundary
-        btn1["👆 ボタン名"]:::boundary
+        scr1["SCR-001: 画面名"]:::boundary
+        btn1["ボタン名"]:::boundary
     end
 
     subgraph controlSg["コントローラ"]
-        ctrl1["🔑 UC-001: ユースケース名"]:::control
+        ctrl1["UC-001: ユースケース名"]:::control
     end
 
     subgraph entitySg["エンティティ"]
@@ -572,7 +636,7 @@ stateDiagram-v2
 ### MVP
 ### 将来拡張
 
-## 成功指標
+## 受け入れ条件
 ```
 
 ### 6.2 ADRテンプレート
@@ -626,6 +690,34 @@ stateDiagram-v2
 {テスト観点、カバレッジ方針}
 ```
 
+### 6.4 タスクリストテンプレート
+
+```markdown
+# Tasks: {プロジェクト名}
+
+## 技術スタック
+- 言語: {言語}
+- フレームワーク: {フレームワーク}
+- インフラ: {インフラ}
+
+## タスク一覧
+
+### TASK-001: {タスク名}
+- **traces_to**: SPEC-001, UC-001
+- **依存**: なし
+- **受け入れ条件**:
+  - {条件1}
+  - {条件2}
+- **成果物**: {ファイルパス}
+
+### TASK-002: {タスク名}
+- **traces_to**: SPEC-002, UC-002
+- **依存**: TASK-001
+- **受け入れ条件**:
+  - {条件1}
+- **成果物**: {ファイルパス}
+```
+
 ## 7. レビューエージェント仕様
 
 ### ファイル: `agents/reviewer.md`
@@ -648,7 +740,7 @@ SDD文書パス: {specs/ ディレクトリの絶対パス}（存在する場合
    - **トレーサビリティ**: 全要素の `traces_to` チェーンを走査し、GOALに到達しないチェーンを検出。循環参照もチェック
    - **曖昧性**: SDD文書のテキストをスキャンし、曖昧表現パターン（「適切に」「必要に応じて」「など」「等」「〜的な」）を検出。定量化・具体化の提案を付与
    - **整合性**: RDRA成果物間の整合性（同一ID参照の一致、属性定義の統一）とRDRA-SDD間の整合性（ADRの決定がSpecに反映されているか）を検証
-3. **レビューレポートの生成**: 検出結果をSection 3.3で定義したフォーマットで出力
+3. **レビューレポートの生成**: 検出結果をSection 3.4で定義したフォーマットで出力
 
 #### 出力
 
@@ -664,7 +756,7 @@ SDD文書パス: {specs/ ディレクトリの絶対パス}（存在する場合
 
 ### Why依存チェーン
 
-RDRA要素からSDD仕様項目まで、すべての要素が `traces_to` で上位要素を参照し、最終的にGOALに到達する依存チェーンを形成する。
+RDRA要素からSDD仕様項目・タスク・実装まで、すべての要素が `traces_to` で上位要素を参照し、最終的にGOALに到達する依存チェーンを形成する。
 
 ```
 GOAL-001: システム化の目的
@@ -673,6 +765,7 @@ GOAL-001: システム化の目的
       ← UC-001: ユースケース
         ← FR-001: 機能要件（PRD）
           ← SPEC-001: 技術仕様（Spec）
+            ← TASK-001: 実装タスク
 ```
 
 ### カバレッジチェック
@@ -684,13 +777,14 @@ traceability.yaml の `coverage` セクションで以下を計算する:
 | ゴールカバレッジ | REQが紐づいたGOALの割合 | 100% |
 | 要求カバレッジ | BUCが紐づいたREQの割合 | 100% |
 | BUCカバレッジ | UCが紐づいたBUCの割合 | 100% |
+| Specカバレッジ | TASKが紐づいたSpecの割合 | 100% |
 | 孤立要素 | GOALに到達しない要素の一覧 | 0件 |
 
 ### 変更影響の追跡
 
 更新モードのStep 1（影響分析）で使用する。traceability.yaml から以下を実行:
 
-1. 変更対象要素の `traced_from` を再帰的に走査（下流方向）
+1. 変更対象要素の `traces_to` を逆引きで再帰的に走査（下流方向）
 2. 変更対象要素の `traces_to` を再帰的に走査（上流方向）
 3. 影響を受ける要素と、それが定義されているファイルパスをリストアップ
 4. 影響ツリーをMermaid `graph TD` で可視化
