@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Claude Code statusline script (Bun TypeScript)
-// Line 1: Model | Context% | +added/-removed | git branch
+// Line 1: Model | Context% | +added/-removed | git branch | worktree
 // Line 2: 5h rate limit progress bar
 // Line 3: 7d rate limit progress bar
 
@@ -66,6 +66,19 @@ async function getGitBranch(cwd: string): Promise<string | null> {
     "--short",
     "HEAD",
   ]);
+}
+
+async function getWorktreeName(cwd: string): Promise<string | null> {
+  const [gitDir, commonDir] = await Promise.all([
+    runSafe(["git", "-C", cwd, "--no-optional-locks", "rev-parse", "--git-dir"]),
+    runSafe(["git", "-C", cwd, "--no-optional-locks", "rev-parse", "--git-common-dir"]),
+  ]);
+  if (!gitDir || !commonDir || gitDir === commonDir) return null;
+  const toplevel = await runSafe([
+    "git", "-C", cwd, "--no-optional-locks", "rev-parse", "--show-toplevel",
+  ]);
+  if (!toplevel) return null;
+  return toplevel.split("/").pop() ?? null;
 }
 
 async function getOAuthToken(): Promise<string | null> {
@@ -235,8 +248,10 @@ const linesAdded = input.cost?.total_lines_added ?? 0;
 const linesRemoved = input.cost?.total_lines_removed ?? 0;
 const ccVersion = input.version ?? "0.0.0";
 
-// Git branch
-const gitBranch = cwd ? await getGitBranch(cwd) : null;
+// Git branch & worktree
+const [gitBranch, worktreeName] = cwd
+  ? await Promise.all([getGitBranch(cwd), getWorktreeName(cwd)])
+  : [null, null];
 
 // Git stats
 const gitStats =
@@ -263,6 +278,9 @@ if (gitStats) {
 }
 if (gitBranch) {
   line1 += `${SEP}🔀 ${gitBranch}`;
+}
+if (worktreeName) {
+  line1 += `${SEP}🌲 ${worktreeName}`;
 }
 
 // ---------- Line 2 (5h) ----------
