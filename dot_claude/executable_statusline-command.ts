@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Claude Code statusline script (Bun TypeScript)
-// Line 1: Model | Context% | +added/-removed | git branch | worktree
+// Line 1: Model | Context bar % | +added/-removed | git branch | worktree
 // Line 2: 5h rate limit progress bar
 // Line 3: 7d rate limit progress bar
 
@@ -38,6 +38,12 @@ function colorForPct(pct: number | null): string {
   if (pct === null) return GRAY;
   if (pct >= 80) return RED;
   if (pct >= 50) return YELLOW;
+  return GREEN;
+}
+
+function colorForCtxPct(pct: number): string {
+  if (pct >= 40) return RED;
+  if (pct >= 25) return YELLOW;
   return GREEN;
 }
 
@@ -269,9 +275,10 @@ const ctxPctInt = Math.round(usedPct);
 
 // ---------- Line 1 ----------
 const SEP = `${GRAY} │ ${RESET}`;
-const ctxColor = colorForPct(ctxPctInt);
+const ctxColor = colorForCtxPct(ctxPctInt);
+const ctxBar = progressBar(ctxPctInt);
 
-let line1 = `🤖 ${modelName}${SEP}${ctxColor}📊 ${ctxPctInt}%${RESET}`;
+let line1 = `🤖 ${modelName}${SEP}${ctxColor}📊 ${ctxBar} ${ctxPctInt}%${RESET}`;
 
 if (gitStats) {
   line1 += `${SEP}✏️  ${GREEN}${gitStats}${RESET}`;
