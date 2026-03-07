@@ -12,6 +12,11 @@ This is a personal dotfiles repository managed by **Chezmoi**. It contains confi
 - Files in `dot_config/` are deployed to `~/.config/`
 - Apply changes with `chezmoi apply` after editing
 
+## Chezmoi Integration
+
+- Deploy dotfiles and skills through chezmoi after creation
+- When modifying dotfiles-managed files, use chezmoi apply workflow
+
 ## Commands
 
 ```bash
