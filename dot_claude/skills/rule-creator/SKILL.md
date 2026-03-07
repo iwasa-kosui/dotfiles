@@ -1,5 +1,5 @@
 ---
-name: add-rule
+name: rule-creator
 description: Claude Codeのルールファイル（.claude/rules/*.md）を追加・編集するスキル。ルールの新規作成、既存ルールの変更、パス条件付きルールの設定など、.claude/rulesの管理全般でトリガーする。
 ---
 
