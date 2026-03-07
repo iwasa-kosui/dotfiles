@@ -1,0 +1,14 @@
+{
+  "eval_id": 1,
+  "configuration": "without_skill",
+  "expectations": [
+    {"text": "overview.md が生成され、YAMLフロントマターにactors, goals, contextsが含まれている", "passed": false, "evidence": "overview.mdが存在しない。レイヤー別YAML形式で出力された"},
+    {"text": "contexts/ ディレクトリに最低2つのコンテキストファイルが生成されている", "passed": false, "evidence": "contextsディレクトリが存在しない。レイヤー別構造を採用"},
+    {"text": "shared/information-model.md と shared/state-models.md が生成されている", "passed": false, "evidence": "sharedディレクトリが存在しない。04_システム.yamlに情報モデルを含む"},
+    {"text": "traceability.yaml が生成され、traces_to フィールドを含む要素が定義されている", "passed": false, "evidence": "トレーサビリティマトリクスは存在するがtraces_toフィールドは未使用"},
+    {"text": "生成されたMarkdownファイルにMermaid図が含まれている", "passed": false, "evidence": "Mermaid図を含むファイル: 0"},
+    {"text": "ACTOR-*, GOAL-*, BUC-*, UC-* 等のセマンティックIDが使用されている", "passed": false, "evidence": "UC-* のみ部分的に使用。ACTOR-*, GOAL-*, BUC-*は未使用"},
+    {"text": "各要素にtraces_toフィールドがあり、traced_fromは使われていない", "passed": false, "evidence": "traces_to出現: 0回"},
+    {"text": "コンテキストファイルが4レイヤー（value/environment/boundary/system）を含む", "passed": false, "evidence": "バーティカルスライス構造ではなくレイヤー別ファイル構造"}
+  ]
+}
