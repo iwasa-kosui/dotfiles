@@ -216,7 +216,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/session-init.sh",
+            "command": "bun ~/.claude/hooks/session-init.ts",
             "timeout": 15,
             "statusMessage": "Jira課題・GitHub PR・ワークツリー情報を取得中..."
           }
@@ -259,7 +259,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/webfetch-guard.sh"
+            "command": "bun ~/.claude/hooks/webfetch-guard.ts"
           }
         ]
       },
@@ -268,7 +268,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/plan-export.sh"
+            "command": "bun ~/.claude/hooks/plan-export.ts"
           }
         ]
       }
@@ -278,7 +278,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/worktree.sh"
+            "command": "bun ~/.claude/hooks/worktree.ts"
           }
         ]
       }
@@ -288,7 +288,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "~/.claude/hooks/worktree.sh"
+            "command": "bun ~/.claude/hooks/worktree.ts"
           }
         ]
       }
