@@ -1,0 +1,483 @@
+version: "1.0"
+generated_at: "2026-03-07T00:00:00Z"
+
+elements:
+  # === システム価値レイヤー: アクター ===
+  - id: "ACTOR-001"
+    type: actor
+    name: "一般会員"
+    defined_in: "rdra/overview.md"
+    traces_to: []
+
+  - id: "ACTOR-002"
+    type: actor
+    name: "司書"
+    defined_in: "rdra/overview.md"
+    traces_to: []
+
+  - id: "ACTOR-003"
+    type: actor
+    name: "国立国会図書館書誌データAPI"
+    defined_in: "rdra/overview.md"
+    traces_to: []
+
+  # === システム価値レイヤー: ゴール ===
+  - id: "GOAL-001"
+    type: goal
+    name: "蔵書の効率的な管理"
+    defined_in: "rdra/overview.md"
+    traces_to: []
+
+  - id: "GOAL-002"
+    type: goal
+    name: "貸出・返却業務の円滑化"
+    defined_in: "rdra/overview.md"
+    traces_to: []
+
+  - id: "GOAL-003"
+    type: goal
+    name: "予約による利用機会の公平化"
+    defined_in: "rdra/overview.md"
+    traces_to: []
+
+  # === システム価値レイヤー: 要求 ===
+  - id: "REQ-001"
+    type: requirement
+    name: "書誌データ取得による迅速な蔵書登録"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["GOAL-001"]
+
+  - id: "REQ-002"
+    type: requirement
+    name: "蔵書情報の随時更新"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["GOAL-001"]
+
+  - id: "REQ-003"
+    type: requirement
+    name: "不要図書の除籍"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["GOAL-001"]
+
+  - id: "REQ-004"
+    type: requirement
+    name: "蔵書の検索"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["GOAL-001"]
+
+  - id: "REQ-005"
+    type: requirement
+    name: "貸出手続きのシステム化"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["GOAL-002"]
+
+  - id: "REQ-006"
+    type: requirement
+    name: "貸出期限・延滞状況の把握"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["GOAL-002"]
+
+  - id: "REQ-007"
+    type: requirement
+    name: "返却手続きのシステム化"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["GOAL-002"]
+
+  - id: "REQ-008"
+    type: requirement
+    name: "貸出期間の条件付き延長"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["GOAL-002"]
+
+  - id: "REQ-009"
+    type: requirement
+    name: "貸出中図書の予約登録"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["GOAL-003"]
+
+  - id: "REQ-010"
+    type: requirement
+    name: "返却時の予約通知"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["GOAL-003"]
+
+  - id: "REQ-011"
+    type: requirement
+    name: "予約の取消"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["GOAL-003"]
+
+  - id: "REQ-012"
+    type: requirement
+    name: "予約順番の公平管理"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["GOAL-003"]
+
+  # === 外部環境レイヤー: ビジネスユースケース ===
+  - id: "BUC-001"
+    type: business_usecase
+    name: "蔵書を登録する"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["REQ-001"]
+
+  - id: "BUC-002"
+    type: business_usecase
+    name: "蔵書情報を更新する"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["REQ-002"]
+
+  - id: "BUC-003"
+    type: business_usecase
+    name: "蔵書を除籍する"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["REQ-003"]
+
+  - id: "BUC-004"
+    type: business_usecase
+    name: "蔵書を検索する"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["REQ-004"]
+
+  - id: "BUC-005"
+    type: business_usecase
+    name: "図書を貸し出す"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["REQ-005"]
+
+  - id: "BUC-006"
+    type: business_usecase
+    name: "図書を返却する"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["REQ-007"]
+
+  - id: "BUC-007"
+    type: business_usecase
+    name: "貸出期間を延長する"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["REQ-008"]
+
+  - id: "BUC-008"
+    type: business_usecase
+    name: "貸出状況を確認する"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["REQ-006"]
+
+  - id: "BUC-009"
+    type: business_usecase
+    name: "図書を予約する"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["REQ-009"]
+
+  - id: "BUC-010"
+    type: business_usecase
+    name: "予約を取り消す"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["REQ-011"]
+
+  - id: "BUC-011"
+    type: business_usecase
+    name: "予約可能通知を受け取る"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["REQ-010"]
+
+  - id: "BUC-012"
+    type: business_usecase
+    name: "予約状況を管理する"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["REQ-012"]
+
+  # === システム境界レイヤー: ユースケース ===
+  - id: "UC-001"
+    type: usecase
+    name: "ISBN検索で書誌データを取得する"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["BUC-001"]
+
+  - id: "UC-002"
+    type: usecase
+    name: "蔵書を新規登録する"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["BUC-001"]
+
+  - id: "UC-003"
+    type: usecase
+    name: "蔵書情報を編集する"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["BUC-002"]
+
+  - id: "UC-004"
+    type: usecase
+    name: "蔵書を除籍する"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["BUC-003"]
+
+  - id: "UC-005"
+    type: usecase
+    name: "蔵書を検索・一覧表示する"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["BUC-004"]
+
+  - id: "UC-006"
+    type: usecase
+    name: "貸出を実行する"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["BUC-005"]
+
+  - id: "UC-007"
+    type: usecase
+    name: "返却を実行する"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["BUC-006"]
+
+  - id: "UC-008"
+    type: usecase
+    name: "貸出期間を延長する"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["BUC-007"]
+
+  - id: "UC-009"
+    type: usecase
+    name: "貸出状況を一覧表示する"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["BUC-008"]
+
+  - id: "UC-010"
+    type: usecase
+    name: "延滞通知を送信する"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["BUC-008"]
+
+  - id: "UC-011"
+    type: usecase
+    name: "予約を登録する"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["BUC-009"]
+
+  - id: "UC-012"
+    type: usecase
+    name: "予約を取り消す"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["BUC-010"]
+
+  - id: "UC-013"
+    type: usecase
+    name: "予約可能通知を送信する"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["BUC-011"]
+
+  - id: "UC-014"
+    type: usecase
+    name: "予約状況を一覧表示する"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["BUC-012"]
+
+  - id: "UC-015"
+    type: usecase
+    name: "予約期限切れを処理する"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["BUC-012"]
+
+  # === システム境界レイヤー: 画面 ===
+  - id: "SCR-001"
+    type: screen
+    name: "書誌データ取得画面"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["UC-001"]
+
+  - id: "SCR-002"
+    type: screen
+    name: "蔵書登録・編集画面"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["UC-002", "UC-003", "UC-004"]
+
+  - id: "SCR-003"
+    type: screen
+    name: "蔵書検索画面"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["UC-005"]
+
+  - id: "SCR-004"
+    type: screen
+    name: "蔵書詳細画面"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["UC-005", "UC-011"]
+
+  - id: "SCR-005"
+    type: screen
+    name: "貸出処理画面"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["UC-006"]
+
+  - id: "SCR-006"
+    type: screen
+    name: "返却処理画面"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["UC-007"]
+
+  - id: "SCR-007"
+    type: screen
+    name: "マイページ（貸出状況）"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["UC-008", "UC-009"]
+
+  - id: "SCR-008"
+    type: screen
+    name: "貸出管理一覧画面"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["UC-009"]
+
+  - id: "SCR-009"
+    type: screen
+    name: "マイページ（予約状況）"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["UC-011", "UC-012"]
+
+  - id: "SCR-010"
+    type: screen
+    name: "予約管理一覧画面"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["UC-014"]
+
+  # === システム境界レイヤー: イベント ===
+  - id: "EVT-001"
+    type: event
+    name: "書誌データAPI応答"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["UC-001"]
+
+  - id: "EVT-002"
+    type: event
+    name: "返却時予約通知トリガー"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["UC-007", "UC-013"]
+
+  - id: "EVT-003"
+    type: event
+    name: "延滞チェックバッチ"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["UC-010"]
+
+  - id: "EVT-004"
+    type: event
+    name: "取置き通知送信"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["UC-013"]
+
+  - id: "EVT-005"
+    type: event
+    name: "予約期限チェックバッチ"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["UC-015"]
+
+  # === システムレイヤー: 情報 ===
+  - id: "INFO-001"
+    type: information
+    name: "蔵書"
+    defined_in: "rdra/shared/information-model.md"
+    traces_to: ["UC-001", "UC-002", "UC-003", "UC-004", "UC-005"]
+
+  - id: "INFO-002"
+    type: information
+    name: "貸出"
+    defined_in: "rdra/shared/information-model.md"
+    traces_to: ["UC-006", "UC-007", "UC-008", "UC-009"]
+
+  - id: "INFO-003"
+    type: information
+    name: "会員"
+    defined_in: "rdra/shared/information-model.md"
+    traces_to: ["UC-006", "UC-009", "UC-011"]
+
+  - id: "INFO-004"
+    type: information
+    name: "予約"
+    defined_in: "rdra/shared/information-model.md"
+    traces_to: ["UC-011", "UC-012", "UC-013", "UC-014", "UC-015"]
+
+  # === システムレイヤー: 状態 ===
+  - id: "STATE-001"
+    type: state
+    name: "蔵書状態"
+    defined_in: "rdra/shared/state-models.md"
+    traces_to: ["UC-004", "UC-006", "UC-007"]
+
+  - id: "STATE-002"
+    type: state
+    name: "貸出状態"
+    defined_in: "rdra/shared/state-models.md"
+    traces_to: ["UC-006", "UC-007", "UC-008", "UC-010"]
+
+  - id: "STATE-003"
+    type: state
+    name: "予約状態"
+    defined_in: "rdra/shared/state-models.md"
+    traces_to: ["UC-011", "UC-012", "UC-013", "UC-015"]
+
+  # === システムレイヤー: 条件 ===
+  - id: "COND-001"
+    type: condition
+    name: "ISBN形式チェック"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["UC-001"]
+
+  - id: "COND-002"
+    type: condition
+    name: "除籍可能条件"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["UC-004"]
+
+  - id: "COND-003"
+    type: condition
+    name: "貸出可能条件"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["UC-006"]
+
+  - id: "COND-004"
+    type: condition
+    name: "延長可能条件"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["UC-008"]
+
+  - id: "COND-005"
+    type: condition
+    name: "予約可能条件"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["UC-011"]
+
+  - id: "COND-006"
+    type: condition
+    name: "予約取消可能条件"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["UC-012"]
+
+  # === システムレイヤー: バリエーション ===
+  - id: "VAR-001"
+    type: variation
+    name: "蔵書カテゴリ"
+    defined_in: "rdra/contexts/collection-management.md"
+    traces_to: ["UC-002"]
+
+  - id: "VAR-002"
+    type: variation
+    name: "貸出期間"
+    defined_in: "rdra/contexts/lending-management.md"
+    traces_to: ["UC-006"]
+
+  - id: "VAR-003"
+    type: variation
+    name: "取置き期間"
+    defined_in: "rdra/contexts/reservation-management.md"
+    traces_to: ["UC-015"]
+
+coverage:
+  total_goals: 3
+  goals_with_requirements: 3
+  total_requirements: 12
+  requirements_with_bucs: 12
+  total_bucs: 12
+  bucs_with_ucs: 12
+  total_ucs: 15
+  ucs_with_specs: 0
+  total_specs: 0
+  specs_with_tasks: 0
+  orphaned_elements: []
