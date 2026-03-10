@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // Claude Code statusline script (Bun TypeScript)
-// Powerline-style with Tokyo Night color palette
+// Subdued monochrome Powerline with Tokyo Night dark backgrounds
 // Line 1: Model  Context bar %  +added/-removed  git branch  worktree
 // Line 2: 5h rate limit progress bar
 // Line 3: 7d rate limit progress bar
@@ -24,43 +24,44 @@ interface CacheData {
   seven_day_reset: string;
 }
 
-// ---------- Tokyo Night Palette ----------
+// ---------- Tokyo Night Palette (subdued) ----------
 const TN = {
-  // Backgrounds
+  // Backgrounds — dark, low-contrast tiers
   bgBase: [26, 27, 38],
   bgSurface: [36, 40, 59],
   bgOverlay: [41, 46, 66],
-  // Foregrounds / accents
+  // Foregrounds — muted tones for normal state
   fg: [192, 202, 245],
-  blue: [122, 162, 247],
-  purple: [187, 154, 247],
-  cyan: [115, 218, 202],
-  green: [158, 206, 106],
-  yellow: [224, 175, 104],
-  red: [247, 118, 142],
+  fgDim: [139, 147, 185],
+  fgMuted: [110, 118, 158],
+  // Accent — only for warnings/alerts
+  green: [130, 180, 100],
+  yellow: [200, 160, 90],
+  red: [220, 110, 130],
   comment: [86, 95, 137],
 } as const;
 
-const fg = (c: readonly number[]) => `\x1b[38;2;${c[0]};${c[1]};${c[2]}m`;
-const bg = (c: readonly number[]) => `\x1b[48;2;${c[0]};${c[1]};${c[2]}m`;
+const fgC = (c: readonly number[]) => `\x1b[38;2;${c[0]};${c[1]};${c[2]}m`;
+const bgC = (c: readonly number[]) => `\x1b[48;2;${c[0]};${c[1]};${c[2]}m`;
 
 const RESET = "\x1b[0m";
-const BOLD = "\x1b[1m";
+const DIM = "\x1b[2m";
 const SEP = "\ue0b0"; // Powerline separator
 
 // ---------- Powerline Segment Builder ----------
-type Segment = { text: string; fgColor: readonly number[]; bgColor: readonly number[] };
+type Segment = { text: string; fgColor: readonly number[]; bgColor: readonly number[]; dim?: boolean };
 
 function renderSegments(segments: Segment[]): string {
   let out = "";
   for (let i = 0; i < segments.length; i++) {
     const s = segments[i];
-    out += `${bg(s.bgColor)}${fg(s.fgColor)}${BOLD}${s.text}${RESET}`;
+    const style = s.dim ? DIM : "";
+    out += `${bgC(s.bgColor)}${fgC(s.fgColor)}${style}${s.text}${RESET}`;
     const nextBg = i + 1 < segments.length ? segments[i + 1].bgColor : null;
     if (nextBg) {
-      out += `${fg(s.bgColor)}${bg(nextBg)}${SEP}${RESET}`;
+      out += `${fgC(s.bgColor)}${bgC(nextBg)}${SEP}${RESET}`;
     } else {
-      out += `${fg(s.bgColor)}${SEP}${RESET}`;
+      out += `${fgC(s.bgColor)}${SEP}${RESET}`;
     }
   }
   return out;
@@ -72,19 +73,18 @@ function renderRateLine(
   pct: number | null,
   resetDisplay: string,
 ): string {
-  const labelColor = pct !== null ? colorForPct(pct) : TN.comment;
   const barColor = pct !== null ? colorForPct(pct) : TN.comment;
   const bar = pct !== null ? progressBar(pct) : "\u25b1".repeat(10);
   const pctText = pct !== null ? `${pct}%` : "--%";
 
   const segments: Segment[] = [
-    { text: ` ${label} `, fgColor: TN.bgBase, bgColor: labelColor },
+    { text: ` ${label} `, fgColor: TN.fgMuted, bgColor: TN.bgSurface, dim: true },
     { text: ` ${bar}  ${pctText} `, fgColor: barColor, bgColor: TN.bgOverlay },
   ];
 
   let out = renderSegments(segments);
   if (resetDisplay) {
-    out += ` ${fg(TN.comment)}${resetDisplay}${RESET}`;
+    out += ` ${fgC(TN.comment)}${resetDisplay}${RESET}`;
   }
   return out;
 }
@@ -96,13 +96,13 @@ function colorForPct(pct: number | null): readonly number[] {
   if (pct === null) return TN.comment;
   if (pct >= 80) return TN.red;
   if (pct >= 50) return TN.yellow;
-  return TN.green;
+  return TN.fgMuted;
 }
 
 function colorForCtxPct(pct: number): readonly number[] {
   if (pct >= 40) return TN.red;
   if (pct >= 25) return TN.yellow;
-  return TN.green;
+  return TN.fgMuted;
 }
 
 function progressBar(pct: number): string {
@@ -335,31 +335,32 @@ const ctxBar = progressBar(ctxPctInt);
 
 // ---------- Line 1: Powerline segments ----------
 const line1Segments: Segment[] = [
-  { text: ` \uf0e7 ${modelName} `, fgColor: TN.bgBase, bgColor: TN.blue },
-  { text: ` \uf080 ${ctxBar} ${ctxPctInt}% `, fgColor: ctxColor, bgColor: TN.bgSurface },
+  { text: ` \uf0e7 ${modelName} `, fgColor: TN.fgDim, bgColor: TN.bgSurface },
+  { text: ` \uf080 ${ctxBar} ${ctxPctInt}% `, fgColor: ctxColor, bgColor: TN.bgOverlay },
 ];
 
 if (gitStats) {
   line1Segments.push({
     text: ` \uf040 ${gitStats} `,
-    fgColor: TN.cyan,
-    bgColor: TN.bgOverlay,
+    fgColor: TN.fgMuted,
+    bgColor: TN.bgSurface,
   });
 }
 
 if (gitBranch) {
   line1Segments.push({
     text: ` \ue0a0 ${gitBranch} `,
-    fgColor: TN.bgBase,
-    bgColor: TN.purple,
+    fgColor: TN.fgDim,
+    bgColor: TN.bgOverlay,
   });
 }
 
 if (worktreeName) {
   line1Segments.push({
     text: ` \uf1bb ${worktreeName} `,
-    fgColor: TN.fg,
-    bgColor: TN.comment,
+    fgColor: TN.comment,
+    bgColor: TN.bgSurface,
+    dim: true,
   });
 }
 
