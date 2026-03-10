@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // Claude Code statusline script (Bun TypeScript)
-// Line 1: Model | Context bar % | +added/-removed | git branch | worktree
+// Powerline-style with Tokyo Night color palette
+// Line 1: Model  Context bar %  +added/-removed  git branch  worktree
 // Line 2: 5h rate limit progress bar
 // Line 3: 7d rate limit progress bar
 
@@ -23,33 +24,90 @@ interface CacheData {
   seven_day_reset: string;
 }
 
-// ---------- ANSI Colors ----------
-const GREEN = "\x1b[38;2;151;201;195m";
-const YELLOW = "\x1b[38;2;229;192;123m";
-const RED = "\x1b[38;2;224;108;117m";
-const GRAY = "\x1b[38;2;74;88;92m";
+// ---------- Tokyo Night Palette ----------
+const TN = {
+  // Backgrounds
+  bgBase: [26, 27, 38],
+  bgSurface: [36, 40, 59],
+  bgOverlay: [41, 46, 66],
+  // Foregrounds / accents
+  fg: [192, 202, 245],
+  blue: [122, 162, 247],
+  purple: [187, 154, 247],
+  cyan: [115, 218, 202],
+  green: [158, 206, 106],
+  yellow: [224, 175, 104],
+  red: [247, 118, 142],
+  comment: [86, 95, 137],
+} as const;
+
+const fg = (c: readonly number[]) => `\x1b[38;2;${c[0]};${c[1]};${c[2]}m`;
+const bg = (c: readonly number[]) => `\x1b[48;2;${c[0]};${c[1]};${c[2]}m`;
+
 const RESET = "\x1b[0m";
-const DIM = "\x1b[2m";
+const BOLD = "\x1b[1m";
+const SEP = "\ue0b0"; // Powerline separator
+
+// ---------- Powerline Segment Builder ----------
+type Segment = { text: string; fgColor: readonly number[]; bgColor: readonly number[] };
+
+function renderSegments(segments: Segment[]): string {
+  let out = "";
+  for (let i = 0; i < segments.length; i++) {
+    const s = segments[i];
+    out += `${bg(s.bgColor)}${fg(s.fgColor)}${BOLD}${s.text}${RESET}`;
+    const nextBg = i + 1 < segments.length ? segments[i + 1].bgColor : null;
+    if (nextBg) {
+      out += `${fg(s.bgColor)}${bg(nextBg)}${SEP}${RESET}`;
+    } else {
+      out += `${fg(s.bgColor)}${SEP}${RESET}`;
+    }
+  }
+  return out;
+}
+
+// ---------- Rate Limit Segment Builder ----------
+function renderRateLine(
+  label: string,
+  pct: number | null,
+  resetDisplay: string,
+): string {
+  const labelColor = pct !== null ? colorForPct(pct) : TN.comment;
+  const barColor = pct !== null ? colorForPct(pct) : TN.comment;
+  const bar = pct !== null ? progressBar(pct) : "\u25b1".repeat(10);
+  const pctText = pct !== null ? `${pct}%` : "--%";
+
+  const segments: Segment[] = [
+    { text: ` ${label} `, fgColor: TN.bgBase, bgColor: labelColor },
+    { text: ` ${bar}  ${pctText} `, fgColor: barColor, bgColor: TN.bgOverlay },
+  ];
+
+  let out = renderSegments(segments);
+  if (resetDisplay) {
+    out += ` ${fg(TN.comment)}${resetDisplay}${RESET}`;
+  }
+  return out;
+}
 
 const CACHE_FILE = "/tmp/claude-usage-cache.json";
 const CACHE_TTL = 360;
 
-function colorForPct(pct: number | null): string {
-  if (pct === null) return GRAY;
-  if (pct >= 80) return RED;
-  if (pct >= 50) return YELLOW;
-  return GREEN;
+function colorForPct(pct: number | null): readonly number[] {
+  if (pct === null) return TN.comment;
+  if (pct >= 80) return TN.red;
+  if (pct >= 50) return TN.yellow;
+  return TN.green;
 }
 
-function colorForCtxPct(pct: number): string {
-  if (pct >= 40) return RED;
-  if (pct >= 25) return YELLOW;
-  return GREEN;
+function colorForCtxPct(pct: number): readonly number[] {
+  if (pct >= 40) return TN.red;
+  if (pct >= 25) return TN.yellow;
+  return TN.green;
 }
 
 function progressBar(pct: number): string {
   const filled = Math.min(10, Math.max(0, Math.round(pct / 10)));
-  return "▰".repeat(filled) + "▱".repeat(10 - filled);
+  return "\u25b0".repeat(filled) + "\u25b1".repeat(10 - filled);
 }
 
 async function getGitBranch(cwd: string): Promise<string | null> {
@@ -234,14 +292,14 @@ function formatEpochTime(epoch: string, format: "5h" | "7d"): string {
   if (format === "5h") {
     const hour = getText("hour");
     const dp = getText("dayPeriod").toLowerCase();
-    return `Resets ${hour}${dp} (Asia/Tokyo)`;
+    return `Resets ${hour}${dp} JST`;
   }
 
   const month = getText("month");
   const day = getText("day");
   const hour = getText("hour");
   const dp = getText("dayPeriod").toLowerCase();
-  return `Resets ${month} ${day} at ${hour}${dp} (Asia/Tokyo)`;
+  return `Resets ${month} ${day} ${hour}${dp} JST`;
 }
 
 // ---------- Main ----------
@@ -272,51 +330,48 @@ const sevenDayPct = usage ? utilToPct(usage.seven_day_util) : null;
 
 // Context percentage
 const ctxPctInt = Math.round(usedPct);
-
-// ---------- Line 1 ----------
-const SEP = `${GRAY} │ ${RESET}`;
 const ctxColor = colorForCtxPct(ctxPctInt);
 const ctxBar = progressBar(ctxPctInt);
 
-let line1 = `🤖 ${modelName}${SEP}${ctxColor}📊 ${ctxBar} ${ctxPctInt}%${RESET}`;
+// ---------- Line 1: Powerline segments ----------
+const line1Segments: Segment[] = [
+  { text: ` \uf0e7 ${modelName} `, fgColor: TN.bgBase, bgColor: TN.blue },
+  { text: ` \uf080 ${ctxBar} ${ctxPctInt}% `, fgColor: ctxColor, bgColor: TN.bgSurface },
+];
 
 if (gitStats) {
-  line1 += `${SEP}✏️  ${GREEN}${gitStats}${RESET}`;
+  line1Segments.push({
+    text: ` \uf040 ${gitStats} `,
+    fgColor: TN.cyan,
+    bgColor: TN.bgOverlay,
+  });
 }
+
 if (gitBranch) {
-  line1 += `${SEP}🔀 ${gitBranch}`;
+  line1Segments.push({
+    text: ` \ue0a0 ${gitBranch} `,
+    fgColor: TN.bgBase,
+    bgColor: TN.purple,
+  });
 }
+
 if (worktreeName) {
-  line1 += `${SEP}🌲 ${worktreeName}`;
+  line1Segments.push({
+    text: ` \uf1bb ${worktreeName} `,
+    fgColor: TN.fg,
+    bgColor: TN.comment,
+  });
 }
+
+const line1 = renderSegments(line1Segments);
 
 // ---------- Line 2 (5h) ----------
-let line2: string;
-if (fiveHourPct !== null) {
-  const c5 = colorForPct(fiveHourPct);
-  const bar5 = progressBar(fiveHourPct);
-  line2 = `${c5}⏱ 5h  ${bar5}  ${fiveHourPct}%${RESET}`;
-  const resetDisplay = usage
-    ? formatEpochTime(usage.five_hour_reset, "5h")
-    : "";
-  if (resetDisplay) line2 += `  ${DIM}${resetDisplay}${RESET}`;
-} else {
-  line2 = `${GRAY}⏱ 5h  ▱▱▱▱▱▱▱▱▱▱  --%${RESET}`;
-}
+const reset5h = usage ? formatEpochTime(usage.five_hour_reset, "5h") : "";
+const line2 = renderRateLine("\uf017 5h", fiveHourPct, reset5h);
 
 // ---------- Line 3 (7d) ----------
-let line3: string;
-if (sevenDayPct !== null) {
-  const c7 = colorForPct(sevenDayPct);
-  const bar7 = progressBar(sevenDayPct);
-  line3 = `${c7}📅 7d  ${bar7}  ${sevenDayPct}%${RESET}`;
-  const resetDisplay = usage
-    ? formatEpochTime(usage.seven_day_reset, "7d")
-    : "";
-  if (resetDisplay) line3 += `  ${DIM}${resetDisplay}${RESET}`;
-} else {
-  line3 = `${GRAY}📅 7d  ▱▱▱▱▱▱▱▱▱▱  --%${RESET}`;
-}
+const reset7d = usage ? formatEpochTime(usage.seven_day_reset, "7d") : "";
+const line3 = renderRateLine("\uf073 7d", sevenDayPct, reset7d);
 
 // ---------- Output ----------
 process.stdout.write(`${line1}\n${line2}\n${line3}`);
