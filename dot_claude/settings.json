@@ -204,7 +204,11 @@
       "Bash(sudo rm -rf:*)",
       "Bash(sudo:*)",
       "Bash(systemctl:*)",
-      "Bash(wget:*)"
+      "Bash(wget:*)",
+      "Read(~/.config/confluence-cli/**)",
+      "Edit(~/.config/confluence-cli/**)",
+      "Read(~/.config/jira-cli/**)",
+      "Edit(~/.config/jira-cli/**)"
     ],
     "defaultMode": "default"
   },
