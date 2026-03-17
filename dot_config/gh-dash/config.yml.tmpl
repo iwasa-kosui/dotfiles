@@ -77,17 +77,23 @@ keybindings:
     - key: d
       command: |-
         cd "$(ghq root)"/github.com/{{`{{.RepoName}}`}} &&
-          cd $(git wt $(gh pr view {{`{{.PrNumber}}`}} --json headRefName | jq -r '.headRefName')) &&
+          branch=$(gh pr view {{`{{.PrNumber}}`}} --json headRefName | jq -r '.headRefName') &&
+          git fetch origin "$branch" &&
+          cd $(git wt "$branch" "origin/$branch") &&
           nvim -c ":DiffviewOpen origin/$(gh pr status --json baseRefName -q '.currentBranch.baseRefName')...{{`{{.HeadRefName}}`}}"
     - key: C
       command: |-
         cd "$(ghq root)"/github.com/{{`{{.RepoName}}`}} &&
-          cd $(git wt $(gh pr view {{`{{.PrNumber}}`}} --json headRefName | jq -r '.headRefName')) &&
+          branch=$(gh pr view {{`{{.PrNumber}}`}} --json headRefName | jq -r '.headRefName') &&
+          git fetch origin "$branch" &&
+          cd $(git wt "$branch" "origin/$branch") &&
           nvim -c ":Octo pr edit {{`{{.PrNumber}}`}}"
     - key: E
       command: |-
         cd "$(ghq root)"/github.com/{{`{{.RepoName}}`}} &&
-          cd $(git wt $(gh pr view {{`{{.PrNumber}}`}} --json headRefName | jq -r '.headRefName')) &&
+          branch=$(gh pr view {{`{{.PrNumber}}`}} --json headRefName | jq -r '.headRefName') &&
+          git fetch origin "$branch" &&
+          cd $(git wt "$branch" "origin/$branch") &&
           nvim
 
 repoPaths: { "*": ~/ghq/github.com/* }
