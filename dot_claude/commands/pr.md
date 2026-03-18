@@ -1,5 +1,5 @@
 ---
-allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git checkout:*), Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr view:*), Bash(cat *), Bash(find *pull_request_template*), Bash(find *.github*), Bash(ls *)
+allowed-tools: Bash(git status:*), Bash(git diff:*), Bash(git branch:*), Bash(git checkout:*), Bash(git add:*), Bash(git commit:*), Bash(git push:*), Bash(gh pr create:*), Bash(gh pr edit:*), Bash(gh pr view:*), Bash(cat *), Bash(find . *), Bash(ls *)
 description: Create a draft pull request with conventional commit
 ---
 
@@ -85,8 +85,10 @@ Whether using a template or not, follow these rules for writing the PR body:
 
 If a PR template was found, use it as the body structure. Otherwise use the default format:
 
+Write the PR body to a temporary file, then create the PR using `--body-file`:
+
 ```bash
-gh pr create --draft --title "<conventional commit style title>" --body "$(cat <<'EOF'
+cat > /tmp/pr-body.md <<'EOF'
 ## Why
 
 <Why this change is needed - motivation and context>
@@ -102,7 +104,7 @@ gh pr create --draft --title "<conventional commit style title>" --body "$(cat <
 ---
 Generated with Claude Code
 EOF
-)"
+gh pr create --draft --title "<conventional commit style title>" --body-file /tmp/pr-body.md
 ```
 
 **Skip to End after creating the PR.**
@@ -117,11 +119,13 @@ If a PR already exists for this branch:
 4. Rewrite the PR title and description based on the current state of all changes, following the same Why/What rules as Step 6b
 5. Update the PR:
 
+Write the updated body to a temporary file, then update the PR:
+
 ```bash
-gh pr edit --title "<updated title>" --body "$(cat <<'EOF'
+cat > /tmp/pr-body.md <<'EOF'
 <Updated PR body>
 EOF
-)"
+gh pr edit --title "<updated title>" --body-file /tmp/pr-body.md
 ```
 
 Return the PR URL when done.

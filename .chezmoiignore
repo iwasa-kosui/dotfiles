@@ -1,6 +1,8 @@
 # Repository management files (should not be deployed to $HOME)
 Brewfile
+# ルートのCLAUDE.mdのみ無視（.claude/CLAUDE.mdはchezmoiで管理する）
 CLAUDE.md
+!.claude/CLAUDE.md
 README.md
 docs/
 LICENSE
