@@ -1,3 +1,15 @@
+#!/bin/bash
+# modify script: 管理対象フィールド(env, permissions, hooks, statusLine, language)を
+# ソースから上書きし、それ以外(enabledPlugins等)は既存の値を保持する。
+
+set -euo pipefail
+
+current=$(cat)
+if [ -z "$current" ] || [ "$current" = "{}" ]; then
+  current='{}'
+fi
+
+managed='
 {
   "env": {
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1"
@@ -35,7 +47,7 @@
       "Bash(eslint:*)",
       "Bash(export:*)",
       "Bash(fg:*)",
-      "Bash(find:*)",
+      "Bash(find *)",
       "Bash(flake8:*)",
       "Bash(gh:*)",
       "Bash(git:*)",
@@ -121,11 +133,16 @@
       "Bash(zip:*)",
       "mcp__esa__get_*",
       "mcp__esa__search_*",
-      "mcp__slack__download_file",
-      "mcp__slack__get_*",
-      "mcp__slack__list_*",
-      "mcp__slack__refresh_cache",
-      "mcp__slack__search_*",
+      "mcp__slack_all__download_file",
+      "mcp__slack_all__get_*",
+      "mcp__slack_all__list_*",
+      "mcp__slack_all__refresh_cache",
+      "mcp__slack_all__search_*",
+      "mcp__slack_ext__download_file",
+      "mcp__slack_ext__get_*",
+      "mcp__slack_ext__list_*",
+      "mcp__slack_ext__refresh_cache",
+      "mcp__slack_ext__search_*",
       "Skill(create-pr)",
       "Skill(pr)",
       "WebFetch(domain:developer.atlassian.com)",
@@ -190,6 +207,7 @@
       "Bash(git push --force-with-lease:*)",
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
+      "Bash(git push origin +:*)",
       "Bash(git reset --hard:*)",
       "Bash(halt:*)",
       "Bash(mkfs:*)",
@@ -201,7 +219,6 @@
       "Bash(service:*)",
       "Bash(shutdown:*)",
       "Bash(su:*)",
-      "Bash(sudo rm -rf:*)",
       "Bash(sudo:*)",
       "Bash(systemctl:*)",
       "Bash(wget:*)",
@@ -231,7 +248,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "terminal-notifier -title 'Claude Code' -message 'パーミッションの確認が必要です' -sound Ping -sender com.apple.Terminal"
+            "command": "terminal-notifier -title '\''Claude Code'\'' -message '\''パーミッションの確認が必要です'\'' -sound Ping -sender com.apple.Terminal"
           }
         ]
       },
@@ -240,7 +257,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "terminal-notifier -title 'Claude Code' -message '入力を待っています' -sound default -sender com.apple.Terminal"
+            "command": "terminal-notifier -title '\''Claude Code'\'' -message '\''入力を待っています'\'' -sound default -sender com.apple.Terminal"
           }
         ]
       }
@@ -250,7 +267,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "terminal-notifier -title 'Claude Code' -message 'タスクが完了しました' -sound Glass -sender com.apple.Terminal"
+            "command": "terminal-notifier -title '\''Claude Code'\'' -message '\''タスクが完了しました'\'' -sound Glass -sender com.apple.Terminal"
           }
         ]
       }
@@ -302,3 +319,6 @@
   },
   "language": "日本語"
 }
+'
+
+echo "$current" | jq --argjson managed "$managed" '. * $managed'
