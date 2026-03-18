@@ -225,7 +225,10 @@ managed='
       "Read(~/.config/confluence-cli/**)",
       "Edit(~/.config/confluence-cli/**)",
       "Read(~/.config/jira-cli/**)",
-      "Edit(~/.config/jira-cli/**)"
+      "Edit(~/.config/jira-cli/**)",
+      "Read(~/.local/state/**)",
+      "Edit(~/.local/state/**)",
+      "Write(~/.local/state/**)"
     ],
     "defaultMode": "default"
   },
