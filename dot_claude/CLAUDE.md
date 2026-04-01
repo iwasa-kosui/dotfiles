@@ -1,68 +1,23 @@
-# コミュニケーションスタイル
+# ルールファイルへのリファレンス
 
-ユーザーとの対話では、**批判的かつ建設的な**姿勢を徹底し、ですます調を使用する。
+各種ルールは `~/.claude/rules/` 配下に配置。詳細は各ファイルを参照。
 
-## 基本原則
+## 常時適用 (alwaysApply: true)
 
-- お世辞・前置き・社交辞令は不要。「良いですね」「素晴らしいアイデアです」のような追従は省略する
-- ユーザーの提案・設計・コードに対して、問題点や改善余地を率直に指摘する
-- 指摘には必ず**具体的な根拠**を添える。根拠がない指摘はしない
-- ユーザーの反論が正当であれば素直に認め、自分の指摘を撤回する
-- 英語を括弧書きで併記する文体（例: 監査証跡（Audit Trail））は避ける。生成AIっぽくなるため
-- 表や箇条書きを乱用しない。地の文で十分伝わる内容を無理に構造化すると、かえって読みづらくなる
+- `communication-style.md` — コミュニケーションスタイル・批判的姿勢
+- `shell-command-style.md` — シェルコマンドの書き方（権限プロンプト回避）
+- `subagent-tool-usage.md` — サブエージェントでのBash使用制限
 
-## 裏取りの徹底
+## オンデマンド適用 (alwaysApply: false)
 
-ユーザーの主張や自分の提案について不確実な点がある場合、**サブエージェント（Agent）を使って並行で情報収集**し、事実に基づいた議論をする。
-
-- 公式ドキュメント・最新のベストプラクティスとの照合
-- 代替案の公平な比較（恣意的に不利に描かない）
-- 暗黙の前提が共有されているかの確認
-
-## 批判の観点
-
-- **論理的整合性**: 主張と根拠の間に飛躍や矛盾がないか
-- **技術的正確性**: コード例、設定例、コマンド例に誤りがないか
-- **最新性**: 主張が現在のベストプラクティスと乖離していないか
-- **実践との乖離**: 理論上は正しくても、現実の運用で問題が起きる点はないか
-
-# Slack MCP
-
-Slack情報取得時は `slack_` から始まる全MCPサーバを使うこと（異なるワークスペースに接続されている）。
-
-# Confluence/Jira CLI
-
-`Error: Network error: read ECONNRESET` が返された場合、成功するまで1秒間隔でリトライし続ける。
-
-# Worktree Workflow
-
-- worktreeは `.wt/<ブランチ名>` に作成される（hookが自動処理）
-- 新タスク開始時はworktreeを作成してから作業する
-- PR マージ後はworktreeを削除する
-
-# ドキュメント駆動
-
-新機能・アーキテクチャ変更では実装前にドキュメント（PRD / ADR / 仕様書）を作成する。コード変更とドキュメント変更は別コミットにする。
-
-# GitHub レビュー
-
-レビューコメントを送信する時は必ず以下を冒頭に添える。
-
-```
-🤖 Claude Code より:
-```
-
-# PR作成
-
-Draft で作成し、自己レビュー（review-codes / review-docs スキル）後に Ready for review にする。
-
-# シェルコマンドの書き方
-
-セキュリティチェックによる不要な権限プロンプトを避けるため、以下を守ること:
-
-- `#` を含む複数行テキスト（マークダウン等）をCLI引数に渡す場合は、一時ファイルに書き出してファイルパスで参照する
-  - ⭕ `cat > /tmp/body.md <<'EOF' ... EOF; gh pr create --body-file /tmp/body.md`
-  - ❌ `gh pr create --body "$(cat <<'EOF' ... ## Heading ... EOF)"`
-- `$(...)`コマンド置換をCLI引数に埋め込まない。変数に格納するか一時ファイルを経由する
-  - ⭕ `body=$(cmd); gh pr create --body "$body"`
-  - ❌ `gh pr create --body "$(cmd)"`
+- `commit-message.md` — コミットメッセージとコミット分割
+- `slack-mcp.md` — Slack MCPサーバの使い方
+- `confluence-jira-cli.md` — Confluence/Jira CLIのエラーハンドリング
+- `worktree-workflow.md` — git worktreeの運用ルール
+- `doc-driven.md` — ドキュメント駆動開発
+- `github-review.md` — GitHub PRレビューコメント書式
+- `pr-creation.md` — PR作成ワークフロー
+- `jira-markdown.md` — JIRA課題の記法
+- `local.md` — リポジトリ一覧
+- `pdf-post-processing.md` — PDF→Markdown変換後の後処理
+- `typescript-discriminated-union.md` — TypeScript判別共用体
