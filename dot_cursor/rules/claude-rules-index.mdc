@@ -1,0 +1,26 @@
+---
+description: ホームディレクトリのCursorルール一覧（Claude CodeのCLAUDE.md相当）
+alwaysApply: true
+---
+
+# ルールファイルへのリファレンス
+
+各種ルールは `~/.cursor/rules/` 配下に配置（chezmoi の `dot_cursor/rules/` からデプロイ）。詳細は各 `.mdc` を参照。
+
+## 常時適用 (`alwaysApply: true`)
+
+- `communication-style.mdc` — コミュニケーションスタイル・批判的姿勢
+- `shell-command-style.mdc` — シェルコマンドの書き方（権限プロンプト回避）
+
+## オンデマンド適用 (`alwaysApply: false`)
+
+- `commit-message.mdc` — コミットメッセージとコミット分割
+- `slack-mcp.mdc` — Slack MCPサーバの使い方
+- `confluence-jira-cli.mdc` — Confluence/Jira CLIのエラーハンドリング
+- `worktree-workflow.mdc` — git worktreeの運用ルール
+- `doc-driven.mdc` — ドキュメント駆動開発
+- `github-review.mdc` — GitHub PRレビューコメント書式
+- `pr-creation.mdc` — PR作成ワークフロー
+- `typescript-discriminated-union.mdc` — TypeScript判別共用体
+
+Claude Code 専用（`~/.claude/rules/` にのみ存在するもの）は引き続き Claude Code 側を参照すること。

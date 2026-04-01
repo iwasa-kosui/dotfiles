@@ -38,6 +38,7 @@ chezmoi diff
 | Zsh | `dot_zshrc`, `dot_config/zsh/` |
 | Git | `dot_gitconfig`, `dot_config/git/` |
 | Claude Code | `dot_claude/` |
+| Cursor（Agent ルール） | `dot_cursor/rules/` → `~/.cursor/rules/` |
 | Tmux | `dot_tmux.conf` |
 
 ## Neovim Plugin Architecture
