@@ -15,13 +15,10 @@ interface StdinInput {
   cwd?: string;
   version?: string;
   workspace?: { current_dir?: string; project_dir?: string };
-}
-
-interface CacheData {
-  five_hour_util: string;
-  five_hour_reset: string;
-  seven_day_util: string;
-  seven_day_reset: string;
+  rate_limits?: {
+    five_hour?: { used_percentage?: number };
+    seven_day?: { used_percentage?: number };
+  };
 }
 
 // ---------- Tokyo Night Palette (subdued) ----------
@@ -68,29 +65,16 @@ function renderSegments(segments: Segment[]): string {
 }
 
 // ---------- Rate Limit Segment Builder ----------
-function renderRateLine(
-  label: string,
-  pct: number | null,
-  resetDisplay: string,
-): string {
+function renderRateLine(label: string, pct: number | null): string {
   const barColor = pct !== null ? colorForPct(pct) : TN.comment;
   const bar = pct !== null ? progressBar(pct) : "\u25b1".repeat(10);
   const pctText = pct !== null ? `${pct}%` : "--%";
 
-  const segments: Segment[] = [
+  return renderSegments([
     { text: ` ${label} `, fgColor: TN.fgMuted, bgColor: TN.bgSurface, dim: true },
     { text: ` ${bar}  ${pctText} `, fgColor: barColor, bgColor: TN.bgOverlay },
-  ];
-
-  let out = renderSegments(segments);
-  if (resetDisplay) {
-    out += ` ${fgC(TN.comment)}${resetDisplay}${RESET}`;
-  }
-  return out;
+  ]);
 }
-
-const CACHE_FILE = "/tmp/claude-usage-cache.json";
-const CACHE_TTL = 360;
 
 function colorForPct(pct: number | null): readonly number[] {
   if (pct === null) return TN.comment;
@@ -145,163 +129,6 @@ async function getWorktreeName(cwd: string): Promise<string | null> {
   return toplevel.split("/").pop() ?? null;
 }
 
-async function getOAuthToken(): Promise<string | null> {
-  const raw = await runSafe([
-    "security",
-    "find-generic-password",
-    "-s",
-    "Claude Code-credentials",
-    "-w",
-  ]);
-  if (!raw) return null;
-
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed?.claudeAiOauth?.accessToken ?? null;
-  } catch {
-    return raw;
-  }
-}
-
-async function fetchUsage(
-  ccVersion: string,
-): Promise<CacheData | null> {
-  const token = await getOAuthToken();
-  if (!token) return null;
-
-  try {
-    const resp = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-        "User-Agent": `claude-code/${ccVersion}`,
-        "anthropic-beta": "oauth-2025-04-20",
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 1,
-        messages: [{ role: "user", content: "h" }],
-      }),
-      signal: AbortSignal.timeout(8000),
-    });
-
-    const h5Util = resp.headers.get(
-      "anthropic-ratelimit-unified-5h-utilization",
-    );
-    const h5Reset = resp.headers.get(
-      "anthropic-ratelimit-unified-5h-reset",
-    );
-    const h7Util = resp.headers.get(
-      "anthropic-ratelimit-unified-7d-utilization",
-    );
-    const h7Reset = resp.headers.get(
-      "anthropic-ratelimit-unified-7d-reset",
-    );
-
-    if (!h5Util) return null;
-
-    const data: CacheData = {
-      five_hour_util: h5Util,
-      five_hour_reset: h5Reset ?? "",
-      seven_day_util: h7Util ?? "",
-      seven_day_reset: h7Reset ?? "",
-    };
-
-    await Bun.write(CACHE_FILE, JSON.stringify(data));
-    return data;
-  } catch {
-    return null;
-  }
-}
-
-async function loadCachedUsage(): Promise<CacheData | null> {
-  const file = Bun.file(CACHE_FILE);
-  if (!(await file.exists())) return null;
-
-  try {
-    const stat = await file.stat();
-    if (!stat) return null;
-
-    const age = (Date.now() - stat.mtimeMs) / 1000;
-    return { data: JSON.parse(await file.text()), fresh: age < CACHE_TTL } as never;
-  } catch {
-    return null;
-  }
-}
-
-async function getUsage(
-  ccVersion: string,
-): Promise<CacheData | null> {
-  const file = Bun.file(CACHE_FILE);
-  let cached: CacheData | null = null;
-  let isFresh = false;
-
-  if (await file.exists()) {
-    try {
-      const stat = await file.stat();
-      if (stat) {
-        const age = (Date.now() - stat.mtimeMs) / 1000;
-        isFresh = age < CACHE_TTL;
-        cached = JSON.parse(await file.text()) as CacheData;
-      }
-    } catch {
-      // ignore
-    }
-  }
-
-  if (isFresh && cached) return cached;
-
-  const fresh = await fetchUsage(ccVersion);
-  return fresh ?? cached;
-}
-
-function utilToPct(val: string): number | null {
-  if (!val || val === "0") return null;
-  const n = parseFloat(val);
-  if (isNaN(n)) return null;
-  return Math.round(n * 100);
-}
-
-function formatEpochTime(epoch: string, format: "5h" | "7d"): string {
-  if (!epoch || epoch === "0") return "";
-  const epochNum = parseInt(epoch, 10);
-  if (isNaN(epochNum)) return "";
-
-  const date = new Date(epochNum * 1000);
-  const formatter =
-    format === "5h"
-      ? new Intl.DateTimeFormat("en-US", {
-          hour: "numeric",
-          hour12: true,
-          timeZone: "Asia/Tokyo",
-        })
-      : new Intl.DateTimeFormat("en-US", {
-          month: "short",
-          day: "numeric",
-          hour: "numeric",
-          hour12: true,
-          timeZone: "Asia/Tokyo",
-        });
-
-  const parts = formatter.formatToParts(date);
-  const getText = (type: string) =>
-    parts.find((p) => p.type === type)?.value ?? "";
-
-  if (format === "5h") {
-    const hour = getText("hour");
-    const dp = getText("dayPeriod").toLowerCase();
-    return `Resets ${hour}${dp} JST`;
-  }
-
-  const month = getText("month");
-  const day = getText("day");
-  const hour = getText("hour");
-  const dp = getText("dayPeriod").toLowerCase();
-  return `Resets ${month} ${day} ${hour}${dp} JST`;
-}
-
 // ---------- Main ----------
 const input = await readInput<StdinInput>();
 
@@ -310,7 +137,6 @@ const usedPct = input.context_window?.used_percentage ?? 0;
 const cwd = input.workspace?.current_dir ?? input.cwd ?? "";
 const linesAdded = input.cost?.total_lines_added ?? 0;
 const linesRemoved = input.cost?.total_lines_removed ?? 0;
-const ccVersion = input.version ?? "0.0.0";
 
 // Git branch & worktree
 const [gitBranch, worktreeName] = cwd
@@ -323,10 +149,13 @@ const gitStats =
     ? `+${linesAdded}/-${linesRemoved}`
     : null;
 
-// Rate limit usage
-const usage = await getUsage(ccVersion);
-const fiveHourPct = usage ? utilToPct(usage.five_hour_util) : null;
-const sevenDayPct = usage ? utilToPct(usage.seven_day_util) : null;
+// Rate limit usage (from stdin)
+const fiveHourPct = input.rate_limits?.five_hour?.used_percentage != null
+  ? Math.round(input.rate_limits.five_hour.used_percentage)
+  : null;
+const sevenDayPct = input.rate_limits?.seven_day?.used_percentage != null
+  ? Math.round(input.rate_limits.seven_day.used_percentage)
+  : null;
 
 // Context percentage
 const ctxPctInt = Math.round(usedPct);
@@ -367,12 +196,10 @@ if (worktreeName) {
 const line1 = renderSegments(line1Segments);
 
 // ---------- Line 2 (5h) ----------
-const reset5h = usage ? formatEpochTime(usage.five_hour_reset, "5h") : "";
-const line2 = renderRateLine("\uf017 5h", fiveHourPct, reset5h);
+const line2 = renderRateLine("\uf017 5h", fiveHourPct);
 
 // ---------- Line 3 (7d) ----------
-const reset7d = usage ? formatEpochTime(usage.seven_day_reset, "7d") : "";
-const line3 = renderRateLine("\uf073 7d", sevenDayPct, reset7d);
+const line3 = renderRateLine("\uf073 7d", sevenDayPct);
 
 // ---------- Output ----------
 process.stdout.write(`${line1}\n${line2}\n${line3}`);
