@@ -1,6 +1,5 @@
 ---
 description: コミット作成時に必ず適用する
-globs:
 alwaysApply: false
 ---
 
