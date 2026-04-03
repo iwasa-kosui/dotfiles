@@ -1,7 +1,14 @@
 #!/usr/bin/env bun
 // PreToolUse hook: メインリポジトリ（非worktree）のmainブランチでファイル変更をブロック
 
-import { runSafe } from "./lib.ts";
+import { readInput, runSafe } from "./lib.ts";
+
+// stdinからツール入力を取得し、操作対象が.wt/配下なら許可
+const input = await readInput<{ tool_input?: { file_path?: string } }>();
+const filePath = input.tool_input?.file_path ?? "";
+if (filePath.includes("/.wt/")) {
+  process.exit(0);
+}
 
 // worktree内なら許可
 const gitDir = await runSafe(["git", "rev-parse", "--git-dir"]);
