@@ -421,6 +421,33 @@ managed='
             "command": "bun ~/.claude/hooks/plan-export.ts"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ~/.claude/hooks/main-branch-guard.ts"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ~/.claude/hooks/main-repo-guard.ts"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ~/.claude/hooks/main-repo-guard.ts"
+          }
+        ]
       }
     ],
     "WorktreeCreate": [
