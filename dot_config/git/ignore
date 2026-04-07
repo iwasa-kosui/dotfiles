@@ -3,3 +3,4 @@
 typings/
 
 **/.claude/settings.local.json
+.wt/
