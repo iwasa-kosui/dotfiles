@@ -1,5 +1,5 @@
 #!/bin/bash
-# modify script: 管理対象フィールド(env, permissions, hooks, statusLine, language)を
+# modify script: 管理対象フィールド(effortLevel, env, permissions, hooks, statusLine, language)を
 # ソースから上書きし、それ以外(enabledPlugins等)は既存の値を保持する。
 
 set -euo pipefail
@@ -11,14 +11,16 @@ fi
 
 managed='
 {
-{{- if eq .profile "work" }}
+  "effortLevel": "high",
   "env": {
+    "CLAUDE_CODE_DISABLE_1M_CONTEXT": "1",
+    "CLAUDE_CODE_DISABLE_ADAPTIVE_THINKING": "1",
+    "CLAUDE_CODE_DISABLE_AUTO_MEMORY": "1",
+    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"{{- if eq .profile "work" }},
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "DISABLE_TELEMETRY": "1"
-  },
-{{- else }}
-  "env": {},
 {{- end }}
+  },
   "permissions": {
     "allow": [
       "Create",
