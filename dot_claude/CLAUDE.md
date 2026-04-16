@@ -7,6 +7,7 @@
 - `communication-style.md` — コミュニケーションスタイル・批判的姿勢
 - `shell-command-style.md` — シェルコマンドの書き方（権限プロンプト回避）
 - `subagent-tool-usage.md` — サブエージェントでのBash使用制限
+- `secret-file-access.md` — 秘密情報ファイルへのアクセス禁止
 
 ## オンデマンド適用 (alwaysApply: false)
 
