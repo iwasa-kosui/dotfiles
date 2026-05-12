@@ -4,7 +4,7 @@
 
 ## 常時適用 (alwaysApply: true)
 
-- `communication-style.md` — コミュニケーションスタイル・批判的姿勢
+- `communication-style.md` — 言葉遣い・文章スタイル（対話および成果物テキスト）
 - `shell-command-style.md` — シェルコマンドの書き方（権限プロンプト回避）
 - `subagent-tool-usage.md` — サブエージェントでのBash使用制限
 - `secret-file-access.md` — 秘密情報ファイルへのアクセス禁止
