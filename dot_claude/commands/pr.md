@@ -75,11 +75,18 @@ If a template is found, read its contents and **strictly follow the template str
 
 Whether using a template or not, follow these rules for writing the PR body:
 
-- **Focus on Why and What**: Explain the motivation (why this change is needed) and the approach/decisions (what was decided and why), NOT a line-by-line diff summary
-- **Be declarative and concise**: State the intent and design decisions clearly
-- **Do NOT rehash the diff**: Reviewers can read the diff themselves. Describe the high-level purpose, key decisions, and anything non-obvious
-- Good example: "neverthrow導入時にResult型のネストが発生していたため、flatMap統一方針に切り替え"
-- Bad example: "auth.tsのlogin関数のreturn文をResultAsyncに変更し、error.tsのMapErrorを削除し..."
+- **「背景／内容／論点」の3点に絞る**: 本文はこの3要素だけで構成する
+  - **背景** = 後続の内容・論点を理解するために最低限必要なコンテキスト（既存仕様の制約、過去の経緯、関連する障害・依頼、外部要件など）。それ以上は書かない
+  - **内容** = この PR で採った**アプローチ・方針**を一段抽象的なレベルで述べる。**diff の言い換えではない**。「どのファイルを編集した」「どの関数を追加/削除/リネームした」「どのライブラリの API を呼んだ」は diff を見れば分かるので書かない。書くのは「どんな設計判断のもとで何を実現したか」のレベル
+  - **論点** = レビュアに判断を仰ぎたい点、採用しなかった代替案とその理由、トレードオフ、残っている懸念、後続タスクに送る判断、命名や責務境界など意見が分かれる箇所。論点が無いなら本セクションは省略してよい
+- **コードを読めば自明なことは書かない**（特に「内容」セクションで陥りやすい）: 「Xを追加した」「YをZにリネームした」「Aファイルを編集した」「○○ライブラリを使った」のように diff から読み取れる事実は書かない。採用した API 名・関数名・追加したファイル名なども diff にあるので本文での再掲は不要
+- **テンプレートがある場合もこの原則を守る**: テンプレートのセクションは「背景／内容／論点」原則のもとで埋める。セクションを埋めるためだけに変更内容を羅列してはいけない。書くことが無いセクションは「特になし」と書くか、テンプレートの指示に従う
+- Good example（背景＋内容＋論点）:
+  - 背景: 「Result 型のネストが深くなり既存コードで型推論が崩れていた」
+  - 内容: 「Result の連結を `andThen` ベースから flatMap 統一方針に切り替え、ネストを潰した」
+  - 論点: 「neverthrow 公式の慣用から外れるため将来のバージョンアップ時の移行コストが懸念。代替として `andThen` のままヘルパーを書く案もあったが、ヘルパーを覚える学習コストの方が高いと判断した」
+- Bad example（内容が diff の言い換えになっている）: 「auth.ts の login 関数の return 文を ResultAsync に変更し、error.ts の MapError を削除し...」
+- Bad example（背景だけで内容も論点も無い）: 「Result 型のネストを解消するため flatMap に統一した」← これは背景しか書いていない。何をしたか（アプローチ）と何を議論したいか（論点）が抜けている
 
 #### 6c. Create the PR
 
@@ -89,13 +96,17 @@ Write the PR body to a temporary file, then create the PR using `--body-file`:
 
 ```bash
 cat > /tmp/pr-body.md <<'EOF'
-## Why
+## 背景
 
-<Why this change is needed - motivation and context>
+<後続の内容・論点を理解するために最低限必要なコンテキスト>
 
-## What
+## 内容
 
-<What approach was taken and key decisions>
+<採ったアプローチ・方針を一段抽象的なレベルで述べる。どのファイル・関数・APIを編集したかではなく、どんな設計判断のもとで何を実現したか>
+
+## 論点
+
+<レビュアに判断を仰ぎたい点、採用しなかった代替案とその理由、トレードオフ、残っている懸念、後続タスク送りにした判断など。論点が無いなら本セクションごと削除する>
 
 ## Test Plan
 
@@ -116,7 +127,7 @@ If a PR already exists for this branch:
 1. Stage, commit, and push any uncommitted changes (same as Steps 4-5)
 2. Re-analyze all commits on the branch (`git log` and `git diff` against base branch) to understand the full scope of changes
 3. Check for a PR template (same as Step 6a) and follow it if found
-4. Rewrite the PR title and description based on the current state of all changes, following the same Why/What rules as Step 6b
+4. Rewrite the PR title and description based on the current state of all changes, following the same 背景／内容／論点 rules as Step 6b
 5. Update the PR:
 
 Write the updated body to a temporary file, then update the PR:
@@ -136,4 +147,4 @@ Return the PR URL when done.
 - Always use conventional commit format with scope
 - Always create the PR as a draft
 - **If a PR template exists in the repository, you MUST follow its structure exactly**
-- **PR descriptions must focus on Why/What, not diff summaries. コミットログを見れば分かる変更差分の羅列は不要**
+- **PR description は「背景」「内容」「論点」の3点に絞る。内容セクションはアプローチ・方針レベルで書き、コードや diff を読めば自明なこと（追加・削除・リネームしたシンボル、採用した API/ライブラリ名、変更ファイル一覧など）は書かない。論点が無いなら論点セクションは省略する**
