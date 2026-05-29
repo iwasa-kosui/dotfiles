@@ -203,6 +203,7 @@ mkdir -p /tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-1
 5. **レビューコメントへの返信**（該当する場合のみ）:
    - 解決した `actionable` なinline review commentにスレッド返信
    - 書式: プロジェクトの `CLAUDE.md` または `~/.claude/rules/github-review.md` のprefixルールに従う（kkhsなら `🤖 Claude Code says:`、それ以外は `🤖 Claude Code より:` 等、読み取って判断）
+   - コミットハッシュを本文に含める場合は **半角括弧 `()`** で囲む。全角括弧 `（）` は使わない（例: `修正しました (e4dcbb406)`）
    - API:
      ```bash
      gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies \
