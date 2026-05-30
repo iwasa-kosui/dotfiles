@@ -2,3 +2,7 @@ vim.opt.spelllang = { "en", "cjk" }
 vim.o.winborder = "rounded"
 vim.o.pumborder = "rounded"
 vim.o.updatetime = 300
+vim.opt.textwidth = 80
+vim.opt.wrap = true
+vim.opt.fixeol = true
+vim.opt.eol = true
