@@ -6,13 +6,21 @@
 --   ollama pull qwen2.5-coder:7b                              # duet（次編集予測）
 -- instruct モデルは FIM 補完に不向きなため、コード補完には base タグを使う。
 
--- 散文（日本語技術文書）として扱う filetype。これらのバッファでは FIM base モデルではなく
--- chat completions + instruct モデル(swallow)へ切り替える。
+-- minuet の provider 値は backends/ のモジュール名（= ollama を叩く API プロトコル）と
+-- 一致させる必要があり、用途名には変えられない。コード補完と散文補完では必要なプロトコルが
+-- 本質的に異なるため、provider を切り替えると対応するモデルも連動する。
+--   CODE_PROVIDER  … FIM(/v1/completions)。穴埋め。コード補完向き。   → qwen2.5-coder:3b-base
+--   PROSE_PROVIDER … chat(/v1/chat/completions)。続き生成。散文向き。 → swallow-8b(日本語)
+-- 実モデルは各 provider_options.<provider>.model で割り当てる。
+local CODE_PROVIDER = "openai_fim_compatible"
+local PROSE_PROVIDER = "openai_compatible"
+
+-- 散文（日本語技術文書）として扱う filetype。これらでは PROSE_PROVIDER を使う。
 local prose_filetypes = { markdown = true, mdx = true, ["markdown.mdx"] = true }
 
 -- 現在のバッファの filetype に応じて使うべき provider 名を返す。
 local function provider_for_current_buffer()
-  return prose_filetypes[vim.bo.filetype] and "openai_compatible" or "openai_fim_compatible"
+  return prose_filetypes[vim.bo.filetype] and PROSE_PROVIDER or CODE_PROVIDER
 end
 
 return {
@@ -32,10 +40,16 @@ return {
       { "<leader>md", "<cmd>Minuet duet dismiss<cr>", desc = "Minuet duet: dismiss" },
     },
     opts = {
-      provider = "openai_fim_compatible",
+      -- デフォルトはコード補完(CODE_PROVIDER)。markdown 等は config 末尾の autocmd で
+      -- PROSE_PROVIDER へ切り替わる。
+      provider = CODE_PROVIDER,
       -- 補完メニューに並べる候補数（stream=false なので候補数ぶん curl が走る）。
       n_completions = 4,
+      -- provider_options のキーは minuet が config.provider_options[config.provider] で
+      -- 引くため backends のモジュール名そのものにする必要がある（CODE_PROVIDER /
+      -- PROSE_PROVIDER の実体と対応）。
       provider_options = {
+        -- CODE_PROVIDER: ollama の FIM。コードの穴埋め補完。
         openai_fim_compatible = {
           -- ollama は API キー不要。minuet が非空の環境変数名を要求するため TERM を使う。
           api_key = "TERM",
@@ -46,8 +60,8 @@ return {
           -- 空テキスト("returns no text on streaming")になるため非ストリームにする。
           stream = false,
         },
-        -- markdown の散文補完用。chat completions で instruct モデルに続きを書かせる。
-        -- 日本語技術文書向けに英語混入の少ない swallow を使う。
+        -- PROSE_PROVIDER: ollama の chat。markdown の散文補完。instruct モデルに続きを
+        -- 書かせる。日本語技術文書向けに英語混入の少ない swallow を使う。
         openai_compatible = {
           api_key = "TERM",
           name = "Ollama-prose",
@@ -59,6 +73,9 @@ return {
       -- duet（次編集予測）。自動トリガーはなく :Minuet duet predict/apply/dismiss で操作する。
       -- chat ベースなので instruct モデルを使う。公式はローカル小型モデルでの品質を
       -- 期待薄としており、実験的な位置づけ。
+      -- なお、ここの openai_compatible は config.duet.provider_options 配下で、上の本体補完の
+      -- PROSE_PROVIDER(openai_compatible=swallow)とは別 namespace。duet backend は
+      -- config.duet.provider_options.openai_compatible を読むため衝突しない。
       duet = {
         provider = "openai_compatible",
         provider_options = {
