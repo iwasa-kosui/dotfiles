@@ -13,3 +13,5 @@ font-thicken = true
 adjust-cell-width = +10%
 adjust-cell-height = +20%
 adjust-font-baseline = 1
+macos-option-as-alt = true
+
