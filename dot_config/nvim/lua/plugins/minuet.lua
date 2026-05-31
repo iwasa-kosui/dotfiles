@@ -20,13 +20,25 @@ return {
     },
     opts = {
       provider = CODE_PROVIDER,
+      -- ローカル ollama 向けのタイムアウト対策。既定は request_timeout=3秒・
+      -- n_completions=3・context_window=16000 で、ローカルモデルには重く
+      -- stream=false だと完了前にタイムアウトして補完が空になる。
+      n_completions = 1, -- FIM はこの数だけ ollama へリクエストが飛ぶ。1本に絞る
+      context_window = 2048, -- prefill を軽くしレイテンシを抑える（既定16000は重い）
+      request_timeout = 5, -- 全プロバイダ共通。既定3秒では生成完了前に切れる
+      throttle = 1500,
+      debounce = 600,
       provider_options = {
         openai_fim_compatible = {
           api_key = "TERM",
           name = "Ollama",
           end_point = "http://localhost:11434/v1/completions",
-          model = "qwen2.5-coder:7b",
+          model = "qwen2.5-coder:3b-base", -- 7b は生成が遅くタイムアウトの主因。FIM は base 版を使う
           stream = false, -- true だと ollama の FIM 出力を解析できず空になる
+          optional = {
+            max_tokens = 128, -- 出力長を制限し生成時間を抑える
+            top_p = 0.9,
+          },
         },
         openai_compatible = {
           api_key = "TERM",
@@ -74,7 +86,7 @@ return {
       opts.sources.providers.minuet = {
         name = "minuet",
         module = "minuet.blink",
-        timeout_ms = 10000,
+        timeout_ms = 5000, -- minuet の request_timeout(5秒)と揃える。大きくても内部で先に切れる
         async = true,
       }
 
