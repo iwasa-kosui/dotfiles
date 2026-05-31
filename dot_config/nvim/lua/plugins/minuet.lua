@@ -24,8 +24,9 @@ return {
       -- minuet 独自の virtualtext でカーソル位置に依らず自動表示する。
       virtualtext = {
         auto_trigger_ft = { "*" }, -- 全ファイルタイプで自動表示
-        -- LSP 等の補完メニューが開いている間はゴーストを隠し、二重表示を避ける
-        show_on_completion_menu = false,
+        -- blink(LSP)メニュー表示中もゴーストを隠さず重ねて出す。
+        -- メニュー=LSP補完、ゴースト=LLM補完を同時に見られる
+        show_on_completion_menu = true,
         keymap = {
           -- <Tab> は使わない。accept はゴースト未表示時にフォールバックせず
           -- 黙って return するため（virtualtext.lua: accept）、<Tab> に割り当てると
