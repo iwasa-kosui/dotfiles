@@ -8,29 +8,24 @@ return {
     "milanglacier/minuet-ai.nvim",
     event = "InsertEnter",
     dependencies = { "nvim-lua/plenary.nvim" },
+    -- lazy.nvim はプラグイン名を "minuetai" と正規化して require を試みるため、
+    -- 実モジュール名 minuet と一致せず setup() が呼ばれない。main を明示して
+    -- opts を必ず require("minuet").setup() へ渡す。
+    main = "minuet",
     opts = {
-      -- ollama の OpenAI 互換 FIM エンドポイントを使う
       provider = "openai_fim_compatible",
-      -- ローカルモデルは候補1つに絞ってレイテンシを抑える
-      n_completions = 1,
-      -- 送る文脈を絞って生成を速くする
-      context_window = 512,
-      request_timeout = 3,
-      -- 自動トリガーの負荷軽減: 入力が止まってから debounce、最短間隔は throttle
-      throttle = 1000,
-      debounce = 400,
+      -- 補完メニューに並べる候補数（stream=false なので候補数ぶん curl が走る）。
+      n_completions = 4,
       provider_options = {
         openai_fim_compatible = {
-          -- ollama は API キー不要だが minuet がヘッダ構築時に非空の環境変数名を要求する
+          -- ollama は API キー不要。minuet が非空の環境変数名を要求するため TERM を使う。
           api_key = "TERM",
           name = "Ollama",
           end_point = "http://localhost:11434/v1/completions",
           model = "qwen2.5-coder:3b-base",
-          stream = true,
-          optional = {
-            max_tokens = 56,
-            top_p = 0.9,
-          },
+          -- stream=true だと ollama の FIM ストリーム出力を minuet が解析できず
+          -- 空テキスト("returns no text on streaming")になるため非ストリームにする。
+          stream = false,
         },
       },
     },
@@ -53,7 +48,7 @@ return {
         module = "minuet.blink",
         async = true,
         -- ローカル生成が間に合わない場合に補完メニューを待たせ過ぎない上限
-        timeout_ms = 3000,
+        timeout_ms = 10000,
         -- 他ソースより上位に表示する
         score_offset = 50,
       }

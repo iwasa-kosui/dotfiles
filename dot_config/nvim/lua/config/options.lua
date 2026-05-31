@@ -6,3 +6,5 @@ vim.opt.textwidth = 80
 vim.opt.wrap = true
 vim.opt.fixeol = true
 vim.opt.eol = true
+vim.opt.wrapscan = true
+vim.opt.autoindent = true
