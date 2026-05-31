@@ -1,8 +1,20 @@
--- ollama (qwen2.5-coder) によるローカルコード補完を blink.cmp に統合する
+-- ollama (qwen2.5-coder / swallow) によるローカル補完を blink.cmp に統合する
 --
--- 前提: ollama が起動済みで、FIM 対応の base モデルを pull 済みであること
---   ollama pull qwen2.5-coder:3b-base
--- instruct モデルは FIM 補完に不向きなため base タグを使う
+-- 前提: ollama 起動済みで、用途別に以下のモデルを pull しておくこと:
+--   ollama pull qwen2.5-coder:3b-base                         # コードの FIM 補完
+--   ollama pull schroneko/llama-3.1-swallow-8b-instruct-v0.1  # markdown の日本語散文補完
+--   ollama pull qwen2.5-coder:7b                              # duet（次編集予測）
+-- instruct モデルは FIM 補完に不向きなため、コード補完には base タグを使う。
+
+-- 散文（日本語技術文書）として扱う filetype。これらのバッファでは FIM base モデルではなく
+-- chat completions + instruct モデル(swallow)へ切り替える。
+local prose_filetypes = { markdown = true, mdx = true, ["markdown.mdx"] = true }
+
+-- 現在のバッファの filetype に応じて使うべき provider 名を返す。
+local function provider_for_current_buffer()
+  return prose_filetypes[vim.bo.filetype] and "openai_compatible" or "openai_fim_compatible"
+end
+
 return {
   {
     "milanglacier/minuet-ai.nvim",
@@ -27,8 +39,32 @@ return {
           -- 空テキスト("returns no text on streaming")になるため非ストリームにする。
           stream = false,
         },
+        -- markdown の散文補完用。chat completions で instruct モデルに続きを書かせる。
+        -- 日本語技術文書向けに英語混入の少ない swallow を使う。
+        openai_compatible = {
+          api_key = "TERM",
+          name = "Ollama-prose",
+          end_point = "http://localhost:11434/v1/chat/completions",
+          model = "schroneko/llama-3.1-swallow-8b-instruct-v0.1",
+          stream = false,
+        },
       },
     },
+    config = function(_, opts)
+      require("minuet").setup(opts)
+      -- minuet は config.provider をリクエスト時に都度参照するため、autocmd で
+      -- 書き換えればバッファ単位でモデルを切り替えられる。filetype 別の provider
+      -- 切替は公式機能にないため自前で行う。
+      local group = vim.api.nvim_create_augroup("MinuetProviderByFiletype", { clear = true })
+      vim.api.nvim_create_autocmd("BufEnter", {
+        group = group,
+        callback = function()
+          require("minuet").config.provider = provider_for_current_buffer()
+        end,
+      })
+      -- プラグインロード時点のバッファにも即座に反映する（autocmd は以降の BufEnter で発火）。
+      require("minuet").config.provider = provider_for_current_buffer()
+    end,
   },
 
   -- LazyVim 既定の blink.cmp に minuet をソースとして追加する。
