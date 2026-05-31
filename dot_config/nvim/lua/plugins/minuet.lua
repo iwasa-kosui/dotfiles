@@ -16,6 +16,27 @@ return {
       request_timeout = 5,
       throttle = 1500,
       debounce = 600,
+      -- ゴーストテキスト（virtual-text）フロントエンド。
+      -- blink のメニューはキーワード文字や LSP トリガー文字でしか自動で開かず、
+      -- 改行直後・行頭・括弧直後では発火しない（trigger 既定の
+      -- show_on_blocked_trigger_characters = { ' ', '\n', '\t' }）。
+      -- LLM 補完が欲しいのはまさにそれらの位置なので、blink ソースをやめ
+      -- minuet 独自の virtualtext でカーソル位置に依らず自動表示する。
+      virtualtext = {
+        auto_trigger_ft = { "*" }, -- 全ファイルタイプで自動表示
+        -- LSP 等の補完メニューが開いている間はゴーストを隠し、二重表示を避ける
+        show_on_completion_menu = false,
+        keymap = {
+          -- <Tab> は使わない。accept はゴースト未表示時にフォールバックせず
+          -- 黙って return するため（virtualtext.lua: accept）、<Tab> に割り当てると
+          -- 補完が出ていない時のインデント・スニペット移動を奪う。
+          accept = "<A-y>", -- 候補全体を確定
+          accept_line = "<A-l>", -- 1行だけ確定
+          next = "<A-]>", -- 次の候補へ（候補が無ければ手動発火）
+          prev = "<A-[>", -- 前の候補へ（候補が無ければ手動発火）
+          dismiss = "<A-e>", -- 候補を消す
+        },
+      },
       provider_options = {
         openai_fim_compatible = {
           api_key = "TERM",
@@ -43,30 +64,6 @@ return {
     },
     config = function(_, opts)
       require("minuet").setup(opts)
-    end,
-  },
-
-  {
-    "saghen/blink.cmp",
-    opts = function(_, opts)
-      opts.sources = opts.sources or {}
-      opts.sources.default = opts.sources.default or {}
-      if not vim.tbl_contains(opts.sources.default, "minuet") then
-        table.insert(opts.sources.default, "minuet")
-      end
-
-      opts.sources.providers = opts.sources.providers or {}
-      opts.sources.providers.minuet = {
-        name = "minuet",
-        module = "minuet.blink",
-        timeout_ms = 5000,
-        async = true,
-      }
-
-      opts.completion = opts.completion or {}
-      opts.completion.trigger = vim.tbl_deep_extend("force", opts.completion.trigger or {}, {
-        prefetch_on_insert = false,
-      })
     end,
   },
 }
