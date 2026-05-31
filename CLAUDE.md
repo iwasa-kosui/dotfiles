@@ -47,6 +47,7 @@ Uses LazyVim with plugins defined in `dot_config/nvim/lua/plugins/`:
 - `claudecode.lua` - Claude Code integration
 - `git.lua` - Git tools (lazygit, diffview.nvim)
 - `plugin.lua` - Snacks, Copilot
+- `minuet.lua` - ollama (qwen2.5-coder) によるローカルコード補完を blink.cmp に統合
 
 Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `autocmds.lua`
 
