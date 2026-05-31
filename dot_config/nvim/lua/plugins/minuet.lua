@@ -1,12 +1,3 @@
-local CODE_PROVIDER = "openai_fim_compatible"
-local PROSE_PROVIDER = "openai_compatible"
-
-local prose_filetypes = { markdown = true, mdx = true, ["markdown.mdx"] = true }
-
-local function provider_for_current_buffer()
-  return prose_filetypes[vim.bo.filetype] and PROSE_PROVIDER or CODE_PROVIDER
-end
-
 return {
   {
     "milanglacier/minuet-ai.nvim",
@@ -19,13 +10,10 @@ return {
       { "<leader>md", "<cmd>Minuet duet dismiss<cr>", desc = "Minuet duet: dismiss" },
     },
     opts = {
-      provider = CODE_PROVIDER,
-      -- ローカル ollama 向けのタイムアウト対策。既定は request_timeout=3秒・
-      -- n_completions=3・context_window=16000 で、ローカルモデルには重く
-      -- stream=false だと完了前にタイムアウトして補完が空になる。
-      n_completions = 1, -- FIM はこの数だけ ollama へリクエストが飛ぶ。1本に絞る
-      context_window = 2048, -- prefill を軽くしレイテンシを抑える（既定16000は重い）
-      request_timeout = 5, -- 全プロバイダ共通。既定3秒では生成完了前に切れる
+      provider = "openai_fim_compatible",
+      n_completions = 1,
+      context_window = 2048,
+      request_timeout = 5,
       throttle = 1500,
       debounce = 600,
       provider_options = {
@@ -33,19 +21,12 @@ return {
           api_key = "TERM",
           name = "Ollama",
           end_point = "http://localhost:11434/v1/completions",
-          model = "qwen2.5-coder:3b-base", -- 7b は生成が遅くタイムアウトの主因。FIM は base 版を使う
-          stream = false, -- true だと ollama の FIM 出力を解析できず空になる
+          model = "qwen2.5-coder:3b-base",
+          stream = false,
           optional = {
-            max_tokens = 128, -- 出力長を制限し生成時間を抑える
+            max_tokens = 128,
             top_p = 0.9,
           },
-        },
-        openai_compatible = {
-          api_key = "TERM",
-          name = "Ollama-prose",
-          end_point = "http://localhost:11434/v1/chat/completions",
-          model = "schroneko/llama-3.1-swallow-8b-instruct-v0.1",
-          stream = false,
         },
       },
       duet = {
@@ -62,14 +43,6 @@ return {
     },
     config = function(_, opts)
       require("minuet").setup(opts)
-      local group = vim.api.nvim_create_augroup("MinuetProviderByFiletype", { clear = true })
-      vim.api.nvim_create_autocmd("BufEnter", {
-        group = group,
-        callback = function()
-          require("minuet").config.provider = provider_for_current_buffer()
-        end,
-      })
-      require("minuet").config.provider = provider_for_current_buffer()
     end,
   },
 
@@ -86,7 +59,7 @@ return {
       opts.sources.providers.minuet = {
         name = "minuet",
         module = "minuet.blink",
-        timeout_ms = 5000, -- minuet の request_timeout(5秒)と揃える。大きくても内部で先に切れる
+        timeout_ms = 5000,
         async = true,
       }
 
