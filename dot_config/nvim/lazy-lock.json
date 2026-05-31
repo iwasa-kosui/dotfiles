@@ -33,6 +33,7 @@
   "mini.hipatterns": { "branch": "main", "commit": "35b632f6c138d720f29de87476361af44bed2198" },
   "mini.icons": { "branch": "main", "commit": "9c7b1b90b15bdd69c52f6e31889dbc9987c30ec4" },
   "mini.pairs": { "branch": "main", "commit": "30cf2f01c4aaa2033db67376b9924fa2442c05d6" },
+  "minuet-ai.nvim": { "branch": "main", "commit": "d29dec4c36be2b41aa10e70938b7b09a03f0bdba" },
   "multicursors.nvim": { "branch": "main", "commit": "72225ea9e4443c3f4b9df91d0193e07c4ee8d382" },
   "neotest": { "branch": "master", "commit": "ad991822b7076b1d940b33a9d6d0d30416d5df81" },
   "neotest-golang": { "branch": "main", "commit": "5b15cab0e2475b036c2e2067b2a973b9e4ea3180" },
