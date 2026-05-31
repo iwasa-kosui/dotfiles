@@ -20,13 +20,12 @@ return {
     },
     opts = {
       provider = CODE_PROVIDER,
-      n_completions = 4,
       provider_options = {
         openai_fim_compatible = {
           api_key = "TERM",
           name = "Ollama",
           end_point = "http://localhost:11434/v1/completions",
-          model = "qwen2.5-coder:3b-base",
+          model = "qwen2.5-coder:7b",
           stream = false, -- true だと ollama の FIM 出力を解析できず空になる
         },
         openai_compatible = {
@@ -75,9 +74,8 @@ return {
       opts.sources.providers.minuet = {
         name = "minuet",
         module = "minuet.blink",
-        async = true,
         timeout_ms = 10000,
-        score_offset = 50,
+        async = true,
       }
 
       opts.completion = opts.completion or {}
