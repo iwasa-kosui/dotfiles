@@ -1,9 +1,9 @@
 #!/bin/bash
 {{ if eq .chezmoi.os "darwin" -}}
-# ollama keep-alive agent hash: {{ include "Library/LaunchAgents/com.kosui.ollama-keep-alive.plist" | sha256sum }}
+# ollama keep-alive agent hash: {{ include "Library/LaunchAgents/me.kosui.ollama-keep-alive.plist" | sha256sum }}
 set -euo pipefail
 
-plist="$HOME/Library/LaunchAgents/com.kosui.ollama-keep-alive.plist"
+plist="$HOME/Library/LaunchAgents/me.kosui.ollama-keep-alive.plist"
 domain="gui/$(id -u)"
 
 echo "Reloading ollama keep-alive LaunchAgent..."

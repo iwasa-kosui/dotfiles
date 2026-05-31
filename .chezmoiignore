@@ -16,5 +16,5 @@ dot_config/nvim/README.md
 
 # macOS 専用の LaunchAgent は他 OS へ配置しない
 {{ if ne .chezmoi.os "darwin" -}}
-Library/LaunchAgents/com.kosui.ollama-keep-alive.plist
+Library/LaunchAgents/me.kosui.ollama-keep-alive.plist
 {{ end -}}

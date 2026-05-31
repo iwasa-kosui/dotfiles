@@ -3,7 +3,7 @@
 <plist version="1.0">
 <dict>
   <key>Label</key>
-  <string>com.kosui.ollama-keep-alive</string>
+  <string>me.kosui.ollama-keep-alive</string>
   <!-- ログインごとに OLLAMA_KEEP_ALIVE を GUI セッションへ設定し、
        Ollama.app が起動時に継承してモデルを常駐させる。
        launchctl setenv は再起動で消えるため LaunchAgent で永続化する。 -->
