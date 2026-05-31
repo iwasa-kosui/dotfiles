@@ -24,13 +24,6 @@ return {
         end,
         desc = "Diagnostics",
       },
-      {
-        "<leader>m",
-        function()
-          require("snacks").picker.recent()
-        end,
-        desc = "Recent Files",
-      },
 
       -- Replace fzf-lua mappings
       {

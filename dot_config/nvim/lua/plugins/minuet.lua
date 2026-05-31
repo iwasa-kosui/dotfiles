@@ -24,6 +24,13 @@ return {
     -- 実モジュール名 minuet と一致せず setup() が呼ばれない。main を明示して
     -- opts を必ず require("minuet").setup() へ渡す。
     main = "minuet",
+    -- duet（次編集予測）の手動操作。insert モードでは <leader>=スペースがタイピングと
+    -- 衝突するため normal モードのみに張る。
+    keys = {
+      { "<leader>mp", "<cmd>Minuet duet predict<cr>", desc = "Minuet duet: predict" },
+      { "<leader>ma", "<cmd>Minuet duet apply<cr>", desc = "Minuet duet: apply" },
+      { "<leader>md", "<cmd>Minuet duet dismiss<cr>", desc = "Minuet duet: dismiss" },
+    },
     opts = {
       provider = "openai_fim_compatible",
       -- 補完メニューに並べる候補数（stream=false なので候補数ぶん curl が走る）。
@@ -47,6 +54,20 @@ return {
           end_point = "http://localhost:11434/v1/chat/completions",
           model = "schroneko/llama-3.1-swallow-8b-instruct-v0.1",
           stream = false,
+        },
+      },
+      -- duet（次編集予測）。自動トリガーはなく :Minuet duet predict/apply/dismiss で操作する。
+      -- chat ベースなので instruct モデルを使う。公式はローカル小型モデルでの品質を
+      -- 期待薄としており、実験的な位置づけ。
+      duet = {
+        provider = "openai_compatible",
+        provider_options = {
+          openai_compatible = {
+            name = "Ollama",
+            end_point = "http://localhost:11434/v1/chat/completions",
+            model = "qwen2.5-coder:7b",
+            api_key = "TERM",
+          },
         },
       },
     },
