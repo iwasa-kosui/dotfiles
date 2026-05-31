@@ -65,6 +65,17 @@ return {
     },
     config = function(_, opts)
       require("minuet").setup(opts)
+      -- minuet は virtualtext の自動発火可否を vim.b.minuet_virtual_text_auto_trigger
+      -- で判定し、このフラグは setup() 内で登録される FileType autocmd でしか立たない。
+      -- 本プラグインは InsertEnter で遅延ロードするため、setup() が走る時点では
+      -- 既に開いていたバッファの FileType は発火済みで、その autocmd が二度と回らず
+      -- フラグが立たない＝自動ゴーストが永遠に出ない。ロード時点でロード済みの
+      -- 全バッファに手動でフラグを立てて補う（以降開くバッファは minuet 側がカバー）。
+      for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+        if vim.api.nvim_buf_is_loaded(buf) then
+          vim.b[buf].minuet_virtual_text_auto_trigger = true
+        end
+      end
     end,
   },
 }
