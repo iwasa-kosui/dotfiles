@@ -1,11 +1,20 @@
-local CODE_PROVIDER = "openai_fim_compatible"
-local PROSE_PROVIDER = "openai_compatible"
-
-local prose_filetypes = { markdown = true, mdx = true, ["markdown.mdx"] = true }
-
-local function provider_for_current_buffer()
-  return prose_filetypes[vim.bo.filetype] and PROSE_PROVIDER or CODE_PROVIDER
-end
+-- OpenRouter 経由の deepseek-v4-flash を補完バックエンドに使う。
+-- OpenRouter は FIM(suffix)非対応のため、コード補完も chat エンドポイント経由で行う
+-- （minuet は前後の文脈をプロンプトに含めるため chat モデルでもコード補完できる）。
+-- API キーは環境変数 OPENROUTER_API_KEY から読む。値はここに書かない。
+local PROVIDER_OPTIONS = {
+  api_key = "OPENROUTER_API_KEY",
+  name = "OpenRouter",
+  end_point = "https://openrouter.ai/api/v1/chat/completions",
+  model = "deepseek/deepseek-v4-flash",
+  stream = true,
+  optional = {
+    max_tokens = 256,
+    -- deepseek-v4 は推論モデル。補完では推論不要かつレイテンシを悪化させるため無効化する。
+    -- モデル側が推論を強制し拒否する場合はこの行を削除する。
+    reasoning = { enabled = false },
+  },
+}
 
 return {
   {
@@ -19,57 +28,24 @@ return {
       { "<leader>md", "<cmd>Minuet duet dismiss<cr>", desc = "Minuet duet: dismiss" },
     },
     opts = {
-      provider = CODE_PROVIDER,
-      -- ローカル ollama 向けのタイムアウト対策。既定は request_timeout=3秒・
-      -- n_completions=3・context_window=16000 で、ローカルモデルには重く
-      -- stream=false だと完了前にタイムアウトして補完が空になる。
-      n_completions = 1, -- FIM はこの数だけ ollama へリクエストが飛ぶ。1本に絞る
-      context_window = 2048, -- prefill を軽くしレイテンシを抑える（既定16000は重い）
-      request_timeout = 5, -- 全プロバイダ共通。既定3秒では生成完了前に切れる
+      provider = "openai_compatible",
+      n_completions = 1, -- リクエスト本数を絞りレイテンシとコストを抑える
+      context_window = 2048, -- 補完に渡す前後文脈の文字数
+      request_timeout = 5,
       throttle = 1500,
       debounce = 600,
       provider_options = {
-        openai_fim_compatible = {
-          api_key = "TERM",
-          name = "Ollama",
-          end_point = "http://localhost:11434/v1/completions",
-          model = "qwen2.5-coder:3b-base", -- 7b は生成が遅くタイムアウトの主因。FIM は base 版を使う
-          stream = false, -- true だと ollama の FIM 出力を解析できず空になる
-          optional = {
-            max_tokens = 128, -- 出力長を制限し生成時間を抑える
-            top_p = 0.9,
-          },
-        },
-        openai_compatible = {
-          api_key = "TERM",
-          name = "Ollama-prose",
-          end_point = "http://localhost:11434/v1/chat/completions",
-          model = "schroneko/llama-3.1-swallow-8b-instruct-v0.1",
-          stream = false,
-        },
+        openai_compatible = PROVIDER_OPTIONS,
       },
       duet = {
         provider = "openai_compatible",
         provider_options = {
-          openai_compatible = {
-            name = "Ollama",
-            end_point = "http://localhost:11434/v1/chat/completions",
-            model = "qwen2.5-coder:7b",
-            api_key = "TERM",
-          },
+          openai_compatible = PROVIDER_OPTIONS,
         },
       },
     },
     config = function(_, opts)
       require("minuet").setup(opts)
-      local group = vim.api.nvim_create_augroup("MinuetProviderByFiletype", { clear = true })
-      vim.api.nvim_create_autocmd("BufEnter", {
-        group = group,
-        callback = function()
-          require("minuet").config.provider = provider_for_current_buffer()
-        end,
-      })
-      require("minuet").config.provider = provider_for_current_buffer()
     end,
   },
 
@@ -86,7 +62,7 @@ return {
       opts.sources.providers.minuet = {
         name = "minuet",
         module = "minuet.blink",
-        timeout_ms = 5000, -- minuet の request_timeout(5秒)と揃える。大きくても内部で先に切れる
+        timeout_ms = 5000, -- minuet の request_timeout(5秒)と揃える
         async = true,
       }
 
