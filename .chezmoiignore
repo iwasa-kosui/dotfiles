@@ -13,3 +13,8 @@ dot_config/nvim/README.md
 
 # macOS artifacts
 **/.DS_Store
+
+# macOS 専用の LaunchAgent は他 OS へ配置しない
+{{ if ne .chezmoi.os "darwin" -}}
+Library/LaunchAgents/com.kosui.ollama-keep-alive.plist
+{{ end -}}
