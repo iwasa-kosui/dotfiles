@@ -93,7 +93,7 @@ alwaysApply: true
 
 ### 9. Mermaid図の内部識別子の参照
 
-- ❌ 本文・見出し・箇条書きから gantt の task ID や participant 名（`r_acmgr`、`ci_ssot_batch` 等）を参照する
+- ❌ 本文・見出し・箇条書きから gantt の task ID や participant 名を参照する
 - ✅ 概念名・役割名で書く。図はテーマ・フェーズ・登場人物の役割で説明する
 - 理由: 人間はプレビューで図を見るため、図の内部識別子はテキストとして見えない。参照しても伝わらない
 
