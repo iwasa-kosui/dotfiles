@@ -15,7 +15,9 @@ return {
       -- num_ctx を 8192 に固定したカスタムモデル(qwen2.5-coder-3b-fim)に合わせ、
       -- カーソル周辺のコードを広く渡して補完の関連性を上げる。
       context_window = 8192,
-      request_timeout = 5,
+      -- context_window=8192 だと M1/16GB の 3b では prompt eval に時間がかかり、
+      -- 短い timeout だと補完が返る前に打ち切られる。十分長くして取りこぼしを防ぐ。
+      request_timeout = 30,
       throttle = 1500,
       debounce = 600,
       -- ゴーストテキスト（virtual-text）フロントエンド。
