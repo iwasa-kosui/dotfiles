@@ -12,8 +12,12 @@ return {
     opts = {
       provider = "openai_fim_compatible",
       n_completions = 1,
-      context_window = 2048,
-      request_timeout = 5,
+      -- num_ctx を 8192 に固定したカスタムモデル(qwen2.5-coder-3b-fim)に合わせ、
+      -- カーソル周辺のコードを広く渡して補完の関連性を上げる。
+      context_window = 8192,
+      -- context_window=8192 だと M1/16GB の 3b では prompt eval に時間がかかり、
+      -- 短い timeout だと補完が返る前に打ち切られる。十分長くして取りこぼしを防ぐ。
+      request_timeout = 30,
       throttle = 1500,
       debounce = 600,
       -- ゴーストテキスト（virtual-text）フロントエンド。
@@ -43,11 +47,15 @@ return {
           api_key = "TERM",
           name = "Ollama",
           end_point = "http://localhost:11434/v1/completions",
-          model = "qwen2.5-coder:3b-base",
+          -- OpenAI 互換 /v1/completions は num_ctx を渡せないため、Modelfile で
+          -- num_ctx=8192 を固定したカスタムモデルを使う
+          -- (run_onchange_after_ollama-keep-alive.sh.tmpl で ollama create する)。
+          model = "qwen2.5-coder-3b-fim",
           stream = false,
           optional = {
             max_tokens = 128,
             top_p = 0.9,
+            temperature = 0.2, -- コード補完は決定性を高め、的外れな候補を減らす
           },
         },
       },

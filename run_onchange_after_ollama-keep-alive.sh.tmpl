@@ -16,8 +16,23 @@ launchctl setenv OLLAMA_KEEP_ALIVE -1
 # ollama が起動中なら FIM モデルを keep_alive=-1 で常駐させ、コールドスタートを今すぐ解消する
 # （OpenAI 互換エンドポイントは keep_alive 非対応のためネイティブ /api/generate を使う）
 if curl -sf -o /dev/null --max-time 2 http://localhost:11434/api/version; then
-  echo "Pinning qwen2.5-coder:3b-base in memory..."
+  # minuet の FIM は OpenAI 互換 /v1/completions を使うが、このエンドポイントは num_ctx を
+  # 渡せない。num_ctx=8192 を Modelfile で固定したカスタムモデルを作り、minuet にそれを使わせる。
+  if ! ollama list | grep -qF 'qwen2.5-coder:3b-base'; then
+    echo "Pulling base model qwen2.5-coder:3b-base..."
+    ollama pull qwen2.5-coder:3b-base
+  fi
+  echo "Creating qwen2.5-coder-3b-fim (num_ctx=8192)..."
+  modelfile="$(mktemp)"
+  cat > "$modelfile" <<'MODELFILE'
+FROM qwen2.5-coder:3b-base
+PARAMETER num_ctx 8192
+MODELFILE
+  ollama create qwen2.5-coder-3b-fim -f "$modelfile"
+  rm -f "$modelfile"
+
+  echo "Pinning qwen2.5-coder-3b-fim in memory..."
   curl -sf -o /dev/null --max-time 60 http://localhost:11434/api/generate \
-    -d '{"model":"qwen2.5-coder:3b-base","keep_alive":-1}' || true
+    -d '{"model":"qwen2.5-coder-3b-fim","keep_alive":-1}' || true
 fi
 {{ end -}}
