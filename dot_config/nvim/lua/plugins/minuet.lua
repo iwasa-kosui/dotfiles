@@ -35,11 +35,18 @@ return {
           -- <Tab> は使わない。accept はゴースト未表示時にフォールバックせず
           -- 黙って return するため（virtualtext.lua: accept）、<Tab> に割り当てると
           -- 補完が出ていない時のインデント・スニペット移動を奪う。
-          accept = "<A-y>", -- 候補全体を確定
-          accept_line = "<A-l>", -- 1行だけ確定
-          next = "<A-]>", -- 次の候補へ（候補が無ければ手動発火）
-          prev = "<A-[>", -- 前の候補へ（候補が無ければ手動発火）
-          dismiss = "<A-e>", -- 候補を消す
+          --
+          -- Ctrl+英字は空きがほぼない。blink.cmp（enter プリセット + <C-y>）が
+          -- <C-y> <C-n> <C-p> <C-e> <C-b> <C-f> <C-k> <C-space> を使い、
+          -- <C-r> <C-w> <C-u> <C-o> 等は Vim 標準の頻出キーのため、
+          -- Ctrl+記号に割り当てる。これらは CSI-u 拡張エンコーディング必須で、
+          -- Ghostty 直下では kitty keyboard protocol により素で動き、
+          -- tmux 内は extended-keys 設定（dot_tmux.conf）で透過する。
+          accept = "<C-;>", -- 候補全体を確定
+          accept_line = "<C-l>", -- 1行だけ確定
+          next = "<C-.>", -- 次の候補へ（候補が無ければ手動発火）
+          prev = "<C-'>", -- 前の候補へ（候補が無ければ手動発火）
+          dismiss = "<C-/>", -- 候補を消す
         },
       },
       provider_options = {
