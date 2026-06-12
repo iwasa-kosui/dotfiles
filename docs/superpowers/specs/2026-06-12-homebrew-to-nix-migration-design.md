@@ -87,6 +87,43 @@ Brewfile のパッケージは formulae 44 + cask 7 の計 51 項目で、うち
 | okta | 2025 年 7 月に upstream が deprecated（最終 v0.10.0） | 廃止。必要になった場合は後継手段を別途検討 |
 | openvino | nixpkgs で darwin は broken マーク | `pip install openvino` で代替 |
 
+### Brewfile に記載のないインストール済みツール
+
+実機の `brew leaves` を棚卸しした結果、Brewfile に無い formulae 18 個と cask 3 個が見つかりました。いずれも意図的に導入したツールとみなし、移行マップに含めます。
+
+nixpkgs へ移行するもの（17 個）:
+
+| ツール | nixpkgs 属性名 | 備考 |
+|---|---|---|
+| rtk | `rtk` | |
+| age | `age` | |
+| aws-vault | `aws-vault` | |
+| deck | `deck` | |
+| fd | `fd` | |
+| grip | `python3Packages.grip` | トップレベルの `grip` は Linux 用 CD リッパーの別物 |
+| imagemagick | `imagemagick` | |
+| lftp | `lftp` | |
+| lld@20 | `llvmPackages_20.lld` | トップレベル `lld_20` は存在しない |
+| pkgconf | `libpkgconf` | |
+| poppler | `poppler-utils` | `poppler` はライブラリのみで pdftotext 等が入らない |
+| qrencode | `qrencode` | |
+| silicon | `silicon` | |
+| ttyd | `ttyd` | |
+| ykman | `yubikey-manager` | |
+| codex (cask) | `codex` | |
+| visual-studio-code (cask) | `vscode` | unfree |
+
+nixpkgs へ移行できないもの（4 個）:
+
+| ツール | 状況 | 対応 |
+|---|---|---|
+| mo (k1low/tap) | nixpkgs の `mo` は Bash テンプレートエンジンの別物 | `go install github.com/k1LoW/mo@latest` |
+| laminate (songmu/tap) | nixpkgs に無い | `go install github.com/Songmu/laminate/cmd/laminate@latest` |
+| the_silver_searcher | upstream 開発停止により nixpkgs から削除済み | `ripgrep` へ代替 |
+| rancher (cask) | Rancher Desktop は nixpkgs に無い（`rancher` は CLI の別物） | 公式 DMG で手動管理 |
+
+なお、ollama は `/usr/local/bin/ollama` に公式インストーラで導入されており Homebrew 管理外のため、移行の影響を受けません。`berkeley-db@5` や `unbound` は依存パッケージのため個別対応は不要です。
+
 ### Brewfile の go ディレクティブ
 
 `pprofutils` は `go install github.com/felixge/pprofutils/v2/cmd/pprofutils@latest` の直実行に移します。`cmd/go`, `cmd/gofmt` は mise 管理の go に含まれるため不要です。
