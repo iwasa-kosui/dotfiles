@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "bun hooks/executable_main-branch-guard.ts",
+        "failClosed": true
+      }
+    ],
+    "preToolUse": [
+      {
+        "command": "bun hooks/executable_main-repo-guard.ts",
+        "matcher": "Write|Edit",
+        "failClosed": true
+      }
+    ]
+  }
+}
