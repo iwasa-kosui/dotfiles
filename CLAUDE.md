@@ -40,6 +40,7 @@ chezmoi diff
 | Claude Code | `dot_claude/` |
 | Cursor（Agent ルール） | `dot_cursor/rules/` → `~/.cursor/rules/` |
 | Tmux | `dot_tmux.conf` |
+| cmux | `dot_config/cmux/` |
 
 ## Neovim Plugin Architecture
 
