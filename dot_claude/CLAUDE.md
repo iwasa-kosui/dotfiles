@@ -22,5 +22,6 @@
 - `local.md` — リポジトリ一覧
 - `pdf-post-processing.md` — PDF→Markdown変換後の後処理
 - `typescript-discriminated-union.md` — TypeScript判別共用体
+- `typescript-no-double-assertion.md` — TypeScript `as unknown as` 禁止
 
 @RTK.md
