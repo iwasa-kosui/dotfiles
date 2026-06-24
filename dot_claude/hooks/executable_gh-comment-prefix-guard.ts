@@ -40,6 +40,12 @@ if (body.startsWith("🤖 Claude Code より:")) {
   process.exit(0);
 }
 
+// body がシェル変数・コマンド置換の場合、展開前の文字列なので
+// コマンド全体にプレフィックスが含まれているかで判定する
+if (/^\$/.test(body) && command.includes("🤖 Claude Code より:")) {
+  process.exit(0);
+}
+
 console.log(
   JSON.stringify({
     decision: "block",
