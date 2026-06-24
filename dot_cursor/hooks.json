@@ -5,12 +5,25 @@
       {
         "command": "bun /Users/kosui_iwasa/.cursor/hooks/main-branch-guard.ts",
         "failClosed": true
+      },
+      {
+        "command": "bun /Users/kosui_iwasa/.cursor/hooks/force-push-guard.ts",
+        "failClosed": true
+      },
+      {
+        "command": "bun /Users/kosui_iwasa/.cursor/hooks/gh-comment-prefix-guard.ts",
+        "failClosed": true
       }
     ],
     "preToolUse": [
       {
         "command": "bun /Users/kosui_iwasa/.cursor/hooks/main-repo-guard.ts",
         "matcher": "Write|Edit",
+        "failClosed": true
+      },
+      {
+        "command": "bun /Users/kosui_iwasa/.cursor/hooks/webfetch-guard.ts",
+        "matcher": "WebFetch",
         "failClosed": true
       }
     ]
