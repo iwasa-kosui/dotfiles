@@ -9,8 +9,10 @@ alwaysApply: true
 
 ## 常時適用 (`alwaysApply: true`)
 
-- `communication-style.mdc` — コミュニケーションスタイル・批判的姿勢
+- `communication-style.mdc` — 言葉遣い・文章スタイル（対話および成果物テキスト）
 - `shell-command-style.mdc` — シェルコマンドの書き方（権限プロンプト回避）
+- `secret-file-access.mdc` — 秘密情報ファイルへのアクセス禁止
+- `subagent-tool-usage.mdc` — サブエージェントでのBash使用制限
 
 ## オンデマンド適用 (`alwaysApply: false`)
 
@@ -21,6 +23,8 @@ alwaysApply: true
 - `doc-driven.mdc` — ドキュメント駆動開発
 - `github-review.mdc` — GitHub PRレビューコメント書式
 - `pr-creation.mdc` — PR作成ワークフロー
+- `jira-markdown.mdc` — JIRA課題の記法
+- `local.mdc` — リポジトリ一覧
 - `typescript-discriminated-union.mdc` — TypeScript判別共用体
 
-Claude Code 専用（`~/.claude/rules/` にのみ存在するもの）は引き続き Claude Code 側を参照すること。
+Claude Code 専用（`~/.claude/rules/` にのみ存在するもの）: `pdf-post-processing.md` 等。詳細は Claude Code 側の `CLAUDE.md` を参照。

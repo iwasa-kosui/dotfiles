@@ -3,26 +3,37 @@
   "hooks": {
     "beforeShellExecution": [
       {
-        "command": "bun /Users/kosui_iwasa/.cursor/hooks/main-branch-guard.ts",
+        "command": "bun ./hooks/main-branch-guard.ts",
         "failClosed": true
       },
       {
-        "command": "bun /Users/kosui_iwasa/.cursor/hooks/force-push-guard.ts",
+        "command": "bun ./hooks/force-push-guard.ts",
         "failClosed": true
       },
       {
-        "command": "bun /Users/kosui_iwasa/.cursor/hooks/gh-comment-prefix-guard.ts",
+        "command": "bun ./hooks/gh-comment-prefix-guard.ts",
+        "failClosed": true
+      }
+    ],
+    "beforeReadFile": [
+      {
+        "command": "bun ./hooks/secret-file-guard.ts",
         "failClosed": true
       }
     ],
     "preToolUse": [
       {
-        "command": "bun /Users/kosui_iwasa/.cursor/hooks/main-repo-guard.ts",
+        "command": "bun ./hooks/secret-file-guard.ts",
         "matcher": "Write|Edit",
         "failClosed": true
       },
       {
-        "command": "bun /Users/kosui_iwasa/.cursor/hooks/webfetch-guard.ts",
+        "command": "bun ./hooks/main-repo-guard.ts",
+        "matcher": "Write|Edit",
+        "failClosed": true
+      },
+      {
+        "command": "bun ./hooks/webfetch-guard.ts",
         "matcher": "WebFetch",
         "failClosed": true
       }

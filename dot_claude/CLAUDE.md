@@ -12,7 +12,6 @@
 ## オンデマンド適用 (alwaysApply: false)
 
 - `commit-message.md` — コミットメッセージとコミット分割
-- `slack-mcp.md` — Slack MCPサーバの使い方
 - `confluence-jira-cli.md` — Confluence/Jira CLIのエラーハンドリング
 - `worktree-workflow.md` — git worktreeの運用ルール
 - `doc-driven.md` — ドキュメント駆動開発
