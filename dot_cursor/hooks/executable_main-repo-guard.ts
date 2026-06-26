@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // preToolUse hook: メインリポジトリ（非worktree）のmainブランチでファイル変更をブロック
 
-import { isAbsolute, resolve } from "node:path";
+import { dirname, isAbsolute, resolve } from "node:path";
 
 import { readInput, runSafe } from "./lib.ts";
 
@@ -14,6 +14,7 @@ type ToolInput = {
 };
 
 type PreToolUseInput = {
+  file_path?: string;
   tool_input?: ToolInput;
   cwd?: string;
 };
@@ -21,6 +22,7 @@ type PreToolUseInput = {
 const input = await readInput<PreToolUseInput>();
 
 const rawPath =
+  input.file_path ??
   input.tool_input?.file_path ??
   input.tool_input?.path ??
   input.tool_input?.target_file ??
@@ -34,12 +36,17 @@ if (!rawPath) {
   process.exit(0);
 }
 
-const cwd = input.cwd ?? process.cwd();
-const targetPath = isAbsolute(rawPath) ? rawPath : resolve(cwd, rawPath);
+// ユーザーフックは ~/.cursor/ から実行されるため、git 判定は操作対象パス基準で行う
+const resolveCwd = input.cwd ?? process.cwd();
+const targetPath = isAbsolute(rawPath) ? rawPath : resolve(resolveCwd, rawPath);
+const gitCwd = dirname(targetPath);
 
-// リポジトリ外のパス（/tmp等）なら許可
-const repoRoot = await runSafe(["git", "rev-parse", "--show-toplevel"], { cwd });
-if (repoRoot && !targetPath.startsWith(repoRoot + "/") && targetPath !== repoRoot) {
+const repoRoot = await runSafe(["git", "-C", gitCwd, "rev-parse", "--show-toplevel"]);
+if (!repoRoot) {
+  console.log(JSON.stringify({ permission: "allow" }));
+  process.exit(0);
+}
+if (!targetPath.startsWith(repoRoot + "/") && targetPath !== repoRoot) {
   console.log(JSON.stringify({ permission: "allow" }));
   process.exit(0);
 }
@@ -51,14 +58,14 @@ if (targetPath.includes("/.wt/")) {
 }
 
 // worktree内なら許可
-const gitDir = await runSafe(["git", "rev-parse", "--git-dir"], { cwd });
+const gitDir = await runSafe(["git", "-C", gitCwd, "rev-parse", "--git-dir"]);
 if (gitDir?.includes(".git/worktrees")) {
   console.log(JSON.stringify({ permission: "allow" }));
   process.exit(0);
 }
 
 // mainブランチでなければ許可
-const branch = await runSafe(["git", "rev-parse", "--abbrev-ref", "HEAD"], { cwd });
+const branch = await runSafe(["git", "-C", gitCwd, "rev-parse", "--abbrev-ref", "HEAD"]);
 if (branch !== "main" && branch !== "master") {
   console.log(JSON.stringify({ permission: "allow" }));
   process.exit(0);
