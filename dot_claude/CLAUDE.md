@@ -18,6 +18,7 @@
 - `github-review.md` — GitHub PRレビューコメント書式
 - `pr-creation.md` — PR作成ワークフロー
 - `jira-markdown.md` — JIRA課題の記法
+- `local.md` — リポジトリ一覧（ローカル専用。chezmoi 未管理）
 - `pdf-post-processing.md` — PDF→Markdown変換後の後処理
 - `typescript-discriminated-union.md` — TypeScript判別共用体
 
