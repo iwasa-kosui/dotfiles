@@ -24,7 +24,6 @@ alwaysApply: true
 - `github-review.mdc` — GitHub PRレビューコメント書式
 - `pr-creation.mdc` — PR作成ワークフロー
 - `jira-markdown.mdc` — JIRA課題の記法
-- `local.mdc` — リポジトリ一覧
 - `typescript-discriminated-union.mdc` — TypeScript判別共用体
 
 Claude Code 専用（`~/.claude/rules/` にのみ存在するもの）: `pdf-post-processing.md` 等。詳細は Claude Code 側の `CLAUDE.md` を参照。
