@@ -38,7 +38,7 @@ chezmoi diff
 | Zsh | `dot_zshrc`, `dot_config/zsh/` |
 | Git | `dot_gitconfig`, `dot_config/git/` |
 | Claude Code | `dot_claude/` |
-| Cursor（Agent ルール） | `dot_cursor/rules/` → `~/.cursor/rules/` |
+| Cursor | `dot_cursor/` → `~/.cursor/`（rules, hooks, skills, cli-config） |
 | Tmux | `dot_tmux.conf` |
 | cmux | `dot_config/cmux/` |
 

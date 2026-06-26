@@ -7,6 +7,10 @@ README.md
 docs/
 LICENSE
 
+# ローカル専用ルール（~/.claude/rules/ に手動配置。chezmoi 管理外）
+dot_claude/rules/local.md
+dot_cursor/rules/local.mdc
+
 # Neovim starter template remnants
 dot_config/nvim/LICENSE
 dot_config/nvim/README.md
