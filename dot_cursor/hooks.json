@@ -24,12 +24,12 @@
     "preToolUse": [
       {
         "command": "bun ./hooks/secret-file-guard.ts",
-        "matcher": "Write|Edit",
+        "matcher": "Write|StrReplace|Delete|EditNotebook|Create",
         "failClosed": true
       },
       {
         "command": "bun ./hooks/main-repo-guard.ts",
-        "matcher": "Write|Edit",
+        "matcher": "Write|StrReplace|Delete|EditNotebook|Create",
         "failClosed": true
       },
       {
