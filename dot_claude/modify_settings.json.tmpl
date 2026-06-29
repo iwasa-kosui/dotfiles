@@ -572,7 +572,7 @@ managed='
   },
   "statusLine": {
     "type": "command",
-    "command": "bun ~/.claude/statusline-command.ts"
+    "command": "{{- if eq .profile "work" }}ccusage statusline{{- else }}bun ~/.claude/statusline-command.ts{{- end }}"
   },
   "language": "日本語"
 }
