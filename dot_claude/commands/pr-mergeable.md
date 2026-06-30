@@ -1,5 +1,5 @@
 ---
-allowed-tools: Read, Glob, Grep, AskUserQuestion, Bash, Write
+allowed-tools: AskUserQuestion, Agent, Bash, Write
 description: Make PR mergeable by diagnosing blockers and launching /goal session
 ---
 
@@ -7,13 +7,12 @@ description: Make PR mergeable by diagnosing blockers and launching /goal sessio
 
 You MUST use Japanese.
 
-あなたは、現在のブランチに紐づく PR を診断し、マージ可能にするための完了条件プロンプトを自動生成して `/goal` セッションとして起動するコマンドです。
+あなたは、現在のブランチに紐づく PR を診断し、マージ可能にするための完了条件プロンプトを自動生成して `/goal` セッションとして起動する**司令塔**です。
+調査・診断はサブエージェントに委譲し、自身はディスパッチ・判断・ユーザー対話に専念してください。
 
 ## フロー
 
 ### ステップ1: PR特定
-
-現在のブランチから PR を自動検出する。
 
 ```bash
 gh pr view --json number,title,url,isDraft,mergeable,headRefName,baseRefName
@@ -22,60 +21,50 @@ gh pr view --json number,title,url,isDraft,mergeable,headRefName,baseRefName
 - PR が見つからない場合はエラーメッセージを表示して終了する
 - 複数の PR が存在する場合は `gh pr list --head <branch>` で一覧を表示し、ユーザーに選択を求める
 
-### ステップ2: 並列診断
+### ステップ2: 診断（サブエージェントに委譲）
 
-以下の4つを並列で収集する。それぞれ Bash ツールを使って同時に実行すること。
+Agent ツールで **1つのサブエージェント** を起動し、以下の診断を委譲する。
+サブエージェントへのプロンプトには、ステップ1で取得した PR 情報（number, owner, repo, mergeable, isDraft, baseRefName）を含めること。
 
-#### 2-1. CI状態
-
-```bash
-gh pr checks --json name,state,conclusion
 ```
+サブエージェントへのプロンプト例:
 
-- `conclusion` が `FAILURE` または `CANCELLED` のジョブを抽出する
-- 失敗ジョブがある場合、各ジョブのログ概要を `gh run view <run-id> --log-failed` で取得する（長い場合は末尾200行に絞る）
+PR #{number} ({owner}/{repo}) の以下4項目を診断し、結果を構造化テキストで返してください。
 
-#### 2-2. 未対応レビューコメント
+## 診断項目
 
-```bash
-gh api repos/{owner}/{repo}/pulls/{number}/comments --jq '.[] | select(.in_reply_to_id == null) | {id, path, line, body, user: .user.login}'
+### 1. CI状態
+- `gh pr checks #{number} --json name,state,conclusion` で取得
+- conclusion が FAILURE または CANCELLED のジョブを抽出
+- 失敗ジョブがある場合、`gh run view <run-id> --log-failed` でログ概要を取得（末尾200行）
+
+### 2. 未対応レビューコメント
+- `gh api repos/{owner}/{repo}/pulls/{number}/comments` でコメント取得
+- GraphQL で reviewThreads の isResolved/isOutdated を確認
+- isResolved: false かつ isOutdated: false のスレッドを抽出
+
+### 3. マージコンフリクト
+- mergeable フィールド値: {mergeable}
+- UNKNOWN の場合は数秒待って `gh pr view` で再取得
+
+### 4. draft状態
+- isDraft: {isDraft}
+
+## 出力形式
+
+以下の形式で結果を返すこと:
+
+**CI失敗ジョブ:** (なし or ジョブ名リスト + ログ要約)
+**未対応レビューコメント:** (なし or ファイルパス・コメント要約のリスト)
+**マージコンフリクト:** (なし or あり / base: {base})
+**draft状態:** (true or false)
 ```
-
-さらにレビュースレッドの解決状態を確認する:
-
-```bash
-gh api graphql -f query='
-  query($owner:String!, $repo:String!, $number:Int!) {
-    repository(owner:$owner, name:$repo) {
-      pullRequest(number:$number) {
-        reviewThreads(first:100) {
-          nodes { isResolved isOutdated comments(first:1) { nodes { body author { login } } } }
-        }
-      }
-    }
-  }
-' -f owner=OWNER -f repo=REPO -F number=NUMBER
-```
-
-- `isResolved: false` かつ `isOutdated: false` のスレッドを「未対応」として抽出する
-
-#### 2-3. マージコンフリクト
-
-ステップ1の `mergeable` フィールドを確認する。
-
-- `CONFLICTING` → コンフリクトあり
-- `MERGEABLE` → 問題なし
-- `UNKNOWN` → GitHub がまだ計算中。数秒待って再取得する
-
-#### 2-4. draft状態
-
-ステップ1の `isDraft` フィールドを確認する。
 
 ### ステップ3: ブロッカー判定
 
-診断結果を分析し、ブロッカーの有無を判定する。
+サブエージェントの結果を分析し、ブロッカーの有無を判定する。
 
-- **ブロッカーなし**: 全チェックがパスしている場合、「このPRはマージ可能な状態です」と報告して終了する
+- **ブロッカーなし**: 「このPRはマージ可能な状態です」と報告して終了する
 - **ブロッカーあり**: ステップ4に進む
 
 ### ステップ4: プロンプト生成
@@ -151,7 +140,7 @@ PR #<番号> (<タイトル>) をマージ可能な状態にする
 
 ## 重要なルール
 
-- 診断は可能な限り並列で実行し、ユーザーの待ち時間を最小化する
+- 診断はサブエージェントに委譲し、司令塔のトークン消費を最小化する
 - 受入条件はチェッカーモデルが**機械的に判定できる**形で記述する
 - 前提条件（CI通過・検証実行）は**常に含める**。ユーザーが削除を希望しても、理由を説明して残すことを推奨する
 - プロンプトは簡潔に。冗長な説明はチェッカーモデルの判定精度を下げる
