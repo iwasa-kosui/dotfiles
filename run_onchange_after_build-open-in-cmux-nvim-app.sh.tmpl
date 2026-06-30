@@ -1,0 +1,50 @@
+#!/bin/bash
+{{ if eq .chezmoi.os "darwin" -}}
+# applescript hash: {{ include "dot_local/share/private_open-in-cmux-nvim.applescript" | sha256sum }}
+set -euo pipefail
+
+src="$HOME/.local/share/open-in-cmux-nvim.applescript"
+app="$HOME/Applications/Open in cmux nvim.app"
+
+if [ ! -f "$src" ]; then
+  echo "AppleScript source not found: $src"
+  exit 1
+fi
+
+echo "Building Open in cmux nvim.app..."
+rm -rf "$app"
+mkdir -p "$HOME/Applications"
+osacompile -o "$app" "$src"
+
+plist="$app/Contents/Info.plist"
+
+/usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string com.local.open-in-cmux-nvim" "$plist"
+
+# osacompile creates CFBundleDocumentTypes with Role=Viewer; patch to Editor and add UTIs
+/usr/libexec/PlistBuddy -c "Set :CFBundleDocumentTypes:0:CFBundleTypeRole Editor" "$plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes array" "$plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes:0 string 'public.text'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes:1 string 'public.source-code'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes:2 string 'public.data'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes:3 string 'public.content'" "$plist"
+
+/usr/libexec/PlistBuddy -c "Set :NSAppleEventsUsageDescription 'Open files in Neovim inside cmux'" "$plist"
+
+# Ad-hoc sign with Apple Events entitlement
+cat > /tmp/open-in-cmux-nvim-entitlements.plist <<'ENTITLEMENTS'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>
+ENTITLEMENTS
+codesign --force --sign - --entitlements /tmp/open-in-cmux-nvim-entitlements.plist "$app"
+
+# Re-register with Launch Services
+/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app"
+
+echo "Done: $app"
+{{ end -}}
