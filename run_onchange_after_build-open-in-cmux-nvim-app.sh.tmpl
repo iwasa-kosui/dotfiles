@@ -30,6 +30,19 @@ plist="$app/Contents/Info.plist"
 
 /usr/libexec/PlistBuddy -c "Set :NSAppleEventsUsageDescription 'Open files in Neovim inside cmux'" "$plist"
 
+# Ad-hoc sign with Apple Events entitlement
+cat > /tmp/open-in-cmux-nvim-entitlements.plist <<'ENTITLEMENTS'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
+</dict>
+</plist>
+ENTITLEMENTS
+codesign --force --sign - --entitlements /tmp/open-in-cmux-nvim-entitlements.plist "$app"
+
 # Re-register with Launch Services
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$app"
 

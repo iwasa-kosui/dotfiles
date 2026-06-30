@@ -1,7 +1,5 @@
 -- Open files in Neovim inside cmux
--- Usage: Set the compiled .app as macOS default editor via Finder > Get Info > Open With
-
-property cmux : "/Applications/cmux.app/Contents/Resources/bin/cmux"
+-- Uses AppleScript Apple Events (no socket required)
 
 on open theFiles
 	set filePaths to {}
@@ -12,13 +10,12 @@ on open theFiles
 	set fileArgs to joinList(filePaths, " ")
 	set cwd to extractDirectory(POSIX path of (item 1 of theFiles))
 
-	do shell script cmux & " new-workspace" & ¬
-		" --name 'nvim'" & ¬
-		" --cwd " & quoted form of cwd & ¬
-		" --focus true" & ¬
-		" --command 'nvim " & fileArgs & "'"
-
-	tell application "cmux" to activate
+	tell application "cmux"
+		set newTab to new tab
+		set t to focused terminal of newTab
+		input text "cd " & quoted form of cwd & " && nvim " & fileArgs & return to t
+		activate
+	end tell
 end open
 
 on run
@@ -40,7 +37,7 @@ end extractDirectory
 on joinList(theList, delimiter)
 	set tid to AppleScript's text item delimiters
 	set AppleScript's text item delimiters to delimiter
-	set result to theList as text
+	set joined to theList as text
 	set AppleScript's text item delimiters to tid
-	return result
+	return joined
 end joinList
