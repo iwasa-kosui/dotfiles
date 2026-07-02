@@ -147,6 +147,8 @@ managed='
     ],
     "deny": [
       "Shell(chmod 777 /)",
+      "Shell(gh auth token)",
+      "Shell(gh auth token:*)",
       "Shell(git push --force-with-lease:*)",
       "Shell(git push --force:*)",
       "Shell(git push -f:*)",
