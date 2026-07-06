@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// preToolUse hook: メインリポジトリ（非worktree）のmainブランチでファイル変更をブロック
+// preToolUse hook: メインリポジトリ（非worktree）の保護ブランチでファイル変更をブロック
 
 import { dirname, isAbsolute, resolve } from "node:path";
 
@@ -64,15 +64,15 @@ if (gitDir?.includes(".git/worktrees")) {
   process.exit(0);
 }
 
-// mainブランチでなければ許可
+// 保護ブランチでなければ許可
+const protectedBranches = ["main", "master", "develop"];
 const branch = await runSafe(["git", "-C", gitCwd, "rev-parse", "--abbrev-ref", "HEAD"]);
-if (branch !== "main" && branch !== "master") {
+if (!branch || !protectedBranches.includes(branch)) {
   console.log(JSON.stringify({ permission: "allow" }));
   process.exit(0);
 }
 
-const reason =
-  "メインリポジトリのmainブランチでのファイル変更はブロックされています。worktreeを作成して作業してください。";
+const reason = `メインリポジトリの保護ブランチ(${branch})でのファイル変更はブロックされています。worktreeを作成して作業してください。`;
 
 console.log(
   JSON.stringify({

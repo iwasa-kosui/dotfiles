@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// PreToolUse hook: mainブランチで履歴・状態を変更するgitコマンドをブロック
+// PreToolUse hook: 保護ブランチ（main/master/develop）で履歴・状態を変更するgitコマンドをブロック
 
 import { readInput, runSafe } from "./lib.ts";
 
@@ -56,8 +56,9 @@ if (!matched) {
   process.exit(0);
 }
 
+const protectedBranches = ["main", "master", "develop"];
 const branch = await runSafe(["git", "rev-parse", "--abbrev-ref", "HEAD"]);
-if (branch !== "main" && branch !== "master") {
+if (!branch || !protectedBranches.includes(branch)) {
   process.exit(0);
 }
 
@@ -70,6 +71,6 @@ if (gitDir?.includes(".git/worktrees")) {
 console.log(
   JSON.stringify({
     decision: "block",
-    reason: `mainブランチでの ${matched.label} はブロックされています。worktreeを作成して作業してください。`,
+    reason: `保護ブランチ(${branch})での ${matched.label} はブロックされています。worktreeを作成して作業してください。`,
   }),
 );
