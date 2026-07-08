@@ -93,5 +93,54 @@ killall Finder || true
 
 defaults write com.apple.screencapture location -string "~/Documents/"
 
+###############################################################################
+# File associations (via Launch Services API)
+###############################################################################
+
+swift - <<'SWIFT'
+import Foundation
+import CoreServices
+
+let dia = "company.thebrowser.dia" as NSString as CFString
+let cmuxNvim = "com.local.open-in-cmux-nvim" as NSString as CFString
+let cmux = "com.cmuxterm.app" as NSString as CFString
+
+let utiHandlers: [(String, CFString)] = [
+    ("public.plain-text", cmuxNvim),
+    ("public.json", cmuxNvim),
+    ("public.comma-separated-values-text", cmuxNvim),
+    ("net.daringfireball.markdown", cmuxNvim),
+    ("public.patch-file", cmuxNvim),
+    ("com.microsoft.typescript", cmuxNvim),
+    ("com.microsoft.typescript.tsx", cmuxNvim),
+    ("public.html", dia),
+    ("public.svg-image", dia),
+]
+
+let schemeHandlers: [(String, CFString)] = [
+    ("https", dia),
+    ("http", dia),
+    ("mailto", dia),
+    ("webcal", dia),
+    ("ssh", cmux),
+]
+
+for (uti, handler) in utiHandlers {
+    let status = LSSetDefaultRoleHandlerForContentType(uti as NSString as CFString, .all, handler)
+    if status != 0 {
+        print("Warning: failed to set handler for UTI \(uti): \(status)")
+    }
+}
+
+for (scheme, handler) in schemeHandlers {
+    let status = LSSetDefaultHandlerForURLScheme(scheme as NSString as CFString, handler)
+    if status != 0 {
+        print("Warning: failed to set handler for scheme \(scheme): \(status)")
+    }
+}
+
+print("File associations applied.")
+SWIFT
+
 echo "macOS defaults applied."
 {{ end -}}

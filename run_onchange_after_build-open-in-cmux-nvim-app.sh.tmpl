@@ -27,6 +27,31 @@ plist="$app/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes:1 string 'public.source-code'" "$plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes:2 string 'public.data'" "$plist"
 /usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes:3 string 'public.content'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes:4 string 'com.microsoft.typescript'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :CFBundleDocumentTypes:0:LSItemContentTypes:5 string 'com.microsoft.typescript.tsx'" "$plist"
+
+# Declare TypeScript UTIs so macOS recognises .ts/.tsx as source code
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations array" "$plist"
+
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:0 dict" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:0:UTTypeIdentifier string 'com.microsoft.typescript'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:0:UTTypeDescription string 'TypeScript Source'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:0:UTTypeConformsTo array" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:0:UTTypeConformsTo:0 string 'public.source-code'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:0:UTTypeTagSpecification dict" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:0:UTTypeTagSpecification:public.filename-extension array" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:0:UTTypeTagSpecification:public.filename-extension:0 string 'ts'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:0:UTTypeTagSpecification:public.filename-extension:1 string 'mts'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:0:UTTypeTagSpecification:public.filename-extension:2 string 'cts'" "$plist"
+
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:1 dict" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:1:UTTypeIdentifier string 'com.microsoft.typescript.tsx'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:1:UTTypeDescription string 'TypeScript JSX Source'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:1:UTTypeConformsTo array" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:1:UTTypeConformsTo:0 string 'public.source-code'" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:1:UTTypeTagSpecification dict" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:1:UTTypeTagSpecification:public.filename-extension array" "$plist"
+/usr/libexec/PlistBuddy -c "Add :UTImportedTypeDeclarations:1:UTTypeTagSpecification:public.filename-extension:0 string 'tsx'" "$plist"
 
 /usr/libexec/PlistBuddy -c "Set :NSAppleEventsUsageDescription 'Open files in Neovim inside cmux'" "$plist"
 
