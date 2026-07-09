@@ -46,7 +46,7 @@ const denyRules: DenyRule[] = [
     reason: "外部サービスの作成・更新・削除系 CLI 操作はブロックされています。",
   },
   {
-    pattern: /\b(cat|head|tail|less|more|grep|sed|awk|source)\s+[^;&|]*(~\/\.zshrc_local|~\/\.aws|~\/\.ssh|~\/\.gnupg|~\/\.npmrc|~\/\.netrc|~\/\.docker\/config\.json|~\/\.kube|~\/\.config\/gh\/hosts\.yml|~\/\.config\/confluence-cli|~\/\.config\/jira-cli|~\/\.env)/,
+    pattern: /\b(cat|head|tail|less|more|grep|sed|awk|source)\s+[^;&|]*((~|\$HOME)\/\.zshrc_local|(~|\$HOME)\/\.aws|(~|\$HOME)\/\.ssh|(~|\$HOME)\/\.gnupg|(~|\$HOME)\/\.npmrc|(~|\$HOME)\/\.netrc|(~|\$HOME)\/\.docker\/config\.json|(~|\$HOME)\/\.kube|(~|\$HOME)\/\.config\/gh\/hosts\.yml|(~|\$HOME)\/\.config\/confluence-cli|(~|\$HOME)\/\.config\/jira-cli|(~|\$HOME)\/\.env)/,
     reason: "秘密情報ファイルを表示・検索・source する操作はブロックされています。",
   },
 ];

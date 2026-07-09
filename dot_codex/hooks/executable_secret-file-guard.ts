@@ -2,6 +2,7 @@
 // PreToolUse hook: 秘密情報ファイルの読み書きをブロック
 
 import { readInput } from "./lib.ts";
+import { homedir } from "node:os";
 
 const input = await readInput<{
   tool_input?: {
@@ -15,7 +16,10 @@ if (!filePath) {
   process.exit(0);
 }
 
-const normalizedPath = filePath.replaceAll("\\", "/").toLowerCase();
+const expandedPath = filePath
+  .replace(/^\$HOME(?=\/|$)/, homedir())
+  .replace(/^~(?=\/|$)/, homedir());
+const normalizedPath = expandedPath.replaceAll("\\", "/").toLowerCase();
 
 const blockedPathPatterns = [
   /(^|\/)\.env($|\.|\/)/,

@@ -2,6 +2,7 @@
 // PreToolUse hook: mainブランチで履歴・状態を変更するgitコマンドをブロック
 
 import { dirname } from "node:path";
+import { homedir } from "node:os";
 import { readInput, runSafe } from "./lib.ts";
 
 const input = await readInput<{
@@ -11,6 +12,12 @@ const command = input.tool_input?.command ?? "";
 
 const gitCwdMatch = command.match(/\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|(\S+))/);
 const gitCwd = gitCwdMatch?.[1] ?? gitCwdMatch?.[2] ?? gitCwdMatch?.[3];
+const expandHome = (path: string | undefined): string | undefined => {
+  if (!path) return undefined;
+  return path
+    .replace(/^\$HOME(?=\/|$)/, homedir())
+    .replace(/^~(?=\/|$)/, homedir());
+};
 
 type BlockedOperation = { pattern: RegExp; label: string };
 
@@ -62,7 +69,7 @@ if (!matched) {
   process.exit(0);
 }
 
-const cwd = input.tool_input?.cwd ?? input.tool_input?.workdir ?? gitCwd;
+const cwd = expandHome(input.tool_input?.cwd ?? input.tool_input?.workdir ?? gitCwd);
 const branch = await runSafe(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
   cwd: cwd ?? undefined,
 });
