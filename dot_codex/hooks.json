@@ -1,0 +1,102 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "WebFetch",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/webfetch-guard.ts'"
+          }
+        ]
+      },
+      {
+        "matcher": "ExitPlanMode",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/plan-export.ts'"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/main-branch-guard.ts'"
+          },
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/shell-policy-guard.ts'"
+          },
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/force-push-guard.ts'"
+          },
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/gh-comment-prefix-guard.ts'"
+          }
+        ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/secret-file-guard.ts'"
+          }
+        ]
+      },
+      {
+        "matcher": "Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/secret-file-guard.ts'"
+          },
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/main-repo-guard.ts'"
+          }
+        ]
+      },
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/secret-file-guard.ts'"
+          },
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/main-repo-guard.ts'"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun '/Users/kosui/.codex/hooks/session-init.ts'",
+            "timeout": 15,
+            "statusMessage": "Jira課題・GitHub PR・ワークツリー情報を取得中..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "terminal-notifier -title 'Codex' -message 'タスクが完了しました' -sound Glass -sender com.apple.Terminal"
+          }
+        ]
+      }
+    ]
+  }
+}
