@@ -1,9 +1,16 @@
 #!/usr/bin/env bun
 // preToolUse hook: メインリポジトリ（非worktree）の保護ブランチでファイル変更をブロック
 
-import { dirname, isAbsolute, resolve } from "node:path";
+import { isAbsolute, resolve } from "node:path";
 
-import { readInput, runSafe } from "./lib.ts";
+import { readInput } from "./lib.ts";
+import {
+  allowResponse,
+  checkProtectedMainRepo,
+  checkProtectedMainRepoCwd,
+  denyResponse,
+  WRITE_TOOL_NAMES,
+} from "./repo-guard-lib.ts";
 
 type ToolInput = {
   file_path?: string;
@@ -11,15 +18,18 @@ type ToolInput = {
   target_file?: string;
   old_file_path?: string;
   target_notebook?: string;
+  notebook_path?: string;
 };
 
 type PreToolUseInput = {
+  tool_name?: string;
   file_path?: string;
   tool_input?: ToolInput;
   cwd?: string;
 };
 
 const input = await readInput<PreToolUseInput>();
+const resolveCwd = input.cwd ?? process.cwd();
 
 const rawPath =
   input.file_path ??
@@ -28,56 +38,27 @@ const rawPath =
   input.tool_input?.target_file ??
   input.tool_input?.old_file_path ??
   input.tool_input?.target_notebook ??
+  input.tool_input?.notebook_path ??
   "";
 
-// file_path相当が未指定ならブロック対象外
 if (!rawPath) {
-  console.log(JSON.stringify({ permission: "allow" }));
+  // Write系ツールでパス未指定の場合は cwd 基準でブロック
+  if (input.tool_name && WRITE_TOOL_NAMES.has(input.tool_name)) {
+    const result = await checkProtectedMainRepoCwd(resolveCwd);
+    if (result.action === "deny") {
+      denyResponse(result.reason);
+      process.exit(0);
+    }
+  }
+  allowResponse();
   process.exit(0);
 }
 
-// ユーザーフックは ~/.cursor/ から実行されるため、git 判定は操作対象パス基準で行う
-const resolveCwd = input.cwd ?? process.cwd();
 const targetPath = isAbsolute(rawPath) ? rawPath : resolve(resolveCwd, rawPath);
-const gitCwd = dirname(targetPath);
-
-const repoRoot = await runSafe(["git", "-C", gitCwd, "rev-parse", "--show-toplevel"]);
-if (!repoRoot) {
-  console.log(JSON.stringify({ permission: "allow" }));
-  process.exit(0);
-}
-if (!targetPath.startsWith(repoRoot + "/") && targetPath !== repoRoot) {
-  console.log(JSON.stringify({ permission: "allow" }));
+const result = await checkProtectedMainRepo(targetPath, resolveCwd);
+if (result.action === "deny") {
+  denyResponse(result.reason);
   process.exit(0);
 }
 
-// 操作対象が.wt/配下なら許可
-if (targetPath.includes("/.wt/")) {
-  console.log(JSON.stringify({ permission: "allow" }));
-  process.exit(0);
-}
-
-// worktree内なら許可
-const gitDir = await runSafe(["git", "-C", gitCwd, "rev-parse", "--git-dir"]);
-if (gitDir?.includes(".git/worktrees")) {
-  console.log(JSON.stringify({ permission: "allow" }));
-  process.exit(0);
-}
-
-// 保護ブランチでなければ許可
-const protectedBranches = ["main", "master", "develop"];
-const branch = await runSafe(["git", "-C", gitCwd, "rev-parse", "--abbrev-ref", "HEAD"]);
-if (!branch || !protectedBranches.includes(branch)) {
-  console.log(JSON.stringify({ permission: "allow" }));
-  process.exit(0);
-}
-
-const reason = `メインリポジトリの保護ブランチ(${branch})でのファイル変更はブロックされています。worktreeを作成して作業してください。`;
-
-console.log(
-  JSON.stringify({
-    permission: "deny",
-    user_message: reason,
-    agent_message: reason,
-  }),
-);
+allowResponse();
