@@ -60,6 +60,10 @@ export const blockedOperations: BlockedOperation[] = [
     pattern: new RegExp(`${GIT_PREFIX.source}(apply|am)\\b(?!.*--abort)`),
     label: "パッチ適用",
   },
+  {
+    pattern: new RegExp(`${GIT_PREFIX.source}mv\\b`),
+    label: "git mv",
+  },
 ];
 
 export type BranchGuardInput = ShellHookInput;
