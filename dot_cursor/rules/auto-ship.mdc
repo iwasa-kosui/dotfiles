@@ -1,0 +1,51 @@
+---
+description: 実装タスク完了時にコミット・push・draft PRまで自動実行する
+alwaysApply: true
+---
+
+# 作業完了時の自動 ship
+
+実装・設定変更・バグ修正など、リポジトリに手を入れたタスクが完了したら、ユーザーの追加指示を待たずコミットから draft PR まで実行する。
+
+## いつ実行するか
+
+- タスクの目的が達成され、必要な検証も済んでいる
+- worktree 内、または main / master 以外の feature ブランチで作業している
+- 未コミットの変更がある、またはコミット済みだが未 push / PR 未作成
+
+## いつ実行しないか
+
+- 質問・調査・コードレビュー・設計相談のみのタスク
+- ユーザーが「まだコミットしない」「WIP」「下書きのまま」等と明示した場合
+- ステージ対象に機密ファイル（`.env`、credentials 等）が含まれる場合
+
+## 手順
+
+`pr` スキルに従い、以下を **確認を求めず** 実行する。
+
+1. `git status` / `git diff` で変更を把握する
+2. `gh pr view` で既存 PR の有無を確認する
+3. 未コミットがあれば `git add <path>` で個別ステージする（`git add -A` / `git add .` は使わない）
+4. Conventional Commits（scope 必須）でコミットする。`commit-message.mdc` に従う
+5. `git push -u origin <branch>` する
+6. draft PR を新規作成するか、既存 PR のタイトル・本文を更新する
+
+完了時に「コミットや PR が必要なら指示をください」と書かない。代わりに PR URL を返す。
+
+## Cursor User Rules との整合
+
+Cursor Settings → Rules に次の User Rules がある場合、**削除するか下記に差し替える**。旧ルールの「明示的な依頼時のみコミット／PR 作成」は本ルールと矛盾する。
+
+### committing-changes-with-git（差し替え用）
+
+```
+実装・設定変更タスクが完了し、未コミットの変更がある場合は、ユーザーの追加指示を待たずコミットする。auto-ship.mdc の「いつ実行しないか」に該当する場合のみ保留する。
+
+コミット時は commit-message.mdc に従う。git add -A / git add . は使わず、ファイルを個別指定する。機密ファイルはコミットしない。
+```
+
+### creating-pull-requests（差し替え用）
+
+```
+実装・設定変更タスク完了時は、ユーザーの明示的な依頼を待たず push と draft PR 作成（または既存 PR 更新）まで実行する。pr スキルと auto-ship.mdc に従う。
+```

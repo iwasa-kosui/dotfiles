@@ -13,6 +13,7 @@ alwaysApply: true
 - `shell-command-style.mdc` — シェルコマンドの書き方（権限プロンプト回避）
 - `secret-file-access.mdc` — 秘密情報ファイルへのアクセス禁止
 - `subagent-tool-usage.mdc` — サブエージェントでのBash使用制限
+- `auto-ship.mdc` — 実装完了時のコミット・push・draft PR 自動実行
 
 ## オンデマンド適用 (`alwaysApply: false`)
 
