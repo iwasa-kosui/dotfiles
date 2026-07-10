@@ -31,21 +31,3 @@ alwaysApply: true
 6. draft PR を新規作成するか、既存 PR のタイトル・本文を更新する
 
 完了時に「コミットや PR が必要なら指示をください」と書かない。代わりに PR URL を返す。
-
-## Cursor User Rules との整合
-
-Cursor Settings → Rules に次の User Rules がある場合、**削除するか下記に差し替える**。旧ルールの「明示的な依頼時のみコミット／PR 作成」は本ルールと矛盾する。
-
-### committing-changes-with-git（差し替え用）
-
-```
-実装・設定変更タスクが完了し、未コミットの変更がある場合は、ユーザーの追加指示を待たずコミットする。auto-ship.mdc の「いつ実行しないか」に該当する場合のみ保留する。
-
-コミット時は commit-message.mdc に従う。git add -A / git add . は使わず、ファイルを個別指定する。機密ファイルはコミットしない。
-```
-
-### creating-pull-requests（差し替え用）
-
-```
-実装・設定変更タスク完了時は、ユーザーの明示的な依頼を待たず push と draft PR 作成（または既存 PR 更新）まで実行する。pr スキルと auto-ship.mdc に従う。
-```
