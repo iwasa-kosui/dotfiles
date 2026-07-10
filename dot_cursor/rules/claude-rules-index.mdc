@@ -14,13 +14,13 @@ alwaysApply: true
 - `secret-file-access.mdc` — 秘密情報ファイルへのアクセス禁止
 - `subagent-tool-usage.mdc` — サブエージェントでのBash使用制限
 - `auto-ship.mdc` — 実装完了時のコミット・push・draft PR 自動実行
+- `worktree-workflow.mdc` — git worktreeの運用ルール（mainチェックアウトでの編集禁止）
 
 ## オンデマンド適用 (`alwaysApply: false`)
 
 - `commit-message.mdc` — コミットメッセージとコミット分割
 - `slack-mcp.mdc` — Slack MCPサーバの使い方
 - `confluence-jira-cli.mdc` — Confluence/Jira CLIのエラーハンドリング
-- `worktree-workflow.mdc` — git worktreeの運用ルール
 - `doc-driven.mdc` — ドキュメント駆動開発
 - `github-review.mdc` — GitHub PRレビューコメント書式
 - `pr-creation.mdc` — PR作成ワークフロー

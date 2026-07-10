@@ -1,12 +1,34 @@
 ---
-description: git worktreeの運用ルール
-alwaysApply: false
+description: git worktreeの運用ルール（mainチェックアウトでの編集禁止）
+alwaysApply: true
 ---
 
 # Worktree Workflow
 
-- worktreeは `.wt/<ブランチ名>` に作成される（`git-wt "<ブランチ名>"` で作成。CLAUDE.md の Worktree Workflow を参照）
-- 新タスク開始時はworktreeを作成してから作業する
+## 絶対ルール
+
+ワークスペースが main チェックアウト（リポジトリ直下）でも、**ファイルの作成・編集・削除は worktree 配下のみ**で行う。
+
+- メインリポジトリ直下（パスに `/.wt/` を含まない）では `Write` / `StrReplace` / `Delete` / `EditNotebook` / `ApplyPatch` を使わない
+- **`git mv` は worktree 配下でのみ実行する**。メインリポジトリの main / master / develop では使わない
+- ファイル変更を伴う `Shell` も worktree 内の `working_directory` で実行する
+- 編集対象のパスは worktree 内の絶対パスを使う（例: `/Users/.../chezmoi/.wt/fix/foo/dot_cursor/...`）
+
+フックが main 上の変更をブロックするが、ブロックされるまで main で編集を試みない。最初から worktree で作業する。
+
+## セッション開始時
+
+実装作業を含むプロンプトでは、**ファイルを触る前に** worktree を作成する。
+
+1. ブランチ名を Conventional Commits 風に決める（例: `fix/nvim-keymap-conflict`）
+2. `wt_path=$(git-wt "<ブランチ名>" --nocd)` で worktree を作成
+3. 以降の編集は `$wt_path/` 配下の絶対パスで行う
+
+既に worktree 内でセッションを開始している場合は新規作成せず、その worktree で続行する。
+
+## 運用
+
+- worktree は `.wt/<ブランチ名>` に作成される
 - 作業完了後は `auto-ship.mdc` に従い、コミット・push・draft PR まで自動実行する
-- 既存worktreeで作業を再開する際は、`git fetch origin <ブランチ名>` でリモートを取得し、ローカルが `origin/<ブランチ名>` より古ければ `git rebase origin/<ブランチ名>` で最新化してから作業を始める（リモート未pushの場合はスキップ）
-- PR マージ後はworktreeを削除する
+- 既存 worktree で再開する際は `git fetch origin <ブランチ名>` し、ローカルが `origin/<ブランチ名>` より古ければ `git rebase origin/<ブランチ名>` で最新化する（リモート未 push の場合はスキップ）
+- PR マージ後は `git wt -d <ブランチ名>` で worktree を削除する
