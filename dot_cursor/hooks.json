@@ -3,6 +3,10 @@
   "hooks": {
     "beforeShellExecution": [
       {
+        "command": "bun ./hooks/main-repo-shell-guard.ts",
+        "failClosed": true
+      },
+      {
         "command": "bun ./hooks/main-branch-guard.ts",
         "failClosed": true
       },
@@ -24,12 +28,17 @@
     "preToolUse": [
       {
         "command": "bun ./hooks/secret-file-guard.ts",
-        "matcher": "Write|StrReplace|Delete|EditNotebook|Create",
+        "matcher": "Write|StrReplace|Delete|EditNotebook|ApplyPatch",
         "failClosed": true
       },
       {
         "command": "bun ./hooks/main-repo-guard.ts",
-        "matcher": "Write|StrReplace|Delete|EditNotebook|Create",
+        "matcher": "Write|StrReplace|Delete|EditNotebook|ApplyPatch",
+        "failClosed": true
+      },
+      {
+        "command": "bun ./hooks/main-repo-shell-guard.ts",
+        "matcher": "Shell",
         "failClosed": true
       },
       {
