@@ -5,4 +5,4 @@ alwaysApply: false
 
 # PR作成
 
-Draft で作成し、自己レビュー（review-codes / review-docs スキル）後に Ready for review にする。
+Draft で作成し、自己レビュー（review-codes / review-docs スキル）後に Ready for review にする。実装完了時の自動実行は `auto-ship.mdc` を参照。
