@@ -42,6 +42,21 @@
         "failClosed": true
       },
       {
+        "command": "bun ./hooks/main-branch-guard.ts",
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "bun ./hooks/force-push-guard.ts",
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
+        "command": "bun ./hooks/gh-comment-prefix-guard.ts",
+        "matcher": "Shell",
+        "failClosed": true
+      },
+      {
         "command": "bun ./hooks/webfetch-guard.ts",
         "matcher": "WebFetch",
         "failClosed": true
