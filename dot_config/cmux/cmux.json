@@ -1,7 +1,27 @@
 {
-  "$schema" : "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json",
-  "customSidebars" : {
-    "renderer" : "inProcess"
+  "$schema": "https://raw.githubusercontent.com/manaflow-ai/cmux/main/web/data/cmux.schema.json",
+  "schemaVersion": 1,
+  "app": {
+    "appearance": "dark",
+    "appIcon": "dark",
+    "sendAnonymousTelemetry": false
   },
-  "schemaVersion" : 1
+  "notifications": {
+    "sound": "Ping"
+  },
+  "sidebarAppearance": {
+    "tintOpacity": 0.18
+  },
+  "browser": {
+    "showSearchSuggestions": false,
+    "openTerminalLinksInCmuxBrowser": false,
+    "interceptTerminalOpenCommandInCmuxBrowser": false,
+    "discardHiddenWebViews": false,
+    "urlsToAlwaysOpenExternally": [
+      "kakehashi.atlassian.net"
+    ]
+  },
+  "customSidebars": {
+    "renderer": "inProcess"
+  }
 }

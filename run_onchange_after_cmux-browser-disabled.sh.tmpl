@@ -1,0 +1,19 @@
+#!/bin/bash
+{{ if eq .chezmoi.os "darwin" -}}
+# cmux.json hash: {{ include "dot_config/cmux/cmux.json" | sha256sum }}
+set -euo pipefail
+
+if ! command -v cmux >/dev/null 2>&1; then
+  echo "cmux not found; skip browser disable"
+  exit 0
+fi
+
+status=$(cmux browser-status 2>/dev/null || true)
+if [ "$status" = "disabled" ]; then
+  echo "cmux browser already disabled"
+  exit 0
+fi
+
+echo "Disabling cmux embedded browser..."
+cmux disable-browser
+{{ end -}}
