@@ -23,7 +23,7 @@ const denyRules: DenyRule[] = [
   },
   {
     pattern: /\b(curl|wget)\b/,
-    reason: "curl/wget による直接ネットワーク取得はブロックされています。必要なら目的を明示して承認を取ってください。",
+    reason: "curl/wget による直接ネットワーク取得はブロックされています。必要なら、手順書を作成してユーザーに実行させてください。"
   },
   {
     pattern: /\bdocker\s+run\b.*\s--privileged\b|\bdocker\s+system\s+prune\b/,
