@@ -1,8 +1,14 @@
 # https://nikitabobko.github.io/AeroSpace/guide
 
+config-version = 2
+
 after-login-command = []
 after-startup-command = []
 start-at-login = true
+
+# config-version = 2 では persistent-workspaces を明示指定する必要がある
+# （v1 ではキーバインドの右辺から暗黙推論されていた）
+persistent-workspaces = ['1', '2', '3', '4', '5', '6', '7', '8', '9']
 
 enable-normalization-flatten-containers = true
 enable-normalization-opposite-orientation-for-nested-containers = true
