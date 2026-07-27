@@ -9,7 +9,17 @@ if ! command -v brew &> /dev/null; then
   eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
+brewfile="{{ .chezmoi.sourceDir }}/Brewfile"
+
+# Homebrew 6.0 以降は非公式tapのformula/caskの読み込みにtrustが必要で、
+# 未trustのままだとbrew bundleが対話プロンプトで止まる。
+# tap単位のtrustは配下のformula/caskにも及ぶため、Brewfileのtap行をtrustすれば足りる
+echo "Trusting taps..."
+sed -n 's/^tap "\([^"]*\)".*/\1/p' "$brewfile" | while IFS= read -r tap; do
+  brew trust --taps "$tap"
+done
+
 # Install packages from Brewfile
 echo "Running brew bundle..."
-brew bundle --file="{{ .chezmoi.sourceDir }}/Brewfile"
+brew bundle --file="$brewfile"
 {{ end -}}
