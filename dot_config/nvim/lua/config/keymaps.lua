@@ -36,3 +36,17 @@ end, { desc = "Copy project-relative path" })
 vim.keymap.set("n", "<leader>cpf", function()
   copy_path("filename")
 end, { desc = "Copy filename" })
+
+local function open_current_branch_pr()
+  local branch = vim.fn.systemlist({ "git", "rev-parse", "--abbrev-ref", "HEAD" })[1]
+  if vim.v.shell_error ~= 0 or not branch or branch == "" or branch == "HEAD" then
+    vim.notify("current branch not found", vim.log.levels.ERROR)
+    return
+  end
+  local out = vim.fn.system({ "gh", "pr", "view", branch, "--web" })
+  if vim.v.shell_error ~= 0 then
+    vim.notify("gh pr view failed: " .. out, vim.log.levels.ERROR)
+  end
+end
+
+vim.keymap.set("n", "<leader>gp", open_current_branch_pr, { desc = "Open PR (browser)" })
