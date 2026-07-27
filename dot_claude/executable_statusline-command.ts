@@ -5,7 +5,7 @@
 // Line 2: 5h rate limit progress bar
 // Line 3: 7d rate limit progress bar
 
-import { readInput, runSafe } from "./hooks/lib.ts";
+import { readInput, runSafe, getWorktreeName } from "./hooks/lib.ts";
 
 // ---------- Types ----------
 interface StdinInput {
@@ -114,19 +114,6 @@ async function getGitBranch(cwd: string): Promise<string | null> {
     "--short",
     "HEAD",
   ]);
-}
-
-async function getWorktreeName(cwd: string): Promise<string | null> {
-  const [gitDir, commonDir] = await Promise.all([
-    runSafe(["git", "-C", cwd, "--no-optional-locks", "rev-parse", "--git-dir"]),
-    runSafe(["git", "-C", cwd, "--no-optional-locks", "rev-parse", "--git-common-dir"]),
-  ]);
-  if (!gitDir || !commonDir || gitDir === commonDir) return null;
-  const toplevel = await runSafe([
-    "git", "-C", cwd, "--no-optional-locks", "rev-parse", "--show-toplevel",
-  ]);
-  if (!toplevel) return null;
-  return toplevel.split("/").pop() ?? null;
 }
 
 // ---------- Main ----------
