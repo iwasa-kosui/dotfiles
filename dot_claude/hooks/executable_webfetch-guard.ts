@@ -3,11 +3,25 @@
 
 import { readInput } from "./lib.ts";
 
+// PreToolUse はトップレベルの decision ではなく hookSpecificOutput.permissionDecision を読む。
+// 何も出力せず終了した場合は通常のパーミッションフローに委ねられる。
+function deny(reason: string): never {
+  console.log(
+    JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: reason,
+      },
+    }),
+  );
+  process.exit(0);
+}
+
 const input = await readInput<{ tool_input?: { url?: string } }>();
 const url = input.tool_input?.url ?? "";
 
 if (!url) {
-  console.log(JSON.stringify({ decision: "allow" }));
   process.exit(0);
 }
 
@@ -15,19 +29,12 @@ let host: string;
 try {
   host = new URL(url).hostname;
 } catch {
-  console.log(JSON.stringify({ decision: "allow" }));
   process.exit(0);
 }
 
 const localhost = ["localhost", "127.0.0.1", "0.0.0.0", "::1"];
 if (localhost.includes(host)) {
-  console.log(
-    JSON.stringify({
-      decision: "block",
-      reason: `ローカルホストへのアクセスはブロックされています: ${host}`,
-    }),
-  );
-  process.exit(0);
+  deny(`ローカルホストへのアクセスはブロックされています: ${host}`);
 }
 
 const privatePatterns = [
@@ -36,23 +43,9 @@ const privatePatterns = [
   /^192\.168\.\d+\.\d+$/,
 ];
 if (privatePatterns.some((p) => p.test(host))) {
-  console.log(
-    JSON.stringify({
-      decision: "block",
-      reason: `プライベートネットワークへのアクセスはブロックされています: ${host}`,
-    }),
-  );
-  process.exit(0);
+  deny(`プライベートネットワークへのアクセスはブロックされています: ${host}`);
 }
 
 if (/\.(internal|local|corp)$/.test(host)) {
-  console.log(
-    JSON.stringify({
-      decision: "block",
-      reason: `内部ドメインへのアクセスはブロックされています: ${host}`,
-    }),
-  );
-  process.exit(0);
+  deny(`内部ドメインへのアクセスはブロックされています: ${host}`);
 }
-
-console.log(JSON.stringify({ decision: "allow" }));

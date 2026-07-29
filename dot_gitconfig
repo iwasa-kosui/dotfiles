@@ -12,6 +12,8 @@
 
 [init]
 	defaultBranch = main
+[wt]
+	hook = wt-link-local-settings
 [credential "https://github.com"]
 	helper = 
 	helper = !/opt/homebrew/bin/gh auth git-credential

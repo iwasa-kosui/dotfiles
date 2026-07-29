@@ -1,0 +1,130 @@
+#!/bin/sh
+# worktree の .claude/settings.local.json をメインリポジトリのファイルへの symlink にする。
+#
+# settings.local.json は ~/.config/git/ignore で無視されるため worktree には複製されない。
+# 結果として worktree ごとに許可設定がゼロから始まり、同じ WebFetch(domain:...) や
+# Bash(...) の許可を何度も聞かれる。さらに「今後聞かない」を選んでも worktree 側の
+# ファイルに書かれるだけで、worktree を削除すると消える。
+# symlink にしておけば許可はメインリポジトリ側に一元化され、全 worktree で共有・蓄積される。
+#
+# git-wt の wt.hook から呼ばれる（worktree 作成直後、新しい worktree を cwd として実行）。
+#
+# 使い方:
+#   wt-link-local-settings         カレントの worktree を処理
+#   wt-link-local-settings --all   リポジトリ内の全 worktree を処理（既存 worktree の後追い用）
+
+set -eu
+
+REL_PATH=".claude/settings.local.json"
+
+die() {
+	printf 'wt-link-local-settings: %s\n' "$1" >&2
+	exit 1
+}
+
+# worktree からメインリポジトリのルートを求める。
+main_root_of() {
+	_common=$(git -C "$1" rev-parse --path-format=absolute --git-common-dir) ||
+		die "not a git repository: $1"
+	case "$_common" in
+	*/.git) printf '%s\n' "${_common%/.git}" ;;
+	*) die "unsupported repository layout: $_common" ;;
+	esac
+}
+
+# 一時ファイルで元ファイルを差し替える。mktemp は 0600 で作るので元のモードに合わせ直す。
+replace_file() {
+	_target=$1
+	_tmp=$2
+	chmod "$(stat -f '%Lp' "$_target" 2>/dev/null || printf 600)" "$_tmp"
+	mv "$_tmp" "$_target"
+}
+
+# jq の結果を元ファイルと同じディレクトリ経由で置き換える。
+write_json() {
+	_target=$1
+	shift
+	_tmp=$(mktemp "${_target}.XXXXXX")
+	if jq "$@" "$_target" >"$_tmp"; then
+		replace_file "$_target" "$_tmp"
+	else
+		rm -f "$_tmp"
+		die "failed to update $_target"
+	fi
+}
+
+# worktree 側に溜まっていた許可をメインリポジトリのファイルへ吸収する。
+# permissions の allow / deny / ask / additionalDirectories は和集合を取り、
+# それ以外のキーは worktree 側を優先する。
+absorb_into_main() {
+	_main_file=$1
+	_wt_file=$2
+	_tmp=$(mktemp "${_main_file}.XXXXXX")
+	if jq -s '
+		def union($a; $b): (($a // []) + ($b // [])) | unique;
+		(.[0] // {}) as $m | (.[1] // {}) as $w |
+		($m * $w)
+		| .permissions = (
+			(($m.permissions // {}) * ($w.permissions // {}))
+			| .allow = union($m.permissions.allow; $w.permissions.allow)
+			| .deny = union($m.permissions.deny; $w.permissions.deny)
+			| .ask = union($m.permissions.ask; $w.permissions.ask)
+			| .additionalDirectories = union(
+				$m.permissions.additionalDirectories;
+				$w.permissions.additionalDirectories
+			)
+			| with_entries(select((.value | type) != "array" or (.value | length) > 0))
+		)
+	' "$_main_file" "$_wt_file" >"$_tmp"; then
+		replace_file "$_main_file" "$_tmp"
+	else
+		rm -f "$_tmp"
+		die "failed to merge $_wt_file into $_main_file"
+	fi
+}
+
+link_worktree() {
+	_wt=$1
+	_main=$2
+	# メインリポジトリ自身は symlink 化の対象外。
+	[ "$_wt" != "$_main" ] || return 0
+
+	_main_file="$_main/$REL_PATH"
+	_wt_file="$_wt/$REL_PATH"
+
+	mkdir -p "$(dirname "$_main_file")"
+	[ -e "$_main_file" ] || printf '{}\n' >"$_main_file"
+
+	# worktree のセッションからメインリポジトリのファイルを読めるようにする。
+	write_json "$_main_file" --arg dir "$_main" \
+		'.permissions.additionalDirectories =
+			(((.permissions.additionalDirectories // []) + [$dir]) | unique)'
+
+	# 通常ファイルとして存在する場合は、書き込み済みの許可を失わないよう先に吸収する。
+	if [ -f "$_wt_file" ] && [ ! -L "$_wt_file" ]; then
+		absorb_into_main "$_main_file" "$_wt_file"
+		rm -f "$_wt_file"
+	fi
+
+	mkdir -p "$(dirname "$_wt_file")"
+	ln -sfn "$_main_file" "$_wt_file"
+	printf 'linked %s -> %s\n' "$_wt_file" "$_main_file"
+}
+
+case "${1:-}" in
+--all)
+	main_root=$(main_root_of .)
+	git -C "$main_root" worktree list --porcelain |
+		sed -n 's/^worktree //p' |
+		while IFS= read -r wt; do
+			link_worktree "$wt" "$main_root"
+		done
+	;;
+"")
+	main_root=$(main_root_of .)
+	link_worktree "$(git rev-parse --path-format=absolute --show-toplevel)" "$main_root"
+	;;
+*)
+	die "unknown argument: $1"
+	;;
+esac
