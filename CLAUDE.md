@@ -78,13 +78,13 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
    wt_path=$(git-wt "<ブランチ名>" "origin/<ブランチ名>" --nocd)
    ```
 
-3. **settings.local.json の生成**（メインリポジトリへのアクセスを許可）
-   ```bash
-   mkdir -p "$wt_path/.claude"
-   cat > "$wt_path/.claude/settings.local.json" <<EOF
-   {"permissions": {"additionalDirectories": ["<メインリポジトリの絶対パス>"]}}
-   EOF
-   ```
+3. **settings.local.json には触らない**
+
+   `wt.hook` に登録した `wt-link-local-settings` が worktree 作成直後に走り、
+   `.claude/settings.local.json` をメインリポジトリのファイルへの symlink にする。
+   `additionalDirectories` もそこで設定される。
+   worktree 側で `cat >` などで上書きすると symlink 越しにメインリポジトリのファイルを
+   壊すので、このファイルを直接書き換えてはならない。
 
 4. **worktreeへ移動**
    ```bash
