@@ -15,7 +15,7 @@
         "failClosed": true
       },
       {
-        "command": "bun ./hooks/gh-comment-prefix-guard.ts",
+        "command": "bun ./hooks/gh-comment-format-guard.ts",
         "failClosed": true
       }
     ],
@@ -52,7 +52,7 @@
         "failClosed": true
       },
       {
-        "command": "bun ./hooks/gh-comment-prefix-guard.ts",
+        "command": "bun ./hooks/gh-comment-format-guard.ts",
         "matcher": "Shell",
         "failClosed": true
       },

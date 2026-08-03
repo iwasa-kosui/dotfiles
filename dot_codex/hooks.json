@@ -36,7 +36,7 @@
           },
           {
             "type": "command",
-            "command": "bun ~/.codex/hooks/gh-comment-prefix-guard.ts"
+            "command": "bun ~/.codex/hooks/gh-comment-format-guard.ts"
           }
         ]
       },

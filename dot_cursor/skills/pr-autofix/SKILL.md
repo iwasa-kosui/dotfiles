@@ -202,13 +202,21 @@ mkdir -p /tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-1
    タイムアウトを30分とし、超えたらユーザーに状況を確認する。
 5. **レビューコメントへの返信**（該当する場合のみ）:
    - 解決した `actionable` なinline review commentにスレッド返信
-   - 書式: プロジェクトの `CLAUDE.md` または `~/.claude/rules/github-review.md` のprefixルールに従う（kkhsなら `🤖 Claude Code says:`、それ以外は `🤖 Claude Code より:` 等、読み取って判断）
+   - 書式: 本文全体を details ブロックで囲む（`~/.cursor/rules/github-review.mdc`）。囲まないと `gh-comment-format-guard.ts` hook にブロックされる
    - コミットハッシュを本文に含める場合は **半角括弧 `()`** で囲む。全角括弧 `（）` は使わない（例: `修正しました (e4dcbb406)`）
    - API:
      ```bash
+     sha=$(git rev-parse --short HEAD)
+     cat > /tmp/pr-reply.md <<EOF
+     <details>
+     <summary>🤖 Claude Code</summary>
+
+     修正しました ($sha)
+
+     </details>
+     EOF
      gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies \
-       -f body="$PREFIX
-     修正しました ($(git rev-parse --short HEAD))"
+       -F body=@/tmp/pr-reply.md
      ```
 
 全コミット完了後、Step 1 に戻って再収集（`iteration-2` ディレクトリで実行）。
