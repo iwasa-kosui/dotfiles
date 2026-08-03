@@ -107,5 +107,15 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 
 ## PR Review Comment Rules
 
-- PRのレビューコメントに返信する際は、必ず `🤖 Claude Code says: ` で本文を開始する
-- 修正済みの場合はコミットのSHA1ハッシュを本文に含める（例: `🤖 Claude Code says: 修正しました (e4dcbb406)`）
+PRのレビューコメントに返信する際は、本文全体を details ブロックで囲む。修正済みの場合はコミットのSHA1ハッシュを本文に含める。
+
+````markdown
+<details>
+<summary>🤖 Claude Code</summary>
+
+修正しました (e4dcbb406)
+
+</details>
+````
+
+`<summary>` 行の後と `</details>` の前の空行は省略しない。空行がないとGitHubが中身をMarkdownとして解釈しない。
