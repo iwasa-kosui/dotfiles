@@ -1,0 +1,70 @@
+#!/bin/bash
+# modify script: Codex のローカル state を保持したまま、statusline 表示だけ管理する。
+
+set -euo pipefail
+
+current=$(cat)
+managed_status_line='status_line = [ "current_dir", "git_branch", "model_with_reasoning", "context_used", "five_hour_limit", "weekly_limit", "used_tokens" ]'
+managed_status_line_use_colors='status_line_use_colors = true'
+
+awk \
+  -v status_line="$managed_status_line" \
+  -v status_line_use_colors="$managed_status_line_use_colors" '
+function emit_managed_keys() {
+  print status_line
+  print status_line_use_colors
+}
+
+function emit_tui_block() {
+  print "[tui]"
+  emit_managed_keys()
+  print ""
+}
+
+BEGIN {
+  in_tui = 0
+  saw_tui = 0
+}
+
+/^[[:space:]]*\[[^]]+\][[:space:]]*$/ {
+  if (in_tui) {
+    emit_managed_keys()
+    if (prev != "") print ""
+  }
+
+  if (!saw_tui && $0 ~ /^[[:space:]]*\[tui\./) {
+    if (NR > 1 && prev != "") print ""
+    emit_tui_block()
+    saw_tui = 1
+  }
+
+  in_tui = ($0 ~ /^[[:space:]]*\[tui\][[:space:]]*$/)
+  if (in_tui) saw_tui = 1
+  print
+  prev = $0
+  next
+}
+
+in_tui && /^[[:space:]]*status_line(_use_colors)?[[:space:]]*=/ {
+  next
+}
+
+in_tui && /^[[:space:]]*$/ {
+  next
+}
+
+{
+  print
+  prev = $0
+}
+
+END {
+  if (in_tui) {
+    if (prev != "") print ""
+    emit_managed_keys()
+  } else if (!saw_tui) {
+    if (NR > 0 && prev != "") print ""
+    emit_tui_block()
+  }
+}
+' <<< "$current"
