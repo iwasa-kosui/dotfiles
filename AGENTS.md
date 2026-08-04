@@ -97,6 +97,12 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 - PR commits follow Conventional Commits format: `<type>(<scope>): <description>`
 - PRs are created as drafts with `Co-Authored-By: Codex Opus 4.5 <noreply@anthropic.com>`
 
+## GitHub CLI Usage
+
+- ユーザーが `gh` コマンドを使えると言っている場合、またはリポジトリの運用ルール・スキルが `gh` の使用を前提としている場合は、`gh auth status` の失敗だけで `gh` 全体を使えないと判断しない。
+- `gh auth status` が token invalid などを返しても、まず目的の `gh` コマンド（例: `gh pr create`, `gh pr view`, `gh pr edit`）を実行する。目的のコマンド自体が失敗した場合にだけ、認証や代替手段を検討する。
+- PR作成・更新では、GitHubコネクタやWeb APIへ迂回する前に、原則として `gh pr create` / `gh pr edit` を試す。
+
 ## Commit Message Rules
 
 - コミットメッセージは変更の「What（何を）」と「Why（なぜ）」を本質的に説明すること
