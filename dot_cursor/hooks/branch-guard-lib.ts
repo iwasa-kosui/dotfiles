@@ -9,22 +9,31 @@ import { GIT_PREFIX, isProtectedBranch } from "./shell-hook-lib.ts";
 
 export type BlockedOperation = { pattern: RegExp; label: string };
 
+// サブコマンド名の直後にハイフンが続くケースは別コマンドなので除外する。
+// これを付けないと merge-base / merge-tree / commit-tree / checkout-index が
+// 読み取り専用のコマンドなのにブロックされる。
+const NOT_HYPHENATED = "(?!-)";
+
 export const blockedOperations: BlockedOperation[] = [
   {
     // git checkout -- <file> / --patch によるファイル復元は許可
     pattern: new RegExp(
-      `${GIT_PREFIX.source}(switch|checkout)\\b(?!.*\\s--\\s)(?!.*--patch)(?!.*-p\\b)`,
+      `${GIT_PREFIX.source}(switch|checkout)\\b${NOT_HYPHENATED}(?!.*\\s--\\s)(?!.*--patch)(?!.*-p\\b)`,
     ),
     label: "ブランチ切り替え",
   },
   {
     // --dry-run はコミットしないので許可
-    pattern: new RegExp(`${GIT_PREFIX.source}commit\\b(?!.*--dry-run)`),
+    pattern: new RegExp(
+      `${GIT_PREFIX.source}commit\\b${NOT_HYPHENATED}(?!.*--dry-run)`,
+    ),
     label: "コミット",
   },
   {
     // --abort は中断のみなので許可
-    pattern: new RegExp(`${GIT_PREFIX.source}merge\\b(?!.*--abort)`),
+    pattern: new RegExp(
+      `${GIT_PREFIX.source}merge\\b${NOT_HYPHENATED}(?!.*--abort)`,
+    ),
     label: "マージ",
   },
   {
