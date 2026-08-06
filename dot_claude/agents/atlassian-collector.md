@@ -8,7 +8,9 @@ description: >-
   メインの会話で全文を読ませずここで要約する。ネットワークエラーのリトライもここで完結させる。
   課題やページの作成・更新は、呼び出し元から明示的に指示された場合のみ行う。
 tools: Bash, Read
-skills: jira-cli:jira, confluence-cli:confluence
+skills:
+  - jira-cli:jira
+  - confluence-cli:confluence
 effort: medium
 ---
 
