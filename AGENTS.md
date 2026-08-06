@@ -95,7 +95,7 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 
 - **Use Japanese** when communicating with the user
 - PR commits follow Conventional Commits format: `<type>(<scope>): <description>`
-- PRs are created as drafts with `Co-Authored-By: Codex Opus 4.5 <noreply@anthropic.com>`
+- PRs are created as drafts with a `Co-Authored-By` trailer naming the model that is actually running. Do not hardcode a version (see `dot_codex/skills/pr/SKILL.md`)
 
 ## GitHub CLI Usage
 
