@@ -14,7 +14,7 @@ You MUST use Japanese.
 
 ### ステップ1: コンテキスト収集（サブエージェントに委譲）
 
-Agent ツールでサブエージェントを起動し、既存の spec / plan / design doc からの受入条件抽出を委譲する。
+Agent ツールで `subagent_type`: `Explore` のサブエージェントを起動し、既存の spec / plan / design doc からの受入条件抽出を委譲する。
 
 ```
 サブエージェントへのプロンプト:
