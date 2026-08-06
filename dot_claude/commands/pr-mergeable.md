@@ -23,7 +23,7 @@ gh pr view --json number,title,url,isDraft,mergeable,headRefName,baseRefName
 
 ### ステップ2: 診断（サブエージェントに委譲）
 
-Agent ツールで **1つのサブエージェント** を起動し、以下の診断を委譲する。
+Agent ツールで **1つの `gh-collector` サブエージェント**（`subagent_type`: `gh-collector`）を起動し、以下の診断を委譲する。
 サブエージェントへのプロンプトには、ステップ1で取得した PR 情報（number, owner, repo, mergeable, isDraft, baseRefName）を含めること。
 
 ```

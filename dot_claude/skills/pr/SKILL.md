@@ -25,7 +25,9 @@ draft の Pull Request を作成、または既存 PR を更新するスキル�
 
 ### 1. 変更内容の把握
 
-`git status` と `git diff`（必要に応じて base branch との `git diff <base>...HEAD`）で、何が変わったかを把握する。複数コミットがある場合は `git log` で全体像を確認する。
+`git status` で未コミットの変更を確認する。
+
+ブランチ上に複数コミットがある場合、または diff が大きい場合は、`subagent_type`: `gh-collector` のサブエージェントに委譲して要約を受け取る。`git log` と `git diff <base>...HEAD` の全文をメインの文脈に読み込むと、本文を書く前にコンテキストを使い切る。単一コミットで diff が小さい場合は直接 `git diff` を読んでよい。
 
 ### 2. 既存PRの確認
 
@@ -140,7 +142,7 @@ gh pr create --draft --title "<conventional commit style title>" --body-file /tm
 既存PRがある場合は以下を実施する。
 
 1. 未コミットの変更があれば手順4・5と同じ要領でステージ・コミット・push
-2. ブランチ上の全コミットを再分析する（`git log` と base branch との `git diff`）。最新コミットだけでなく、PRに含まれるすべての変更を踏まえること
+2. ブランチ上の全コミットを再分析する。`subagent_type`: `gh-collector` のサブエージェントに `git log` と base branch との `git diff` の要約を委譲する。最新コミットだけでなく、PRに含まれるすべての変更を踏まえること
 3. テンプレートを再確認（手順6a）
 4. 現在の変更全体に基づいてタイトルと description を書き直す。「背景／内容／論点」原則は新規作成時と同じ
 5. 本文を一時ファイル経由で渡して更新:
@@ -156,7 +158,9 @@ gh pr edit --title "<更新後のタイトル>" --body-file /tmp/pr-body.md
 
 ## 注意点
 
-- 並列実行可能なステップ（`git status` と `git diff` と `gh pr view` の確認など）は並列で投げる
+- 並列実行可能なステップ（`git status` と `gh pr view` の確認など）は並列で投げる
+- 変更内容の要約は `gh-collector` に委譲し、diff 全文をメインの文脈に持ち込まない
+- 本文を書き終えたら `doc-style-checker` に渡して検査する。PR description も成果物テキストなので `~/.claude/rules/communication-style.md` の検査対象
 - PR は **必ず draft で作成**。Ready for review への移行は別ステップ
 - PRテンプレートがある場合は **その構造を厳守**
 - 本文は「背景／内容／論点」の3点に絞る。論点が無いなら論点セクションは省略する
