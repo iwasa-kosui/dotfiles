@@ -8,6 +8,7 @@
 - `shell-command-style.md` — シェルコマンドの書き方（権限プロンプト回避）
 - `subagent-tool-usage.md` — サブエージェントでのBash使用制限
 - `secret-file-access.md` — 秘密情報ファイルへのアクセス禁止
+- `scope-discipline.md` — 設計判断の確認とスコープの絞り込み
 
 ## オンデマンド適用 (alwaysApply: false)
 
@@ -16,8 +17,10 @@
 - `worktree-workflow.md` — git worktreeの運用ルール
 - `doc-driven.md` — ドキュメント駆動開発
 - `github-review.md` — GitHub PRレビューコメント書式
+- `external-review-feedback.md` — botレビュー指摘の検証手順
 - `pr-creation.md` — PR作成ワークフロー
 - `jira-markdown.md` — JIRA課題の記法
+- `repo-account-scope.md` — 変更が別リポジトリに属すると結論する前の確認
 - `local.md` — リポジトリ一覧（ローカル専用。chezmoi 未管理）
 - `pdf-post-processing.md` — PDF→Markdown変換後の後処理
 - `typescript-discriminated-union.md` — TypeScript判別共用体
