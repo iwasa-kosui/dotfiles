@@ -5,6 +5,7 @@ CLAUDE.md
 !.claude/CLAUDE.md
 README.md
 docs/
+tests/
 LICENSE
 
 # ローカル専用ルール（~/.claude/rules/ に手動配置。chezmoi 管理外）
