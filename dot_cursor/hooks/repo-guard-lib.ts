@@ -1,9 +1,14 @@
 import { dirname, isAbsolute, resolve } from "node:path";
-import { homedir } from "node:os";
 
 import { runSafe } from "./lib.ts";
+import {
+  PROTECTED_BRANCHES,
+  expandHome,
+  isProtectedBranch,
+} from "./shell-hook-lib.ts";
 
-export const PROTECTED_BRANCHES = ["main", "master", "develop"] as const;
+// 既存の import 元を壊さないための再エクスポート。定義元は shell-hook-lib.ts
+export { PROTECTED_BRANCHES, expandHome };
 
 export const WRITE_TOOL_NAMES = new Set([
   "Write",
@@ -13,12 +18,6 @@ export const WRITE_TOOL_NAMES = new Set([
   "ApplyPatch",
   "TabWrite",
 ]);
-
-export function expandHome(path: string): string {
-  return path
-    .replace(/^\$HOME(?=\/|$)/, homedir())
-    .replace(/^~(?=\/|$)/, homedir());
-}
 
 export type RepoGuardResult =
   | { action: "allow" }
@@ -73,7 +72,7 @@ async function checkProtectedMainRepoGitCwd(
     "--abbrev-ref",
     "HEAD",
   ]);
-  if (!branch || !PROTECTED_BRANCHES.includes(branch as (typeof PROTECTED_BRANCHES)[number])) {
+  if (!branch || !isProtectedBranch(branch)) {
     return { action: "allow" };
   }
 

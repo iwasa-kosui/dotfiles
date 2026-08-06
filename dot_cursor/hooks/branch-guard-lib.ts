@@ -1,17 +1,11 @@
+// 保護ブランチで履歴・状態を変更する git コマンドを判定する。
+// dot_claude/hooks/ dot_codex/hooks/ dot_cursor/hooks/ の3箇所で同一内容を保つこと。
+// 拒否レスポンスの JSON 形式はプラットフォームごとに違うため、各 hook 側で組み立てる。
+
 import { dirname } from "node:path";
 
 import { runSafe } from "./lib.ts";
-import {
-  PROTECTED_BRANCHES,
-  allowResponse,
-  denyResponse,
-} from "./repo-guard-lib.ts";
-import {
-  GIT_PREFIX,
-  normalizeShellCommand,
-  resolveShellHookCwd,
-  type ShellHookInput,
-} from "./shell-hook-lib.ts";
+import { GIT_PREFIX, isProtectedBranch } from "./shell-hook-lib.ts";
 
 export type BlockedOperation = { pattern: RegExp; label: string };
 
@@ -66,17 +60,50 @@ export const blockedOperations: BlockedOperation[] = [
   },
 ];
 
-export type BranchGuardInput = ShellHookInput;
+export function findBlockedOperation(command: string): BlockedOperation | undefined {
+  return blockedOperations.find(({ pattern }) => pattern.test(command));
+}
 
 export type BranchGuardResult =
   | { action: "allow" }
   | { action: "deny"; reason: string };
 
+async function isInWorktree(cwd: string): Promise<boolean> {
+  if (cwd.includes("/.wt/")) {
+    return true;
+  }
+
+  const repoRoot = await runSafe(["git", "rev-parse", "--show-toplevel"], {
+    cwd,
+  });
+  if (repoRoot?.includes("/.wt/")) {
+    return true;
+  }
+
+  const gitDir = await runSafe(["git", "rev-parse", "--git-dir"], { cwd });
+  if (!gitDir) {
+    return false;
+  }
+  if (gitDir.includes(".git/worktrees")) {
+    return true;
+  }
+
+  // --git-dir は相対パスで返ることがあるため cwd 基準で絶対化してから判定する
+  if (!gitDir.endsWith("/.git")) {
+    const absoluteGitDir = gitDir.startsWith("/") ? gitDir : `${cwd}/${gitDir}`;
+    if (dirname(absoluteGitDir).includes("/.git/worktrees")) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 export async function checkMainBranchGuard(
   command: string,
   cwd: string,
 ): Promise<BranchGuardResult> {
-  const matched = blockedOperations.find(({ pattern }) => pattern.test(command));
+  const matched = findBlockedOperation(command);
   if (!matched) {
     return { action: "allow" };
   }
@@ -84,57 +111,14 @@ export async function checkMainBranchGuard(
   const branch = await runSafe(["git", "rev-parse", "--abbrev-ref", "HEAD"], {
     cwd,
   });
-  if (
-    !branch ||
-    !PROTECTED_BRANCHES.includes(
-      branch as (typeof PROTECTED_BRANCHES)[number],
-    )
-  ) {
+  if (!branch || !isProtectedBranch(branch)) {
     return { action: "allow" };
   }
 
-  if (cwd.includes("/.wt/")) {
+  if (await isInWorktree(cwd)) {
     return { action: "allow" };
-  }
-
-  const repoRoot = await runSafe(["git", "rev-parse", "--show-toplevel"], {
-    cwd,
-  });
-  if (repoRoot?.includes("/.wt/")) {
-    return { action: "allow" };
-  }
-
-  const gitDir = await runSafe(["git", "rev-parse", "--git-dir"], { cwd });
-  if (gitDir?.includes(".git/worktrees")) {
-    return { action: "allow" };
-  }
-
-  if (gitDir && !gitDir.endsWith("/.git")) {
-    const absoluteGitDir = gitDir.startsWith("/")
-      ? gitDir
-      : `${cwd}/${gitDir}`;
-    if (dirname(absoluteGitDir).includes("/.git/worktrees")) {
-      return { action: "allow" };
-    }
   }
 
   const reason = `保護ブランチ(${branch})での ${matched.label} はブロックされています。worktreeを作成して作業してください。`;
   return { action: "deny", reason };
-}
-
-export async function runMainBranchGuard(input: BranchGuardInput): Promise<void> {
-  const command = normalizeShellCommand(input);
-  if (!command) {
-    allowResponse();
-    return;
-  }
-
-  const cwd = resolveShellHookCwd(input);
-  const result = await checkMainBranchGuard(command, cwd);
-  if (result.action === "deny") {
-    denyResponse(result.reason);
-    return;
-  }
-
-  allowResponse();
 }
