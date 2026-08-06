@@ -48,7 +48,7 @@ mkdir -p /tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-1
 **3つのサブエージェントを同一メッセージで並列に起動する**。直列起動は禁止（並列性の保証が崩れる）。
 
 #### Subagent A: CI失敗ログ
-- `subagent_type`: `general-purpose`
+- `subagent_type`: `gh-collector`
 - プロンプト例:
   > 次のスクリプトを実行してCI失敗を収集してください:
   > ```
@@ -57,14 +57,14 @@ mkdir -p /tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-1
   > 標準出力に出力されるJSONをそのまま `/tmp/pr-autofix/.../iteration-N/ci-failures.json` に保存し、簡潔なサマリを返してください。
 
 #### Subagent B: SonarCloud指摘
-- `subagent_type`: `general-purpose`
+- `subagent_type`: `gh-collector`
 - プロンプト例:
   > `~/.claude/skills/sonarcloud-issues/SKILL.md` を読み、PR `<owner/repo>#<PR>` に対してそのスキルを実行してください。
   > 結果を `/tmp/pr-autofix/.../iteration-N/sonarcloud.json` にJSONとして保存し、サマリを返してください。
   > `SONAR_TOKEN` 未設定や Sonar コメント不在で取得できなければ、空の `issues: []` と理由をJSONに記録してください。
 
 #### Subagent C: レビューコメント（収集＋受け止め）
-- `subagent_type`: `general-purpose`
+- `subagent_type`: `gh-collector`
 - プロンプト例:
   > 次のスクリプトを実行してPRのレビューコメントを収集してください:
   > ```
