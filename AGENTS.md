@@ -56,7 +56,7 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 
 - 既にworktree内でセッションを開始した場合は、新規作成せずそのworktreeで作業を続行する
 - 読み取り専用を含むすべての新しいタスクで、mainのworktreeを使わず専用worktreeを作成する
-- worktree作成後もセッションの既定cwdは自動では変わらない。各ツール呼び出しでworktreeの絶対パスを明示する
+- worktree作成後もセッションの既定cwdは自動では変わらない。各シェルコマンド内でworktreeへの移動を明示し、ファイル操作にはworktreeの絶対パスを使用する
 - 以降のすべてのファイル操作（Read, Edit, Write, Glob, Grep等）はworktree内の絶対パスを使用すること
 - セッション終了後のworktree削除は `git wt -d <ブランチ名>` で手動管理
 
@@ -91,13 +91,14 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
    ```
 
 4. **以後のツール呼び出しをworktreeへ固定**
-   - シェルツールには、毎回worktreeの絶対パスを作業ディレクトリとして指定する
+   - シェルコマンドは毎回 `cd "<worktreeの絶対パス>" && <command>` として、同じ呼び出し内でworktreeへ移動する。Gitコマンドは `git -C "<worktreeの絶対パス>" <subcommand>` でもよい
+   - ツールが作業ディレクトリの指定に対応している場合も、worktreeの絶対パスを指定する
    - Read、Edit、Write、Glob、Grep、apply_patch等では、worktree配下の絶対パスを使用する
-   - `cd` に依存しない。シェル呼び出しは別プロセスで実行され、前回のcwdを引き継がない
-   - 最初の作業前に、worktreeを作業ディレクトリに指定したうえで次を実行し、両方がworktreeの絶対パスを示すことを確認する
+   - `cd` だけの呼び出しに依存しない。シェル呼び出しは別プロセスで実行され、前回のcwdを引き継がない
+   - 最初の作業前に次を実行し、両方がworktreeの絶対パスを示すことを確認する
    ```bash
-   pwd
-   git rev-parse --show-toplevel
+   cd "<worktreeの絶対パス>" && pwd
+   git -C "<worktreeの絶対パス>" rev-parse --show-toplevel
    ```
 
 ## Language and Conventions

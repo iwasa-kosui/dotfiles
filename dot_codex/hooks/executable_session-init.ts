@@ -36,7 +36,7 @@ if (isGitRepo) {
   } else {
     output += `## Worktree
 - **未作成**: プロンプト内容に基づいてworktreeを作成してください（CLAUDE.mdのWorktree Workflowを参照）
-- **cwdの固定**: 作成後もセッションの既定cwdは変わりません。以後の各ツール呼び出しでworktreeの絶対パスを作業ディレクトリとして指定してください
+- **cwdの固定**: 作成後もセッションの既定cwdは変わりません。各シェルコマンドはworktreeへの静的な \`cd\` から始めるか \`git -C\` を使い、ファイル操作にはworktree配下の絶対パスを指定してください
 `;
   }
 
