@@ -7,13 +7,17 @@
 //   3. cwd を hook の入力から解決すること（フックプロセス自身の cwd で判定しない）
 
 import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { homedir } from "node:os";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 
 import type { BlockedOperation } from "../dot_cursor/hooks/branch-guard-lib.ts";
 import { blockedOperations as claudeOperations } from "../dot_claude/hooks/branch-guard-lib.ts";
-import { blockedOperations as codexOperations } from "../dot_codex/hooks/branch-guard-lib.ts";
+import {
+  blockedOperations as codexOperations,
+  checkMainBranchGuard,
+} from "../dot_codex/hooks/branch-guard-lib.ts";
 import { blockedOperations as cursorOperations } from "../dot_cursor/hooks/branch-guard-lib.ts";
 import { resolveShellHookCwd } from "../dot_cursor/hooks/shell-hook-lib.ts";
 
@@ -119,6 +123,131 @@ describe("3プラットフォームの共通ライブラリ", () => {
 });
 
 describe("resolveShellHookCwd", () => {
+  test.each([
+    [
+      "絶対パス",
+      "cd /tmp/worktree && git commit -m x",
+      "/tmp/main-repo",
+      "/tmp/worktree",
+    ],
+    [
+      "ダブルクォート付きパス",
+      'cd "/tmp/worktree with space" && git commit -m x',
+      "/tmp/main-repo",
+      "/tmp/worktree with space",
+    ],
+    [
+      "入力 cwd 基準の相対パス",
+      "cd .wt/feature && git commit -m x",
+      "/tmp/main-repo",
+      "/tmp/main-repo/.wt/feature",
+    ],
+    [
+      "git -C を含むパス",
+      "cd /tmp/worktree && git -C /tmp/target commit -m x",
+      "/tmp/main-repo",
+      "/tmp/target",
+    ],
+  ])(
+    "先頭の cd による %s を実行先 cwd として解決する",
+    (_name, command, cwd, expected) => {
+      expect(resolveShellHookCwd({ command, cwd })).toBe(expected);
+    },
+  );
+
+  test("先頭に複数空白がある cd を実行先 cwd として解決する", () => {
+    expect(
+      resolveShellHookCwd({
+        command: "  cd /tmp/worktree && git commit -m x",
+        cwd: "/tmp/main-repo",
+      }),
+    ).toBe("/tmp/worktree");
+  });
+
+  test.each([
+    [
+      "チルダ",
+      "cd ~/worktree && git commit -m x",
+      join(homedir(), "worktree"),
+    ],
+    [
+      "$HOME",
+      "cd $HOME/worktree && git commit -m x",
+      join(homedir(), "worktree"),
+    ],
+    [
+      "ダブルクォート付き $HOME",
+      'cd "$HOME/worktree with space" && git commit -m x',
+      join(homedir(), "worktree with space"),
+    ],
+    [
+      "-- とシングルクォート付きパス",
+      "cd -- '/tmp/worktree with space' && git commit -m x",
+      "/tmp/worktree with space",
+    ],
+  ])(
+    "先頭の cd による許可済みパス (%s) を解決する",
+    (_name, command, expected) => {
+      expect(
+        resolveShellHookCwd({ command, cwd: "/tmp/main-repo" }),
+      ).toBe(expected);
+    },
+  );
+
+  test.each([
+    ["~+", "cd ~+ && git commit -m x", "/tmp/main-repo"],
+    ["~-", "cd ~- && git commit -m x", "/tmp/main-repo"],
+    ["~user", "cd ~root && git commit -m x", "/tmp/main-repo"],
+  ])("未対応チルダ (%s) は採用しない", (_name, command, expected) => {
+    expect(
+      resolveShellHookCwd({ command, cwd: "/tmp/main-repo" }),
+    ).toBe(expected);
+  });
+
+  test("引用符内の連続空白を保持する", () => {
+    expect(
+      resolveShellHookCwd({
+        command: 'cd "/tmp/worktree  with-space" && git commit -m x',
+        cwd: "/tmp/main-repo",
+      }),
+    ).toBe("/tmp/worktree  with-space");
+  });
+
+  test.each([
+    ["環境変数", 'cd "$PWD" && git commit -m x', "/tmp/main-repo"],
+    ["コマンド置換", 'cd "$(pwd)" && git commit -m x', "/tmp/main-repo"],
+    ["バッククォート", "cd `pwd` && git commit -m x", "/tmp/main-repo"],
+    ["glob", "cd * && git commit -m x", "/tmp/main-repo"],
+    [
+      "single quote 連結",
+      "cd /tmp/'main' && git commit -m x",
+      "/tmp/main-repo",
+    ],
+    [
+      "double quote 連結",
+      'cd /tmp/"main" && git commit -m x',
+      "/tmp/main-repo",
+    ],
+    [
+      "バックスラッシュエスケープ",
+      "cd /tmp/\\m\\a\\i\\n && git commit -m x",
+      "/tmp/main-repo",
+    ],
+  ])("動的 cwd (%s) は採用しない", (_name, command, expected) => {
+    expect(
+      resolveShellHookCwd({ command, cwd: "/tmp/main-repo" }),
+    ).toBe(expected);
+  });
+
+  test("git -C の動的 cwd は採用しない", () => {
+    expect(
+      resolveShellHookCwd({
+        command: 'git -C "$PWD" commit -m x',
+        cwd: "/tmp/main-repo",
+      }),
+    ).toBe("/tmp/main-repo");
+  });
+
   test("git -C のパスを最優先する", () => {
     expect(
       resolveShellHookCwd({ command: "git -C /tmp/target status", cwd: "/tmp/other" }),
@@ -147,5 +276,77 @@ describe("resolveShellHookCwd", () => {
 
   test("どこにも指定がなければプロセスの cwd に落とす", () => {
     expect(resolveShellHookCwd({ command: "git status" })).toBe(process.cwd());
+  });
+});
+
+describe("checkMainBranchGuard", () => {
+  test("main は拒否し、コマンド先頭で移動した linked worktree は許可する", async () => {
+    const tempParent = mkdtempSync(join(tmpdir(), "branch-guard-"));
+    const mainRepo = join(tempParent, "main-repo");
+    const linkedWorktree = join(tempParent, "feature-worktree");
+
+    try {
+      execFileSync("git", ["init", "-b", "main", mainRepo], {
+        stdio: "ignore",
+      });
+      execFileSync(
+        "git",
+        [
+          "-C",
+          mainRepo,
+          "-c",
+          "user.name=Branch Guard Test",
+          "-c",
+          "user.email=branch-guard@example.invalid",
+          "commit",
+          "--allow-empty",
+          "-m",
+          "initial",
+        ],
+        { stdio: "ignore" },
+      );
+      execFileSync(
+        "git",
+        [
+          "-C",
+          mainRepo,
+          "worktree",
+          "add",
+          "-b",
+          "feature",
+          linkedWorktree,
+        ],
+        { stdio: "ignore" },
+      );
+
+      const mainResult = await checkMainBranchGuard(
+        "git commit -m x",
+        mainRepo,
+      );
+      expect(mainResult.action).toBe("deny");
+
+      const command = `cd "${linkedWorktree}" && git commit -m x`;
+      const resolvedCwd = resolveShellHookCwd({ command, cwd: mainRepo });
+      expect(resolvedCwd).toBe(linkedWorktree);
+
+      const worktreeResult = await checkMainBranchGuard(command, resolvedCwd);
+      expect(worktreeResult.action).toBe("allow");
+
+      const spacedMainCommand = `  cd "${mainRepo}" && git commit -m x`;
+      const resolvedMainCwd = resolveShellHookCwd({
+        command: spacedMainCommand,
+        cwd: tempParent,
+      });
+      const spacedMainResult = await checkMainBranchGuard(
+        spacedMainCommand,
+        resolvedMainCwd,
+      );
+      expect({
+        resolvedCwd: resolvedMainCwd,
+        action: spacedMainResult.action,
+      }).toEqual({ resolvedCwd: mainRepo, action: "deny" });
+    } finally {
+      rmSync(tempParent, { recursive: true, force: true });
+    }
   });
 });
