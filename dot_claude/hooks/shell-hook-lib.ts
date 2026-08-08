@@ -3,6 +3,7 @@
 // 内容がずれると保護の抜け穴になるため tests/branch-guard-lib.test.ts が一致を検証する。
 
 import { homedir } from "node:os";
+import { resolve } from "node:path";
 
 export const PROTECTED_BRANCHES = ["main", "master", "develop"] as const;
 
@@ -40,24 +41,92 @@ export function expandHome(path: string): string {
     .replace(/^~(?=\/|$)/, homedir());
 }
 
-export function extractGitCwd(command: string): string | undefined {
-  const gitCwdMatch = command.match(
-    /\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|(\S+))/,
+type ShellPathToken = {
+  value: string;
+  quote: "unquoted" | "single" | "double";
+};
+
+function toShellPathToken(
+  match: RegExpMatchArray | null,
+): ShellPathToken | undefined {
+  if (match?.[1] !== undefined) {
+    return { value: match[1], quote: "double" };
+  }
+  if (match?.[2] !== undefined) {
+    return { value: match[2], quote: "single" };
+  }
+  if (match?.[3] !== undefined) {
+    return { value: match[3], quote: "unquoted" };
+  }
+  return undefined;
+}
+
+function extractGitCwdToken(command: string): ShellPathToken | undefined {
+  return toShellPathToken(
+    command.match(/\bgit\s+-C\s+(?:"([^"]+)"|'([^']+)'|(\S+))/),
   );
-  return gitCwdMatch?.[1] ?? gitCwdMatch?.[2] ?? gitCwdMatch?.[3];
+}
+
+export function extractGitCwd(command: string): string | undefined {
+  return extractGitCwdToken(command)?.value;
+}
+
+function extractLeadingCdCwdToken(command: string): ShellPathToken | undefined {
+  return toShellPathToken(
+    command.match(
+      /^\s*cd\s+(?:--\s+)?(?:"([^"]+)"|'([^']+)'|([^\s;&|]+))\s*&&/,
+    ),
+  );
+}
+
+function expandStaticShellPath(token: ShellPathToken): string | undefined {
+  let path = token.value;
+
+  if (token.quote !== "single") {
+    if (path.includes("\\")) {
+      return undefined;
+    }
+    const afterAllowedHome = path.replace(/^\$HOME(?=\/|$)/, "");
+    if (/[$`]/.test(afterAllowedHome)) {
+      return undefined;
+    }
+    path = path.replace(/^\$HOME(?=\/|$)/, homedir());
+  }
+
+  if (token.quote === "unquoted") {
+    if (/[*?\[\]{}<>'"]/.test(path)) {
+      return undefined;
+    }
+    path = path.replace(/^~(?=\/|$)/, homedir());
+    if (path.startsWith("~")) {
+      return undefined;
+    }
+  }
+
+  return path;
 }
 
 export function resolveShellHookCwd(input: ShellHookInput): string {
-  const command = normalizeShellCommand(input);
-  const gitCwd = extractGitCwd(command);
-  if (gitCwd) {
-    return expandHome(gitCwd);
-  }
-  return expandHome(
+  const rawCommand = input.command ?? input.tool_input?.command ?? "";
+  const inputCwd = expandHome(
     input.cwd ??
       input.tool_input?.working_directory ??
       input.tool_input?.cwd ??
       input.tool_input?.workdir ??
       process.cwd(),
   );
+
+  const gitCwdToken = extractGitCwdToken(rawCommand);
+  if (gitCwdToken) {
+    const gitCwd = expandStaticShellPath(gitCwdToken);
+    return gitCwd ? resolve(inputCwd, gitCwd) : inputCwd;
+  }
+
+  const leadingCdCwdToken = extractLeadingCdCwdToken(rawCommand);
+  if (leadingCdCwdToken) {
+    const leadingCdCwd = expandStaticShellPath(leadingCdCwdToken);
+    return leadingCdCwd ? resolve(inputCwd, leadingCdCwd) : inputCwd;
+  }
+
+  return inputCwd;
 }
