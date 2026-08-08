@@ -55,6 +55,8 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 ## Worktree Workflow
 
 - 既にworktree内でセッションを開始した場合は、新規作成せずそのworktreeで作業を続行する
+- 読み取り専用を含むすべての新しいタスクで、mainのworktreeを使わず専用worktreeを作成する
+- worktree作成後もセッションの既定cwdは自動では変わらない。各ツール呼び出しでworktreeの絶対パスを明示する
 - 以降のすべてのファイル操作（Read, Edit, Write, Glob, Grep等）はworktree内の絶対パスを使用すること
 - セッション終了後のworktree削除は `git wt -d <ブランチ名>` で手動管理
 
@@ -71,24 +73,31 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 2. **Worktree作成**
    ```bash
    # 新規ブランチの場合
-   wt_path=$(git-wt "<ブランチ名>" --nocd)
+   git-wt "<ブランチ名>" --nocd
 
    # リモートブランチが存在する場合
    git fetch origin <ブランチ名>
-   wt_path=$(git-wt "<ブランチ名>" "origin/<ブランチ名>" --nocd)
+   git-wt "<ブランチ名>" "origin/<ブランチ名>" --nocd
    ```
+
+   コマンドが返したworktreeの絶対パスを記録し、以後は `<worktreeの絶対パス>` として明示的に使用する。シェル変数は別のツール呼び出しに引き継がれないため、後続処理を `wt_path` に依存させない。
 
 3. **settings.local.json の生成**（メインリポジトリへのアクセスを許可）
    ```bash
-   mkdir -p "$wt_path/.Codex"
-   cat > "$wt_path/.Codex/settings.local.json" <<EOF
+   mkdir -p "<worktreeの絶対パス>/.Codex"
+   cat > "<worktreeの絶対パス>/.Codex/settings.local.json" <<EOF
    {"permissions": {"additionalDirectories": ["<メインリポジトリの絶対パス>"]}}
    EOF
    ```
 
-4. **worktreeへ移動**
+4. **以後のツール呼び出しをworktreeへ固定**
+   - シェルツールには、毎回worktreeの絶対パスを作業ディレクトリとして指定する
+   - Read、Edit、Write、Glob、Grep、apply_patch等では、worktree配下の絶対パスを使用する
+   - `cd` に依存しない。シェル呼び出しは別プロセスで実行され、前回のcwdを引き継がない
+   - 最初の作業前に、worktreeを作業ディレクトリに指定したうえで次を実行し、両方がworktreeの絶対パスを示すことを確認する
    ```bash
-   cd "$wt_path"
+   pwd
+   git rev-parse --show-toplevel
    ```
 
 ## Language and Conventions

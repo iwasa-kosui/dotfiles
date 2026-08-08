@@ -29,6 +29,42 @@
 - `gh auth status` が token invalid などを返しても、まず目的のコマンド（例: `gh pr create`, `gh pr view`, `gh pr edit`, `gh pr checks`）を実行する。目的のコマンド自体が失敗した場合にのみ、認証状態の確認や代替手段を検討する。
 - GitHubコネクタやWeb APIへ迂回する前に、原則として該当する `gh` コマンドを試す。
 
+## Superpowers の適用基準
+
+この基準は superpowers の各スキルより優先する。工程はタスクの規模ではなく、未解決の設計判断と変更リスクに比例させる。
+
+### Direct: そのまま実行する
+
+次のタスクでは `using-superpowers`、`brainstorming`、`writing-plans`、`subagent-driven-development`、`test-driven-development` を自動適用しない。spec・実装計画・設計承認・サブエージェントを追加せず、必要な作業と対象に比例した検証だけを行う。
+
+- 読み取り専用の調査、説明、レビュー、状況確認
+- 既存ファイルのコピー、移動、改名、整理
+- 指示済みの formatter、generator、Git 操作
+- 誤字、文言、コメント、メタデータの修正
+- 挙動やインターフェースを変えない、明確で可逆な設定変更
+
+リポジトリ固有の安全規則が worktree を要求する場合は、タスク種別にかかわらずその規則を適用する。
+
+### Bounded: 品質ゲートだけを残す
+
+既存フローへの局所変更で、受入条件が明確かつ、公開 API・データモデル・永続化形式・セキュリティ境界を変えない場合は `brainstorming`、spec、`writing-plans`、`subagent-driven-development` を省略する。未解決の設計判断がなければ承認待ちにしない。
+
+- バグ調査には `systematic-debugging` を使う
+- 挙動変更には、テスト可能な場合だけ `test-driven-development` を使う
+- 完了前に `verification-before-completion` で対象に比例した検証を行う
+
+### Full: 完全なフローを使う
+
+次のいずれかに該当する場合は、設計・計画・実装・レビューを含む superpowers の完全なフローを使う。
+
+- 新しいプロジェクト、機能、サブシステムを作る
+- 要件や受入条件に未解決の選択肢がある
+- 複数コンポーネントをまたぐ変更
+- 公開 API、データモデル、スキーマ、移行、認証、認可に影響する変更
+- ユーザーが superpowers のスキルや設計先行を明示した
+
+Direct または Bounded として開始しても、調査中に設計判断や高いリスクが見つかったら Full へ切り替える。安全のための昇格は行うが、工程を正当化するための拡大解釈はしない。
+
 ## コマンド/スキル設計原則: サブエージェント駆動
 
 コマンドやスキルを設計する際は、Opus（司令塔）と Sonnet（実行者）の役割を分離する。
