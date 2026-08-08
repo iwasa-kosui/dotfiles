@@ -77,7 +77,8 @@ Vimの標準編集操作は残します。LazyVimやプラグインが追加す�
 | Git Dock | `<leader>g` |
 | PR表示・レビュー | `<leader>p` |
 | 領域間移動 | `<C-h/j/k/l>` |
-| 次または前のファイル | `<C-Tab>`、`<C-S-Tab>` |
+| 次のファイル | `<C-Tab>`、`<leader>bn` |
+| 前のファイル | `<C-S-Tab>`、`<leader>bp` |
 | 左右または上下分割 | `<leader>\|`、`<leader>-` |
 | ファイルを閉じる | `<leader>bd` |
 | Editor Groupを閉じる | `<leader>wd` |
@@ -199,7 +200,7 @@ Octoの既定マッピングは`mappings_disable_default`で無効にし、レ�
 - AIプロセスが終了した場合は自動再起動せず、Dockから再開できる状態にします。
 - 活動時刻のstateファイルを読めない場合はそのファイルを無視します。次回の活動記録で再生成します。
 - ExplorerのGit更新が失敗しても、ファイル操作と編集は継続できるようにします。
-- `<C-S-f>`や`<C-Tab>`を識別できない端末では、対応する`<leader>`操作を使えます。
+- `<C-S-f>`や`<C-Tab>`を識別できない端末では、対応する`<leader>`操作を使えます。前後のファイル移動には`<leader>bn`と`<leader>bp`を使います。
 
 ## 検証方針
 
@@ -211,6 +212,7 @@ Octoの既定マッピングは`mappings_disable_default`で無効にし、レ�
 - 同名ブランチを持つ別リポジトリの識別
 - Claude CodeとCodex adapterへ渡す共通コンテキスト
 - グローバルキーマップが許可リストと一致すること
+- `<C-Tab>`、`<C-S-Tab>`と`<leader>bn`、`<leader>bp`が同じファイル移動処理を呼ぶこと
 - Neovimのheadless起動で設定を読み込めること
 - StyLuaによるLuaファイルの書式
 
