@@ -142,6 +142,56 @@ t.truthy(first ~= second, "a second resume after process exit must create a new 
 t.eq(2, created)
 t.eq(1, discarded)
 
+local deactivated = {}
+local visible_codex = {
+	buf = 88,
+	win = vim.api.nvim_get_current_win(),
+	hide = function(self)
+		self.hidden = true
+	end,
+}
+ai.toggle({
+	provider = function()
+		return "codex"
+	end,
+	select_provider = function() end,
+	root = function()
+		return "/repo"
+	end,
+	terminal_get = function()
+		return visible_codex
+	end,
+	terminal_visible = function()
+		return true
+	end,
+	deactivate_dock = function(name, handle)
+		deactivated[#deactivated + 1] = { name, handle }
+	end,
+})
+t.eq(true, visible_codex.hidden)
+t.eq({ { "codex", visible_codex } }, deactivated)
+
+local restored = 0
+ai.toggle({
+	provider = function()
+		return "codex"
+	end,
+	select_provider = function() end,
+	root = function()
+		return "/repo"
+	end,
+	ensure_explorer = function() end,
+	prepare_dock = function() end,
+	terminal_get = function()
+		error("terminal failed")
+	end,
+	restore_dock = function()
+		restored = restored + 1
+	end,
+	notify = function() end,
+})
+t.eq(1, restored, "Codex creation failure must restore LazyGit")
+
 local transition_dock = require("user.dock").new()
 local transition_terminals = {}
 local transition_created = 0

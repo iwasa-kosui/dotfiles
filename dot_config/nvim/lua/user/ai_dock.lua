@@ -120,6 +120,13 @@ local function api(adapter)
       activate_dock = function(name, handle)
         dock:activate(name, handle)
       end,
+      deactivate_dock = function(name, handle)
+        dock:deactivate(name, handle)
+      end,
+      restore_dock = function()
+        dock:restore_default()
+      end,
+      terminal_visible = terminal_visible,
       command = vim.cmd,
       schedule = vim.schedule,
       buffer_call = vim.api.nvim_buf_call,
@@ -133,8 +140,8 @@ local function api(adapter)
       register_buffer_cleanup = function(buffer, callback)
         vim.api.nvim_create_autocmd("BufWipeout", { buffer = buffer, once = true, callback = callback })
       end,
-      attach_terminal = function(provider, buffer, runtime)
-        M.attach(provider, buffer, runtime)
+      attach_terminal = function(provider, buffer, runtime, handle)
+        M.attach(provider, buffer, runtime, handle)
       end,
     },
   })
@@ -160,12 +167,13 @@ local function claude_handle(buffer, runtime)
   runtime.register_buffer_cleanup(buffer, function()
     if claude_handles[buffer] == handle then
       claude_handles[buffer] = nil
+      runtime.deactivate_dock("claude", handle)
     end
   end)
   return handle
 end
 
-function M.attach(provider, buffer, adapter)
+function M.attach(provider, buffer, adapter, handle)
   local runtime = api(adapter)
   if not runtime.buffer_valid(buffer) then
     return
@@ -175,6 +183,18 @@ function M.attach(provider, buffer, adapter)
   vim.keymap.set("n", "r", M.resume, { buffer = buffer, desc = "Resume AI provider" })
   if provider == "claude" then
     runtime.activate_dock("claude", claude_handle(buffer, runtime))
+  elseif handle then
+    runtime.register_buffer_cleanup(buffer, function()
+      runtime.deactivate_dock(provider, handle)
+    end)
+  end
+end
+
+function M.on_hidden(provider, target, adapter)
+  local runtime = api(adapter)
+  local handle = provider == "claude" and claude_handles[target] or target
+  if handle then
+    runtime.deactivate_dock(provider, handle)
   end
 end
 
@@ -202,6 +222,7 @@ local function show_codex(cwd, adapter)
   local ok, terminal = pcall(runtime.terminal_get, command, lookup)
   if not ok then
     runtime.notify("Codex Dockを確認できませんでした: " .. tostring(terminal))
+    runtime.restore_dock()
     return nil
   end
   if terminal and not runtime.terminal_live(terminal) then
@@ -218,15 +239,17 @@ local function show_codex(cwd, adapter)
   end
   if not ok or not terminal then
     runtime.notify("Codex Dockを作成できませんでした" .. (ok and "" or ": " .. tostring(terminal)))
+    runtime.restore_dock()
     return nil
   end
-  runtime.attach_terminal("codex", terminal.buf, runtime)
+  runtime.attach_terminal("codex", terminal.buf, runtime, terminal)
   local shown, show_error = pcall(function()
     terminal:show()
     terminal:focus()
   end)
   if not shown then
     runtime.notify("Codex Dockを表示できませんでした: " .. tostring(show_error))
+    runtime.restore_dock()
     return nil
   end
   runtime.activate_dock("codex", terminal)
@@ -240,6 +263,7 @@ local function show_claude(adapter)
   local ok, err = pcall(runtime.command, "ClaudeCodeFocus")
   if not ok then
     runtime.notify("Claude Dockを表示できませんでした: " .. tostring(err))
+    runtime.restore_dock()
     return
   end
   runtime.schedule(function()
@@ -261,9 +285,15 @@ function M.toggle(adapter)
   local provider = runtime.provider()
   if provider == "codex" then
     local cwd = runtime.root()
-    local terminal = runtime.terminal_get(codex_command(cwd), { cwd = cwd, create = false })
-    if terminal_visible(terminal) then
+    local ok, terminal = pcall(runtime.terminal_get, codex_command(cwd), { cwd = cwd, create = false })
+    if not ok then
+      runtime.notify("Codex Dockを確認できませんでした: " .. tostring(terminal))
+      runtime.restore_dock()
+      return
+    end
+    if runtime.terminal_visible(terminal) then
       terminal:hide()
+      runtime.deactivate_dock("codex", terminal)
       return
     end
   end
@@ -292,6 +322,7 @@ function M.resume(adapter)
   local ok, err = pcall(runtime.command, "ClaudeCode --resume")
   if not ok then
     runtime.notify("Claudeセッションを再開できませんでした: " .. tostring(err))
+    runtime.restore_dock()
     return
   end
   runtime.schedule(function()

@@ -45,3 +45,27 @@ package.loaded["user.worktree_root"] = previous_worktree_root
 if not ok then
 	error(err)
 end
+
+local previous_ai_dock = package.loaded["user.ai_dock"]
+local hidden = 0
+local notified = 0
+package.loaded["user.ai_dock"] = {
+	attach = function() end,
+	on_hidden = function(provider, buffer)
+		t.eq("claude", provider)
+		t.eq(77, buffer)
+		notified = notified + 1
+	end,
+}
+
+local plugin = dofile(vim.fn.getcwd() .. "/dot_config/nvim/lua/plugins/claudecode.lua")
+local hide = plugin[1].opts.terminal.snacks_win_opts.keys.claude_hide[2]
+hide({
+	buf = 77,
+	hide = function()
+		hidden = hidden + 1
+	end,
+})
+t.eq(1, hidden)
+t.eq(1, notified)
+package.loaded["user.ai_dock"] = previous_ai_dock

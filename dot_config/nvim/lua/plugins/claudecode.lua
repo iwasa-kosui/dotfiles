@@ -46,6 +46,7 @@ return {
               toggle_key,
               function(self)
                 self:hide()
+                require("user.ai_dock").on_hidden("claude", self.buf)
               end,
               mode = "t",
               desc = "Hide",
