@@ -65,7 +65,7 @@ export function parseArgs(argv: readonly string[]): Result<Command> {
       index += 1;
       continue;
     }
-    if (argument.startsWith("-")) {
+    if (argument.startsWith("-") && argument !== "-") {
       return failure(`unknown option: ${argument}`);
     }
     if (input !== undefined) {

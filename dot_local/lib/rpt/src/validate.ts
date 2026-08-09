@@ -154,7 +154,7 @@ export function validateReport(input: ReportInput): Result<ValidatedReport> {
     imageReferenceIdentifiers: collectImageReferenceIdentifiers(tree),
     anchorInsertions: [],
   };
-  const validation = validateNode(tree, undefined, 0, input, state, false);
+  const validation = validateNode(tree, undefined, 0, input, state);
   if (!validation.ok) {
     return validation;
   }
@@ -302,7 +302,6 @@ function validateNode(
   sectionDepth: number,
   input: ReportInput,
   state: ValidationState,
-  atDocumentTop: boolean,
 ): Result<void> {
   if (node.type === "mdxjsEsm") {
     return inputFailure("import and export are not allowed", node);
@@ -356,7 +355,6 @@ function validateNode(
       node,
       parent,
       sectionDepth,
-      atDocumentTop,
       state,
     );
     if (!componentValidation.ok) {
@@ -368,16 +366,12 @@ function validateNode(
   }
 
   for (const child of node.children ?? []) {
-    const childAtDocumentTop =
-      node.type === "root" ||
-      (atDocumentTop && node.type === "paragraph");
     const childValidation = validateNode(
       child,
       node,
       nextSectionDepth,
       input,
       state,
-      childAtDocumentTop,
     );
     if (!childValidation.ok) {
       return childValidation;
@@ -390,7 +384,6 @@ function validateComponent(
   node: TreeNode,
   parent: TreeNode | undefined,
   sectionDepth: number,
-  atDocumentTop: boolean,
   state: ValidationState,
 ): Result<void> {
   const name = node.name;
@@ -405,9 +398,12 @@ function validateComponent(
   if (rule === undefined) {
     return inputFailure("component " + name + " is not allowed", node);
   }
+  if (name === "Section" && isSelfClosing(node, state.source)) {
+    return inputFailure("Section must not be self-closing", node);
+  }
   if (
     rule.topLevelOnly &&
-    (!atDocumentTop || !isTopLevelSectionParent(parent))
+    (node.type !== "mdxJsxFlowElement" || parent?.type !== "root")
   ) {
     if (sectionDepth > 0) {
       return inputFailure("Section must not be nested", node);
@@ -603,19 +599,18 @@ function textContent(node: TreeNode): string {
   return (node.children ?? []).map(textContent).join("");
 }
 
-function isTopLevelSectionParent(parent: TreeNode | undefined): boolean {
-  if (parent?.type === "root") {
-    return true;
+function isSelfClosing(node: TreeNode, source: string): boolean {
+  const position = node.position;
+  if (
+    position?.start.offset === undefined ||
+    position.end.offset === undefined
+  ) {
+    return false;
   }
-  return (
-    parent?.type === "paragraph" &&
-    (parent.children ?? []).every(
-      (child) =>
-        child.type === "mdxJsxFlowElement" ||
-        child.type === "mdxJsxTextElement" ||
-        (child.type === "text" && child.value?.trim() === ""),
-    )
-  );
+  return source
+    .slice(position.start.offset, position.end.offset)
+    .trimEnd()
+    .endsWith("/>");
 }
 
 function collectImageReferenceIdentifiers(node: TreeNode): Set<string> {

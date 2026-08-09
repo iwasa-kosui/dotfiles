@@ -28,6 +28,40 @@ async function runRpt(
   return { exitCode, stdout, stderr };
 }
 
+async function runRptWithOpenStdin(
+  args: readonly string[],
+  stdin: string,
+) {
+  const process = Bun.spawn(["bun", cliPath, ...args], {
+    cwd: repositoryRoot,
+    stdin: "pipe",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  process.stdin.write(stdin);
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const outcome = await Promise.race([
+    process.exited.then((exitCode) => ({ timedOut: false, exitCode })),
+    new Promise<Readonly<{ timedOut: true }>>((resolve) => {
+      timeoutId = setTimeout(() => resolve({ timedOut: true }), 2_000);
+    }),
+  ]);
+  if (timeoutId !== undefined) {
+    clearTimeout(timeoutId);
+  }
+  if (outcome.timedOut) {
+    process.kill();
+  }
+
+  const [exitCode, stdout, stderr] = await Promise.all([
+    process.exited,
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+  ]);
+  return { timedOut: outcome.timedOut, exitCode, stdout, stderr };
+}
+
 async function createCase(source: string) {
   const directory = await mkdtemp(join(tmpdir(), "rpt-e2e-"));
   const input = join(directory, "report.mdx");
@@ -158,7 +192,7 @@ const rejectedMdx = [
   ],
   [
     "a user-provided Section anchor",
-    "---\ntitle: X\n---\n<Section title=\"X\" anchor=\"user-value\">x</Section>",
+    "---\ntitle: X\n---\n<Section title=\"X\" anchor=\"user-value\">\nx\n</Section>",
     "attribute anchor is not allowed on Section",
   ],
 ] as const;
@@ -196,9 +230,56 @@ test("build rejects input that exceeds 5 MiB before creating an output file", as
   }
 });
 
+test("build stops an oversized stdin stream before its input closes", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "rpt-e2e-"));
+  const output = join(directory, "report.html");
+  const source = "---\ntitle: X\n---\n" + "a".repeat(5 * 1024 * 1024);
+  try {
+    const result = await runRptWithOpenStdin(["build", "-", "-o", output], source);
+
+    expect(result.timedOut).toBe(false);
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("input exceeds the 5 MiB limit");
+    expect(await Bun.file(output).exists()).toBe(false);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("build rejects a self-closing Section before creating an output file", async () => {
+  const testCase = await createCase(
+    "---\ntitle: X\n---\n\n<Section title=\"Empty\" />",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stderr).toContain("Section must not be self-closing");
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build rejects a Section that shares a paragraph with another component", async () => {
+  const testCase = await createCase(
+    "---\ntitle: X\n---\n\n<Callout tone=\"info\">context</Callout><Section title=\"Nested\">body</Section>",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stderr).toContain("Section must be at the document top level");
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
 test("build advances validated restricted MDX to the build stage", async () => {
   const testCase = await createCase(
-    "---\ntitle: Valid report\n---\n\n## Finding\n\n<Section title=\"Next steps\">Continue.</Section>",
+    "---\ntitle: Valid report\n---\n\n## Finding\n\n<Section title=\"Next steps\">\nContinue.\n</Section>",
   );
   try {
     const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
@@ -214,7 +295,7 @@ test("build advances validated restricted MDX to the build stage", async () => {
 
 test("build accepts the allowed component set before the build stage", async () => {
   const testCase = await createCase(
-    "---\ntitle: 開発環境の移行調査\nsummary: 段階的な移行を推奨します。\nauthor: Platform Team\ncreatedAt: 2026-08-09\nstatus: final\ntags: [migration, tooling]\n---\n\n## 結論\n\n<Callout tone=\"success\" title=\"推奨案\">段階的に移行します。</Callout>\n<Metric label=\"削減工数\" value=\"24%\" />\n<Evidence title=\"試行結果\" source=\"https://example.com/evidence\">重大な障害はありませんでした。</Evidence>\n<Section title=\"次の対応\">2週間の試行を開始します。</Section>",
+    "---\ntitle: 開発環境の移行調査\nsummary: 段階的な移行を推奨します。\nauthor: Platform Team\ncreatedAt: 2026-08-09\nstatus: final\ntags: [migration, tooling]\n---\n\n## 結論\n\n<Callout tone=\"success\" title=\"推奨案\">段階的に移行します。</Callout>\n\n<Metric label=\"削減工数\" value=\"24%\" />\n\n<Evidence title=\"試行結果\" source=\"https://example.com/evidence\">重大な障害はありませんでした。</Evidence>\n\n<Section title=\"次の対応\">\n2週間の試行を開始します。\n</Section>",
   );
   try {
     const result = await runRpt(["build", testCase.input, "-o", testCase.output]);

@@ -295,9 +295,14 @@ tags: [migration, tooling]
 ## 結論
 
 <Callout tone="success" title="推奨案">段階的に移行します。</Callout>
+
 <Metric label="削減工数" value="24%" />
+
 <Evidence title="試行結果" source="https://example.com/evidence">重大な障害はありませんでした。</Evidence>
-<Section title="次の対応">2週間の試行を開始します。</Section>
+
+<Section title="次の対応">
+2週間の試行を開始します。
+</Section>
 ```
 
 ```ts
