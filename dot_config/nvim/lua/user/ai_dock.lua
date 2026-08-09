@@ -4,6 +4,18 @@ local providers = { claude = true, codex = true }
 local default_provider = "claude"
 local codex_commands = {}
 local claude_handles = {}
+local claude_suppressed = {}
+local codex_states = setmetatable({}, { __mode = "k" })
+local claude_request_generation = 0
+
+local function invalidate_claude_request()
+  claude_request_generation = claude_request_generation + 1
+  return claude_request_generation
+end
+
+local function is_current_claude_request(generation)
+  return generation == claude_request_generation
+end
 
 ---@class AiContext
 ---@field path string
@@ -120,6 +132,27 @@ local function api(adapter)
       activate_dock = function(name, handle)
         dock:activate(name, handle)
       end,
+      deactivate_dock = function(name, handle)
+        dock:deactivate(name, handle)
+      end,
+      restore_dock = function()
+        dock:restore_default()
+      end,
+      terminal_visible = terminal_visible,
+      buffer_visible = function(buffer)
+        return #vim.fn.win_findbuf(buffer) > 0
+      end,
+      buffer_focused = function(buffer)
+        return vim.api.nvim_get_current_buf() == buffer
+      end,
+      claude_buffer = function()
+        local ok, terminal = pcall(require, "claudecode.terminal")
+        if not ok or type(terminal.get_active_terminal_bufnr) ~= "function" then
+          return nil
+        end
+        local got_buffer, buffer = pcall(terminal.get_active_terminal_bufnr)
+        return got_buffer and buffer or nil
+      end,
       command = vim.cmd,
       schedule = vim.schedule,
       buffer_call = vim.api.nvim_buf_call,
@@ -131,10 +164,14 @@ local function api(adapter)
       windows_for_buffer = vim.fn.win_findbuf,
       hide_window = vim.api.nvim_win_hide,
       register_buffer_cleanup = function(buffer, callback)
-        vim.api.nvim_create_autocmd("BufWipeout", { buffer = buffer, once = true, callback = callback })
+        vim.api.nvim_create_autocmd({ "TermClose", "BufDelete", "BufWipeout" }, {
+          buffer = buffer,
+          once = true,
+          callback = callback,
+        })
       end,
-      attach_terminal = function(provider, buffer, runtime)
-        M.attach(provider, buffer, runtime)
+      attach_terminal = function(provider, buffer, runtime, handle)
+        M.attach(provider, buffer, runtime, handle)
       end,
     },
   })
@@ -151,42 +188,116 @@ local function claude_handle(buffer, runtime)
       if claude_handles[buffer] ~= handle then
         return
       end
+      claude_suppressed[buffer] = (claude_suppressed[buffer] or 0) + 1
       for _, window in ipairs(runtime.windows_for_buffer(buffer)) do
         pcall(runtime.hide_window, window)
       end
+      claude_suppressed[buffer] = claude_suppressed[buffer] - 1
     end,
   }
   claude_handles[buffer] = handle
   runtime.register_buffer_cleanup(buffer, function()
     if claude_handles[buffer] == handle then
       claude_handles[buffer] = nil
+      claude_suppressed[buffer] = nil
+      runtime.deactivate_dock("claude", handle)
     end
   end)
   return handle
 end
 
-function M.attach(provider, buffer, adapter)
+function M.attach(provider, buffer, adapter, handle)
   local runtime = api(adapter)
   if not runtime.buffer_valid(buffer) then
-    return
+    return false
   end
   vim.b[buffer].ai_dock_provider = provider
   vim.keymap.set("n", "p", M.switch_provider, { buffer = buffer, desc = "Switch AI provider" })
   vim.keymap.set("n", "r", M.resume, { buffer = buffer, desc = "Resume AI provider" })
   if provider == "claude" then
     runtime.activate_dock("claude", claude_handle(buffer, runtime))
+  elseif handle then
+    local state = codex_states[handle]
+    if not state then
+      state = { cleaned = false, discarding = false, suppressed = 0 }
+      codex_states[handle] = state
+      handle.dock_hide = function(self)
+        local current = codex_states[self]
+        if not current then
+          return self:hide()
+        end
+        current.suppressed = current.suppressed + 1
+        local ok_hide, result = pcall(self.hide, self)
+        current.suppressed = current.suppressed - 1
+        if not ok_hide then
+          error(result)
+        end
+        return result
+      end
+    end
+    runtime.register_buffer_cleanup(buffer, function(event)
+      if state.cleaned then
+        return
+      end
+      state.cleaned = true
+      runtime.deactivate_dock(provider, handle)
+      if event and event.event == "TermClose" then
+        state.discarding = true
+        runtime.schedule(function()
+          runtime.discard_terminal(handle)
+        end)
+      end
+    end)
+  end
+  return true
+end
+
+function M.on_hidden(provider, target, adapter)
+  local runtime = api(adapter)
+  local handle = provider == "claude" and claude_handles[target] or target
+  if provider == "claude" and (claude_suppressed[target] or 0) > 0 then
+    return
+  end
+  local state = provider == "codex" and codex_states[handle] or nil
+  if state and (state.suppressed > 0 or state.discarding) then
+    return
+  end
+  invalidate_claude_request()
+  if handle then
+    runtime.deactivate_dock(provider, handle)
   end
 end
 
 local function attach_claude(adapter)
-  local ok, terminal = pcall(require, "claudecode.terminal")
-  if not ok or not terminal.get_active_terminal_bufnr then
-    return
+  local runtime = api(adapter)
+  local got_buffer, buffer = pcall(runtime.claude_buffer)
+  if not got_buffer then
+    return false, "Claude terminalのactive bufferを取得できませんでした: " .. tostring(buffer)
   end
-  local buffer = terminal.get_active_terminal_bufnr()
-  if buffer then
-    M.attach("claude", buffer, adapter)
+  if not buffer then
+    return false, "Claude terminalのactive bufferがありません"
   end
+  local attached, result = pcall(M.attach, "claude", buffer, runtime)
+  if not attached or not result then
+    return false, "Claude Dockを接続できませんでした" .. (attached and "" or ": " .. tostring(result))
+  end
+  return true
+end
+
+local function attach_scheduled_claude(runtime, generation)
+  runtime.schedule(function()
+    if not is_current_claude_request(generation) then
+      return
+    end
+    local attached, err = attach_claude(runtime)
+    if not is_current_claude_request(generation) then
+      return
+    end
+    if not attached then
+      runtime.notify(err)
+      runtime.restore_dock()
+    end
+  end)
 end
 
 local function codex_command(cwd)
@@ -195,6 +306,7 @@ end
 
 local function show_codex(cwd, adapter)
   local runtime = api(adapter)
+  invalidate_claude_request()
   runtime.ensure_explorer()
   runtime.prepare_dock("codex")
   local command = codex_command(cwd)
@@ -202,6 +314,7 @@ local function show_codex(cwd, adapter)
   local ok, terminal = pcall(runtime.terminal_get, command, lookup)
   if not ok then
     runtime.notify("Codex Dockを確認できませんでした: " .. tostring(terminal))
+    runtime.restore_dock()
     return nil
   end
   if terminal and not runtime.terminal_live(terminal) then
@@ -212,21 +325,31 @@ local function show_codex(cwd, adapter)
     local opts = {
       cwd = cwd,
       auto_close = false,
-      win = { position = "right", width = 0.36, height = 1, border = "rounded" },
+      win = {
+        position = "right",
+        width = 0.36,
+        height = 1,
+        border = "rounded",
+        on_close = function(self)
+          M.on_hidden("codex", self, runtime)
+        end,
+      },
     }
     ok, terminal = pcall(runtime.terminal_get, command, opts)
   end
   if not ok or not terminal then
     runtime.notify("Codex Dockを作成できませんでした" .. (ok and "" or ": " .. tostring(terminal)))
+    runtime.restore_dock()
     return nil
   end
-  runtime.attach_terminal("codex", terminal.buf, runtime)
+  runtime.attach_terminal("codex", terminal.buf, runtime, terminal)
   local shown, show_error = pcall(function()
     terminal:show()
     terminal:focus()
   end)
   if not shown then
     runtime.notify("Codex Dockを表示できませんでした: " .. tostring(show_error))
+    runtime.restore_dock()
     return nil
   end
   runtime.activate_dock("codex", terminal)
@@ -235,16 +358,16 @@ end
 
 local function show_claude(adapter)
   local runtime = api(adapter)
+  local generation = invalidate_claude_request()
   runtime.ensure_explorer()
   runtime.prepare_dock("claude")
   local ok, err = pcall(runtime.command, "ClaudeCodeFocus")
   if not ok then
     runtime.notify("Claude Dockを表示できませんでした: " .. tostring(err))
+    runtime.restore_dock()
     return
   end
-  runtime.schedule(function()
-    attach_claude(runtime)
-  end)
+  attach_scheduled_claude(runtime, generation)
 end
 
 local function show_provider(provider, adapter)
@@ -261,13 +384,55 @@ function M.toggle(adapter)
   local provider = runtime.provider()
   if provider == "codex" then
     local cwd = runtime.root()
-    local terminal = runtime.terminal_get(codex_command(cwd), { cwd = cwd, create = false })
-    if terminal_visible(terminal) then
+    local ok, terminal = pcall(runtime.terminal_get, codex_command(cwd), { cwd = cwd, create = false })
+    if not ok then
+      runtime.notify("Codex Dockを確認できませんでした: " .. tostring(terminal))
+      runtime.restore_dock()
+      return
+    end
+    if runtime.terminal_visible(terminal) then
       terminal:hide()
+      invalidate_claude_request()
+      runtime.deactivate_dock("codex", terminal)
       return
     end
   end
   show_provider(provider, runtime)
+end
+
+local function run_claude_toggle(command, focus, adapter)
+  local runtime = api(adapter)
+  local buffer = runtime.claude_buffer()
+  local visible = buffer and runtime.buffer_valid(buffer) and runtime.buffer_visible(buffer)
+  local hides = visible and (not focus or runtime.buffer_focused(buffer))
+
+  if not hides then
+    runtime.ensure_explorer()
+    runtime.prepare_dock("claude")
+  end
+  local generation = invalidate_claude_request()
+  local ok, err = pcall(runtime.command, command)
+  if not ok then
+    runtime.notify("Claude Dockを切り替えられませんでした: " .. tostring(err))
+    if not hides then
+      runtime.restore_dock()
+    end
+    return false
+  end
+  if hides then
+    M.on_hidden("claude", buffer, runtime)
+    return true
+  end
+  attach_scheduled_claude(runtime, generation)
+  return true
+end
+
+function M.toggle_claude(adapter)
+  return run_claude_toggle("ClaudeCode", false, adapter)
+end
+
+function M.focus_claude(adapter)
+  return run_claude_toggle("ClaudeCodeFocus", true, adapter)
 end
 
 function M.switch_provider(adapter)
@@ -288,15 +453,15 @@ function M.resume(adapter)
     return M.resume_codex(runtime)
   end
   runtime.ensure_explorer()
+  local generation = invalidate_claude_request()
   runtime.prepare_dock("claude")
   local ok, err = pcall(runtime.command, "ClaudeCode --resume")
   if not ok then
     runtime.notify("Claudeセッションを再開できませんでした: " .. tostring(err))
+    runtime.restore_dock()
     return
   end
-  runtime.schedule(function()
-    attach_claude(runtime)
-  end)
+  attach_scheduled_claude(runtime, generation)
 end
 
 local function send_to_codex(context, adapter)

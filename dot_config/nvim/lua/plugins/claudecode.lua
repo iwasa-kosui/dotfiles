@@ -1,7 +1,46 @@
+local toggle_key = "<C-,>"
+
 return {
   {
     "coder/claudecode.nvim",
     dependencies = { "folke/snacks.nvim" },
+    keys = {
+      { "<leader>a", "", desc = "+ai", mode = { "n", "v" } },
+      {
+        "<leader>aa",
+        function()
+          require("user.ai_dock").toggle_claude()
+        end,
+        desc = "Toggle Claude",
+      },
+      {
+        "<leader>af",
+        function()
+          require("user.ai_dock").focus_claude()
+        end,
+        desc = "Focus Claude",
+      },
+      { "<leader>ar", "<cmd>ClaudeCode --resume<cr>", desc = "Resume Claude" },
+      { "<leader>aC", "<cmd>ClaudeCode --continue<cr>", desc = "Continue Claude" },
+      { "<leader>ab", "<cmd>ClaudeCodeAdd %<cr>", desc = "Add current buffer" },
+      { "<leader>as", "<cmd>ClaudeCodeSend<cr>", mode = "v", desc = "Send to Claude" },
+      {
+        "<leader>as",
+        "<cmd>ClaudeCodeTreeAdd<cr>",
+        desc = "Add file",
+        ft = { "NvimTree", "neo-tree", "oil" },
+      },
+      { "<leader>aA", "<cmd>ClaudeCodeDiffAccept<cr>", desc = "Accept diff" },
+      { "<leader>ad", "<cmd>ClaudeCodeDiffDeny<cr>", desc = "Deny diff" },
+      {
+        toggle_key,
+        function()
+          require("user.ai_dock").focus_claude()
+        end,
+        desc = "Claude Code",
+        mode = { "n", "x" },
+      },
+    },
     cmd = {
       "ClaudeCode",
       "ClaudeCodeFocus",
@@ -21,17 +60,22 @@ return {
           width = 0.36,
           height = 1,
           border = "rounded",
+          keys = {
+            claude_hide = {
+              toggle_key,
+              function(self)
+                self:hide()
+                require("user.ai_dock").on_hidden("claude", self.buf)
+              end,
+              mode = "t",
+              desc = "Hide",
+            },
+          },
           on_buf = function(self)
-            local buffer = self.buf
-            require("user.ai_dock").attach("claude", buffer)
-            vim.keymap.set("n", "<leader>aA", "<cmd>ClaudeCodeDiffAccept<cr>", {
-              buffer = buffer,
-              desc = "Accept Claude diff",
-            })
-            vim.keymap.set("n", "<leader>ad", "<cmd>ClaudeCodeDiffDeny<cr>", {
-              buffer = buffer,
-              desc = "Deny Claude diff",
-            })
+            require("user.ai_dock").attach("claude", self.buf)
+          end,
+          on_close = function(self)
+            require("user.ai_dock").on_hidden("claude", self.buf)
           end,
         },
       },

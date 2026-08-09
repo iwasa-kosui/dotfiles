@@ -1,14 +1,55 @@
 local t = require("testlib")
 local plugin = dofile(vim.fn.getcwd() .. "/dot_config/nvim/lua/plugins/octo.lua")
-local submit_win = plugin.opts.mappings.submit_win
 
-t.truthy(submit_win.close_review_win, "submit window cancel must only close the submit window")
-t.eq("q", submit_win.close_review_win.lhs)
-t.eq("n", submit_win.close_review_win.mode)
-t.eq(nil, submit_win.close_review_tab)
-t.eq(true, plugin.opts.mappings_disable_default)
-t.eq("c", plugin.opts.mappings.review_diff.add_review_comment.lhs)
-t.eq({ "x" }, plugin.opts.mappings.review_diff.add_review_comment.mode)
-t.eq("s", plugin.opts.mappings.review_diff.add_review_suggestion.lhs)
-t.eq({ "x" }, plugin.opts.mappings.review_diff.add_review_suggestion.mode)
-t.eq("S", plugin.opts.mappings.review_diff.submit_review.lhs)
+t.eq(nil, plugin.opts.mappings_disable_default, "Octo default mappings must stay enabled")
+t.eq(nil, plugin.opts.mappings, "Octo review mappings must use the original defaults")
+
+local mappings = {}
+local descriptions = {}
+for _, mapping in ipairs(plugin.keys) do
+	mappings[mapping[1]] = mapping[2]
+	descriptions[mapping[1]] = mapping.desc or (mapping[3] and mapping[3].desc)
+end
+
+local expected = {
+	["<leader>opl"] = "<cmd>Octo pr list<cr>",
+	["<leader>opc"] = "<cmd>Octo pr create<cr>",
+	["<leader>opC"] = "<cmd>Octo pr checkout<cr>",
+	["<leader>opm"] = "<cmd>Octo pr merge<cr>",
+	["<leader>opd"] = "<cmd>Octo pr diff<cr>",
+	["<leader>opr"] = "<cmd>Octo pr ready<cr>",
+	["<leader>oil"] = "<cmd>Octo issue list<cr>",
+	["<leader>oic"] = "<cmd>Octo issue create<cr>",
+	["<leader>oie"] = "<cmd>Octo issue edit<cr>",
+	["<leader>ors"] = "<cmd>Octo review start<cr>",
+	["<leader>orr"] = "<cmd>Octo review resume<cr>",
+	["<leader>orS"] = "<cmd>Octo review submit<cr>",
+	["<leader>ord"] = "<cmd>Octo review discard<cr>",
+	["<leader>orc"] = "<cmd>Octo review comments<cr>",
+	["<leader>oca"] = "<cmd>Octo comment add<cr>",
+	["<leader>ocd"] = "<cmd>Octo comment delete<cr>",
+	["<leader>oo"] = "<cmd>Octo<cr>",
+	["<leader>os"] = "<cmd>Octo search<cr>",
+}
+
+for lhs, rhs in pairs(expected) do
+	t.eq(rhs, mappings[lhs], lhs .. " must use its original Octo command")
+end
+
+t.eq("function", type(mappings["<leader>pp"]))
+t.eq("List PRs for review", descriptions["<leader>pp"])
+t.eq("function", type(mappings["<leader>po"]))
+t.eq("Open branch PR for review", descriptions["<leader>po"])
+
+local plugins = dofile(vim.fn.getcwd() .. "/dot_config/nvim/lua/plugins/plugin.lua")
+local found_pr_group = false
+for _, candidate in ipairs(plugins) do
+	if candidate[1] == "folke/which-key.nvim" then
+		for _, spec in ipairs(candidate.opts.spec) do
+			if spec[1] == "<leader>p" and spec.group == "pull request" then
+				found_pr_group = true
+			end
+		end
+	end
+end
+t.eq(true, found_pr_group, "WhichKey must describe leader-p as the pull request group")

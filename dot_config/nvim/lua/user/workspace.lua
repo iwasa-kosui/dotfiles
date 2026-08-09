@@ -90,22 +90,10 @@ function M.previous_file()
   vim.cmd.bprevious()
 end
 
-function M.git_dock(adapter)
+function M.git_dock(opts, adapter)
   adapter = adapter or {}
-  local dock = adapter.dock or require("user.dock")
-  local root = adapter.root or default_root
-  local lazygit = adapter.lazygit or function(opts)
-    return Snacks.lazygit(opts)
-  end
-  dock:prepare("git")
-  local terminal = lazygit({
-    cwd = root(),
-    win = { position = "right", width = 0.36, height = 1 },
-  })
-  if terminal then
-    dock:activate("git", terminal)
-  end
-  return terminal
+  local lazygit_dock = adapter.lazygit_dock or require("user.lazygit_dock")
+  return lazygit_dock.open(opts or { focus = true })
 end
 
 return M
