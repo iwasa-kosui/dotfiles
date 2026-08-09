@@ -10,7 +10,7 @@ end
 
 local function is_binary_numstat(output)
   for line in (output or ""):gmatch("[^\n]+") do
-    if line:sub(1, 5) == "-\t-\t" then
+    if line:sub(1, 4) == "-\t-\t" then
       return true
     end
   end
