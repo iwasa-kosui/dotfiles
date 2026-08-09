@@ -1,0 +1,34 @@
+#!/bin/sh
+
+set -eu
+
+port=${1-}
+
+case "$port" in
+  ''|*[!0-9]*)
+    printf 'usage: mobile-preview-url <port>\n' >&2
+    exit 64
+    ;;
+esac
+
+if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
+  printf 'mobile-preview-url: port must be between 1 and 65535\n' >&2
+  exit 64
+fi
+
+readonly meshnet_host={{ .meshnetNordName | quote }}
+
+case "$meshnet_host" in
+  ''|*[!a-z0-9.-]*|.*|*..*|*.)
+    printf 'mobile-preview-url: invalid Meshnet Nord name\n' >&2
+    exit 78
+    ;;
+  *.nord)
+    ;;
+  *)
+    printf 'mobile-preview-url: Meshnet Nord name must end in .nord\n' >&2
+    exit 78
+    ;;
+esac
+
+printf 'http://%s:%s/\n' "$meshnet_host" "$port"
