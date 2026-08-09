@@ -1,38 +1,81 @@
 local M = {}
 
-local function root()
-  return require("lazyvim.util").root.get({ normalize = true }) or vim.uv.cwd()
+local function default_root()
+  local candidate = vim.uv.cwd() or vim.fn.getcwd()
+  local ok, lazy = pcall(require, "lazyvim.util")
+  if ok then
+    candidate = lazy.root.get({ normalize = true }) or candidate
+  end
+  return require("user.worktree_root").resolve(candidate)
 end
 
-function M.ensure_explorer(opts)
+local function defaults(adapter)
+  adapter = adapter or {}
+  return setmetatable(adapter, {
+    __index = {
+      root = default_root,
+      explorers = function()
+        return Snacks.picker.get({ source = "explorer" })
+      end,
+      open_explorer = function(opts)
+        return Snacks.explorer(opts)
+      end,
+      reveal = function(opts)
+        return Snacks.explorer.reveal(opts)
+      end,
+      current_file = function()
+        return vim.api.nvim_buf_get_name(0)
+      end,
+      refresh_base_diff = function(cwd)
+        require("user.base_diff").refresh_and_render(cwd)
+      end,
+      restore_explorer = function(cwd)
+        local state = require("user.explorer_state")
+        state.restore(cwd, require("snacks.explorer.tree"))
+        state.track(cwd)
+      end,
+    },
+  })
+end
+
+function M.ensure_explorer(opts, adapter)
   opts = opts or {}
-  local current = vim.api.nvim_get_current_win()
-  local cwd = root()
-  Snacks.explorer({ cwd = cwd })
-  require("user.base_diff").refresh_and_render(cwd)
-  if opts.focus == false then
-    vim.schedule(function()
-      if vim.api.nvim_win_is_valid(current) then
-        vim.api.nvim_set_current_win(current)
-      end
-    end)
+  local api = defaults(adapter)
+  local cwd = api.root()
+  local picker = api.explorers()[1]
+  if not picker then
+    api.restore_explorer(cwd)
+    picker = api.open_explorer({ cwd = cwd, focus = false, enter = false })
+  end
+  api.refresh_base_diff(cwd)
+  if opts.focus ~= false and picker then
+    picker:focus("list")
+  end
+  return picker
+end
+
+function M.focus_explorer(adapter)
+  local api = defaults(adapter)
+  local file = api.current_file()
+  local picker = M.ensure_explorer({ focus = false }, api)
+  if file ~= "" then
+    picker = api.reveal({ file = file }) or picker
+  end
+  if picker then
+    picker:focus("list")
   end
 end
 
-function M.focus_explorer()
-  Snacks.explorer.reveal({ file = vim.api.nvim_buf_get_name(0) })
-end
-
 function M.files()
-  Snacks.picker.files({ cwd = root() })
+  Snacks.picker.files({ cwd = default_root() })
 end
 
 function M.search()
-  Snacks.picker.grep({ cwd = root() })
+  Snacks.picker.grep({ cwd = default_root() })
 end
 
 function M.replace()
-  require("grug-far").open({ transient = true, prefills = { paths = root() } })
+  require("grug-far").open({ transient = true, prefills = { paths = default_root() } })
 end
 
 function M.next_file()
@@ -43,8 +86,22 @@ function M.previous_file()
   vim.cmd.bprevious()
 end
 
-function M.git_dock()
-  Snacks.lazygit({ cwd = root(), win = { position = "right", width = 0.36, height = 1 } })
+function M.git_dock(adapter)
+  adapter = adapter or {}
+  local dock = adapter.dock or require("user.dock")
+  local root = adapter.root or default_root
+  local lazygit = adapter.lazygit or function(opts)
+    return Snacks.lazygit(opts)
+  end
+  dock:prepare("git")
+  local terminal = lazygit({
+    cwd = root(),
+    win = { position = "right", width = 0.36, height = 1 },
+  })
+  if terminal then
+    dock:activate("git", terminal)
+  end
+  return terminal
 end
 
 return M

@@ -1,8 +1,10 @@
 local t = require("testlib")
 
-local project_root = "/repo/.wt/feature"
+local project_root = "/repo/.wt/feature/apps/web"
+local worktree_root = "/repo/.wt/feature"
 local previous_preload = package.preload["lazyvim.util"]
 local previous_loaded = package.loaded["lazyvim.util"]
+local previous_worktree_root = package.loaded["user.worktree_root"]
 
 package.loaded["lazyvim.util"] = nil
 package.preload["lazyvim.util"] = function()
@@ -15,13 +17,19 @@ package.preload["lazyvim.util"] = function()
 		},
 	}
 end
+package.loaded["user.worktree_root"] = {
+	resolve = function(path)
+		t.eq(project_root, path)
+		return worktree_root
+	end,
+}
 
 local ok, err = pcall(function()
 	local plugin = dofile(vim.fn.getcwd() .. "/dot_config/nvim/lua/plugins/claudecode.lua")
 	local provider = plugin[1].opts.terminal.cwd_provider
 	t.truthy(provider, "Claude cwd provider must be configured")
 	t.eq(
-		project_root,
+		worktree_root,
 		provider({
 			file = "/outside/project/file.lua",
 			file_dir = "/outside/project",
@@ -32,6 +40,7 @@ end)
 
 package.preload["lazyvim.util"] = previous_preload
 package.loaded["lazyvim.util"] = previous_loaded
+package.loaded["user.worktree_root"] = previous_worktree_root
 
 if not ok then
 	error(err)

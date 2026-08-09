@@ -8,6 +8,7 @@ for _, lhs in ipairs({
 	"<leader>r",
 	"<leader>w",
 	"<leader>a",
+	"<leader>af",
 	"<leader>g",
 	"<leader>p",
 	"<leader>bn",

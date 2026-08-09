@@ -1,5 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
-import { mkdir, readdir, readFile, rename, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  writeFile,
+} from "node:fs/promises";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -14,9 +23,36 @@ export type Activity = {
 export type ActivityOptions = {
   stateDir?: string;
   now?: number;
+  resolveWorktreeRoot?: (cwd: string) => Promise<string>;
 };
 
 const sources = new Set<ActivitySource>(["claude", "codex", "nvim"]);
+const execFileAsync = promisify(execFile);
+
+async function canonicalPath(path: string): Promise<string> {
+  const resolved = resolve(path);
+  try {
+    return await realpath(resolved);
+  } catch {
+    return resolved;
+  }
+}
+
+export async function resolveWorktreeRoot(cwd: string): Promise<string> {
+  const candidate = await canonicalPath(cwd);
+  try {
+    const { stdout } = await execFileAsync("git", [
+      "-C",
+      candidate,
+      "rev-parse",
+      "--show-toplevel",
+    ]);
+    const toplevel = stdout.trim();
+    return toplevel ? await canonicalPath(toplevel) : candidate;
+  } catch {
+    return candidate;
+  }
+}
 
 export function activityStateDir(): string {
   return join(
@@ -55,8 +91,9 @@ export async function recordActivity(
   options: ActivityOptions = {},
 ): Promise<Activity> {
   const stateDir = options.stateDir ?? activityStateDir();
+  const rootResolver = options.resolveWorktreeRoot ?? resolveWorktreeRoot;
   const activity: Activity = {
-    path: resolve(cwd),
+    path: await rootResolver(cwd),
     source,
     lastUsedAt: options.now ?? Date.now(),
   };

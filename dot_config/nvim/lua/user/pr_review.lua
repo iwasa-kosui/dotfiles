@@ -6,7 +6,13 @@ function M.parse_pr(json)
   end
 
   local ok, value = pcall(vim.json.decode, json)
-  if not ok or type(value) ~= "table" or type(value.number) ~= "number" then
+  if
+    not ok
+    or type(value) ~= "table"
+    or type(value.number) ~= "number"
+    or value.number <= 0
+    or value.number % 1 ~= 0
+  then
     return nil
   end
 

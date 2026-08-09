@@ -1,4 +1,5 @@
 local M = {}
+local worktree_root = require("user.worktree_root")
 
 local caches = {}
 local generations = {}
@@ -15,7 +16,7 @@ vim.api.nvim_set_hl(0, "ExplorerBaseModified", { link = "GitSignsChange" })
 vim.api.nvim_set_hl(0, "ExplorerBaseRenamed", { link = "GitSignsChange" })
 
 local function normalize(path)
-  return vim.fs.normalize(vim.fn.fnamemodify(path, ":p"))
+  return worktree_root.normalize(path)
 end
 
 local function output_lines(output)
@@ -39,17 +40,20 @@ function M.parse_name_status(lines)
   return result
 end
 
-function M.parse_porcelain(lines)
+function M.parse_porcelain_z(output)
   local result = {}
-  for _, line in ipairs(lines) do
-    local code = line:sub(1, 2)
-    local path = line:sub(4)
+  local records = vim.split(output or "", "\0", { plain = true })
+  local index = 1
+  while index <= #records do
+    local record = records[index]
+    local code = record:sub(1, 2)
+    local path = record:sub(4)
     if code == "??" then
       result[path] = "A"
     elseif path ~= "" then
       if code:find("R", 1, true) then
-        path = path:match("^.* %-%> (.+)$") or path
         result[path] = "R"
+        index = index + 1
       elseif code:find("A", 1, true) then
         result[path] = "A"
       elseif code:find("D", 1, true) then
@@ -58,6 +62,7 @@ function M.parse_porcelain(lines)
         result[path] = "M"
       end
     end
+    index = index + 1
   end
   return result
 end
@@ -95,8 +100,10 @@ local function complete(callback, success)
   end
 end
 
-function M.refresh(cwd, callback)
-  cwd = normalize(cwd)
+function M.refresh(cwd, callback, adapter)
+  adapter = adapter or {}
+  cwd = (adapter.root or worktree_root.resolve)(cwd)
+  local execute = adapter.run or run
   local generation = (generations[cwd] or 0) + 1
   generations[cwd] = generation
 
@@ -110,7 +117,7 @@ function M.refresh(cwd, callback)
     end
   end
 
-  run({ "gh", "pr", "view", "--json", "baseRefName" }, cwd, function(pr_result)
+  execute({ "gh", "pr", "view", "--json", "baseRefName" }, cwd, function(pr_result)
     if not current() then
       return
     end
@@ -123,7 +130,7 @@ function M.refresh(cwd, callback)
       end
     end
 
-    run({ "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD" }, cwd, function(head_result)
+    execute({ "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD" }, cwd, function(head_result)
       if not current() then
         return
       end
@@ -142,7 +149,7 @@ function M.refresh(cwd, callback)
           return
         end
 
-        run({ "git", "merge-base", "HEAD", base }, cwd, function(merge_base_result)
+        execute({ "git", "merge-base", "HEAD", base }, cwd, function(merge_base_result)
           if not current() then
             return
           end
@@ -158,7 +165,7 @@ function M.refresh(cwd, callback)
             return
           end
 
-          run({ "git", "diff", "--name-status", "--find-renames", merge_base }, cwd, function(diff_result)
+          execute({ "git", "diff", "--name-status", "--find-renames", merge_base }, cwd, function(diff_result)
             if not current() then
               return
             end
@@ -168,7 +175,7 @@ function M.refresh(cwd, callback)
               return
             end
 
-            run({ "git", "status", "--porcelain=v1", "--untracked-files=all" }, cwd, function(status_result)
+            execute({ "git", "status", "--porcelain=v1", "-z", "--untracked-files=all" }, cwd, function(status_result)
               if not current() then
                 return
               end
@@ -179,7 +186,7 @@ function M.refresh(cwd, callback)
               end
 
               local changes = M.parse_name_status(output_lines(diff_result.stdout))
-              for path, status in pairs(M.parse_porcelain(output_lines(status_result.stdout))) do
+              for path, status in pairs(M.parse_porcelain_z(status_result.stdout)) do
                 if status == "A" then
                   changes[path] = status
                 end
@@ -202,7 +209,7 @@ function M.refresh(cwd, callback)
 end
 
 function M.refresh_explorers(cwd)
-  cwd = normalize(cwd)
+  cwd = worktree_root.resolve(cwd)
   local actions = require("snacks.explorer.actions")
   for _, picker in ipairs(Snacks.picker.get({ source = "explorer" })) do
     if normalize(picker:cwd()) == cwd then
@@ -244,7 +251,7 @@ function M.format(item, picker)
 end
 
 function M.debounce(cwd)
-  cwd = normalize(cwd)
+  cwd = worktree_root.resolve(cwd)
   local timer = timers[cwd]
   if not timer then
     timer = vim.uv.new_timer()
@@ -264,7 +271,7 @@ local group = vim.api.nvim_create_augroup("ExplorerBaseDiff", { clear = true })
 vim.api.nvim_create_autocmd({ "BufWritePost", "FocusGained", "ShellCmdPost" }, {
   group = group,
   callback = function()
-    M.debounce(vim.fn.getcwd())
+    M.debounce(worktree_root.resolve(vim.fn.getcwd()))
   end,
 })
 

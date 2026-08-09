@@ -8,6 +8,23 @@ import {
   recordActivity,
 } from "../dot_local/lib/worktree-activity";
 
+async function runCli(args: string[], stateDir: string) {
+  const process = Bun.spawn(
+    ["bun", "dot_local/bin/executable_worktree-activity", ...args],
+    {
+      cwd: join(import.meta.dir, ".."),
+      env: { ...Bun.env, XDG_STATE_HOME: stateDir },
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+  return {
+    exitCode: await process.exited,
+    stdout: await new Response(process.stdout).text(),
+    stderr: await new Response(process.stderr).text(),
+  };
+}
+
 describe("worktree activity", () => {
   test("uses the default state directory when XDG_STATE_HOME is empty", () => {
     const previous = process.env.XDG_STATE_HOME;
@@ -41,6 +58,21 @@ describe("worktree activity", () => {
     ]);
   });
 
+  test("records the canonical Git worktree root", async () => {
+    const stateDir = await mkdtemp(join(tmpdir(), "worktree-activity-"));
+
+    const activity = await recordActivity("/repo/apps/web", "codex", {
+      stateDir,
+      now: 10,
+      resolveWorktreeRoot: async (cwd) => {
+        expect(cwd).toBe("/repo/apps/web");
+        return "/real/repo";
+      },
+    });
+
+    expect(activity.path).toBe("/real/repo");
+  });
+
   test("keeps activity for each source separately", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "worktree-activity-"));
 
@@ -58,5 +90,17 @@ describe("worktree activity", () => {
     await writeFile(join(stateDir, "broken.json"), "{");
 
     expect(await readActivities({ stateDir })).toEqual([]);
+  });
+
+  test.each([
+    ["list", "extra"],
+    ["record", "codex", "/repo", "extra"],
+  ])("rejects extra positional arguments: %s", async (...args) => {
+    const stateDir = await mkdtemp(join(tmpdir(), "worktree-activity-cli-"));
+    const result = await runCli(args, stateDir);
+
+    expect(result.exitCode).toBe(2);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toStartWith("usage: worktree-activity");
   });
 });

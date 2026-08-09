@@ -7,12 +7,19 @@ import {
 } from "../lib/worktree-activity";
 
 const usage = "usage: worktree-activity record <claude|codex|nvim> <cwd> | worktree-activity list\n";
-const [command, source, cwd] = process.argv.slice(2);
+const args = process.argv.slice(2);
+const [command, source, cwd] = args;
 const sources = new Set<ActivitySource>(["claude", "codex", "nvim"]);
 
-if (command === "list" && source === undefined) {
+if (command === "list" && args.length === 1) {
   process.stdout.write(`${JSON.stringify(await readActivities())}\n`);
-} else if (command === "record" && source && cwd && sources.has(source as ActivitySource)) {
+} else if (
+  command === "record" &&
+  args.length === 3 &&
+  source &&
+  cwd &&
+  sources.has(source as ActivitySource)
+) {
   process.stdout.write(
     `${JSON.stringify(await recordActivity(cwd, source as ActivitySource))}\n`,
   );

@@ -1,17 +1,18 @@
 local M = {}
+local root = require("user.worktree_root")
 
 local function notify(message)
   vim.notify(message, vim.log.levels.ERROR)
 end
 
 local function normalize(path)
-  return vim.fs.normalize(vim.fn.fnamemodify(path, ":p"))
+  return root.normalize(path)
 end
 
-local function decode_json(output, description)
+local function decode_json(output, description, report)
   local ok, decoded = pcall(vim.json.decode, output or "")
   if not ok then
-    notify("Worktree switch: could not decode " .. description)
+    report("Worktree switch: could not decode " .. description)
     return nil
   end
   return decoded
@@ -86,63 +87,83 @@ local function cmux_path()
   return nil
 end
 
-local function workspace_ids(node, ids)
+local function add_workspace_refs(node, refs, seen)
+  if type(node) == "string" then
+    if node:match("^workspace:") and not seen[node] then
+      seen[node] = true
+      refs[#refs + 1] = node
+    end
+    return
+  end
   if type(node) ~= "table" then
     return
   end
-  if node.id ~= nil then
-    ids[tostring(node.id)] = true
+  if type(node.ref) == "string" then
+    add_workspace_refs(node.ref, refs, seen)
   end
-  for _, child in pairs(node) do
-    workspace_ids(child, ids)
+  if vim.islist(node) then
+    for _, child in ipairs(node) do
+      add_workspace_refs(child, refs, seen)
+    end
+    return
+  end
+  for _, key in ipairs({ "workspaces", "items", "data" }) do
+    if node[key] then
+      add_workspace_refs(node[key], refs, seen)
+    end
   end
 end
 
-local function find_workspace(node, path)
+function M.workspace_refs(node)
+  local refs = {}
+  add_workspace_refs(node, refs, {})
+  return refs
+end
+
+local function sidebar_cwd(node)
   if type(node) ~= "table" then
     return nil
   end
-  local cwd = node.cwd or node.working_directory
-  if node.id ~= nil and type(cwd) == "string" and normalize(cwd) == path then
-    return tostring(node.id)
+  if type(node.cwd) == "string" then
+    return node.cwd
   end
   for _, child in pairs(node) do
-    local found = find_workspace(child, path)
-    if found then
-      return found
+    local cwd = sidebar_cwd(child)
+    if cwd then
+      return cwd
     end
   end
-  return nil
 end
 
-local function switch_workspace(cmux, item, repo)
-  run({ cmux, "workspace", "list", "--json" }, function(list_result)
+function M.switch_workspace(cmux, item, repo, adapter)
+  adapter = adapter or {}
+  local execute = adapter.run or run
+  local report = adapter.notify or notify
+  local target = normalize(item.path)
+
+  local function workspace_command(command)
+    execute(command, function(result)
+      if result.code ~= 0 then
+        report("Worktree switch: cmux workspace command failed")
+      end
+    end)
+  end
+
+  execute({ cmux, "workspace", "list", "--json" }, function(list_result)
     if list_result.code ~= 0 then
-      notify("Worktree switch: cmux workspace list failed")
+      report("Worktree switch: cmux workspace list failed")
       return
     end
-    local listed = decode_json(list_result.stdout, "cmux workspace list")
+    local listed = decode_json(list_result.stdout, "cmux workspace list", report)
     if not listed then
       return
     end
-    local ids = {}
-    workspace_ids(listed, ids)
+    local refs = M.workspace_refs(listed)
 
-    run({ cmux, "tree", "--all", "--json" }, function(tree_result)
-      if tree_result.code ~= 0 then
-        notify("Worktree switch: cmux tree failed")
-        return
-      end
-      local tree = decode_json(tree_result.stdout, "cmux tree")
-      if not tree then
-        return
-      end
-      local workspace_id = find_workspace(tree, item.path)
-      local command
-      if workspace_id and ids[workspace_id] then
-        command = { cmux, "workspace", "select", workspace_id }
-      else
-        command = {
+    local function inspect(index)
+      local ref = refs[index]
+      if not ref then
+        workspace_command({
           cmux,
           "workspace",
           "create",
@@ -153,14 +174,33 @@ local function switch_workspace(cmux, item, repo)
           "--command",
           "nvim",
           "--json",
-        }
+        })
+        return
       end
-      run(command, function(result)
-        if result.code ~= 0 then
-          notify("Worktree switch: cmux workspace command failed")
+
+      execute({ cmux, "sidebar-state", "--workspace", ref, "--json" }, function(state_result)
+        if state_result.code ~= 0 then
+          report("Worktree switch: cmux sidebar-state failed for " .. ref)
+          return
         end
+        local state = decode_json(state_result.stdout, "cmux sidebar-state for " .. ref, report)
+        if not state then
+          return
+        end
+        local cwd = sidebar_cwd(state)
+        if not cwd then
+          report("Worktree switch: cmux sidebar-state has no cwd for " .. ref)
+          return
+        end
+        if normalize(cwd) == target then
+          workspace_command({ cmux, "workspace", "select", ref })
+          return
+        end
+        inspect(index + 1)
       end)
-    end)
+    end
+
+    inspect(1)
   end)
 end
 
@@ -180,11 +220,11 @@ function M.open()
         notify("Worktree switch: activity list failed")
         return
       end
-      local activities = decode_json(activity_result.stdout, "activity list")
+      local activities = decode_json(activity_result.stdout, "activity list", notify)
       if not activities then
         return
       end
-      local sorted = M.sort(items, activities, vim.uv.cwd())
+      local sorted = M.sort(items, activities, root.resolve(vim.uv.cwd()))
       vim.ui.select(sorted, {
         prompt = "Switch worktree",
         format_item = function(item)
@@ -199,19 +239,20 @@ function M.open()
           notify("Worktree switch: cmux executable not found")
           return
         end
-        switch_workspace(cmux, item, vim.fn.fnamemodify(items[1].path, ":t"))
+        M.switch_workspace(cmux, item, vim.fn.fnamemodify(items[1].path, ":t"))
       end)
     end)
   end)
 end
 
-vim.api.nvim_create_autocmd({ "VimEnter", "FocusGained" }, {
-  callback = function()
-    local cwd = vim.uv.cwd()
-    if cwd then
-      vim.system({ "worktree-activity", "record", "nvim", cwd }, { text = true })
-    end
-  end,
-})
+function M.record_activity(adapter)
+  adapter = adapter or {}
+  local cwd = (adapter.root or root.resolve)(vim.uv.cwd())
+  if cwd then
+    (adapter.system or vim.system)({ "worktree-activity", "record", "nvim", cwd }, { text = true })
+  end
+end
+
+vim.api.nvim_create_autocmd({ "VimEnter", "FocusGained" }, { callback = M.record_activity })
 
 return M
