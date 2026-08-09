@@ -39,7 +39,7 @@ return {
         approve_review = { lhs = "a", mode = "n", desc = "Approve" },
         comment_review = { lhs = "c", mode = "n", desc = "Comment" },
         request_changes = { lhs = "r", mode = "n", desc = "Request changes" },
-        close_review_tab = { lhs = "q", mode = "n", desc = "Cancel submit" },
+        close_review_win = { lhs = "q", mode = "n", desc = "Cancel submit" },
       },
     },
   },
