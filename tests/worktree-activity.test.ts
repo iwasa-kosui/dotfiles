@@ -1,13 +1,31 @@
 import { describe, expect, test } from "bun:test";
 import { mkdtemp, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  activityStateDir,
   readActivities,
   recordActivity,
 } from "../dot_local/lib/worktree-activity";
 
 describe("worktree activity", () => {
+  test("uses the default state directory when XDG_STATE_HOME is empty", () => {
+    const previous = process.env.XDG_STATE_HOME;
+    process.env.XDG_STATE_HOME = "";
+
+    try {
+      expect(activityStateDir()).toBe(
+        join(homedir(), ".local", "state", "worktree-activity"),
+      );
+    } finally {
+      if (previous === undefined) {
+        delete process.env.XDG_STATE_HOME;
+      } else {
+        process.env.XDG_STATE_HOME = previous;
+      }
+    }
+  });
+
   test("keeps one latest record per worktree and source", async () => {
     const stateDir = await mkdtemp(join(tmpdir(), "worktree-activity-"));
 

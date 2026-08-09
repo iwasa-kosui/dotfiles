@@ -18,14 +18,17 @@ export type ActivityOptions = {
 
 const sources = new Set<ActivitySource>(["claude", "codex", "nvim"]);
 
-function defaultStateDir(): string {
+export function activityStateDir(): string {
   return join(
-    process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state"),
+    process.env.XDG_STATE_HOME || join(homedir(), ".local", "state"),
     "worktree-activity",
   );
 }
 
-function activityPath(stateDir: string, activity: Pick<Activity, "path" | "source">): string {
+function activityPath(
+  stateDir: string,
+  activity: Pick<Activity, "path" | "source">,
+): string {
   const digest = createHash("sha256")
     .update(`${activity.path}\0${activity.source}`)
     .digest("hex");
@@ -51,7 +54,7 @@ export async function recordActivity(
   source: ActivitySource,
   options: ActivityOptions = {},
 ): Promise<Activity> {
-  const stateDir = options.stateDir ?? defaultStateDir();
+  const stateDir = options.stateDir ?? activityStateDir();
   const activity: Activity = {
     path: resolve(cwd),
     source,
@@ -70,7 +73,7 @@ export async function recordActivity(
 export async function readActivities(
   options: ActivityOptions = {},
 ): Promise<Activity[]> {
-  const stateDir = options.stateDir ?? defaultStateDir();
+  const stateDir = options.stateDir ?? activityStateDir();
   let entries: string[];
   try {
     entries = await readdir(stateDir);
@@ -86,7 +89,9 @@ export async function readActivities(
       .filter((entry) => entry.endsWith(".json"))
       .map(async (entry) => {
         try {
-          const parsed: unknown = JSON.parse(await readFile(join(stateDir, entry), "utf8"));
+          const parsed: unknown = JSON.parse(
+            await readFile(join(stateDir, entry), "utf8"),
+          );
           return isActivity(parsed) ? parsed : undefined;
         } catch {
           return undefined;
@@ -96,7 +101,9 @@ export async function readActivities(
 
   return activities
     .filter((activity): activity is Activity => activity !== undefined)
-    .sort((left, right) =>
-      left.path.localeCompare(right.path) || left.source.localeCompare(right.source),
+    .sort(
+      (left, right) =>
+        left.path.localeCompare(right.path) ||
+        left.source.localeCompare(right.source),
     );
 }
