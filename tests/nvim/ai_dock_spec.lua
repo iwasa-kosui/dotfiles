@@ -43,6 +43,49 @@ t.eq(
 	})
 )
 
+local claude_dock = require("user.dock").new()
+local first_claude_buffer = vim.api.nvim_create_buf(false, true)
+local second_claude_buffer = vim.api.nvim_create_buf(false, true)
+local hidden_claude_windows = {}
+local claude_buffer_cleanups = {}
+local claude_adapter = {
+	buffer_valid = function(buffer)
+		return vim.api.nvim_buf_is_valid(buffer)
+	end,
+	register_buffer_cleanup = function(buffer, callback)
+		claude_buffer_cleanups[buffer] = callback
+	end,
+	windows_for_buffer = function(buffer)
+		return { buffer + 1000 }
+	end,
+	hide_window = function(window)
+		hidden_claude_windows[window] = (hidden_claude_windows[window] or 0) + 1
+	end,
+	activate_dock = function(name, handle)
+		claude_dock:activate(name, handle)
+	end,
+}
+
+ai.attach("claude", first_claude_buffer, claude_adapter)
+local first_claude_handle = claude_dock.active.handle
+ai.attach("claude", first_claude_buffer, claude_adapter)
+t.eq(first_claude_handle, claude_dock.active.handle, "the same live Claude buffer must reuse its Dock handle")
+t.eq(0, hidden_claude_windows[first_claude_buffer + 1000] or 0, "reattach must not hide the same Claude window")
+
+claude_buffer_cleanups[first_claude_buffer]()
+ai.attach("claude", first_claude_buffer, claude_adapter)
+local replacement_claude_handle = claude_dock.active.handle
+t.truthy(first_claude_handle ~= replacement_claude_handle, "a wiped and reused buffer number needs a new Dock handle")
+t.eq(0, hidden_claude_windows[first_claude_buffer + 1000] or 0, "an invalidated handle must not hide its replacement")
+
+ai.attach("claude", second_claude_buffer, claude_adapter)
+t.truthy(replacement_claude_handle ~= claude_dock.active.handle, "a replacement Claude buffer needs a new Dock handle")
+t.eq(1, hidden_claude_windows[first_claude_buffer + 1000], "replacing the Claude buffer must hide its old window")
+t.eq(0, hidden_claude_windows[second_claude_buffer + 1000] or 0)
+
+vim.api.nvim_buf_delete(first_claude_buffer, { force = true })
+vim.api.nvim_buf_delete(second_claude_buffer, { force = true })
+
 local terminals = {}
 local created = 0
 local discarded = 0

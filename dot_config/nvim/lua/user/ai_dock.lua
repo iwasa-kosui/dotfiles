@@ -3,6 +3,7 @@ local M = {}
 local providers = { claude = true, codex = true }
 local default_provider = "claude"
 local codex_commands = {}
+local claude_handles = {}
 
 ---@class AiContext
 ---@field path string
@@ -126,6 +127,12 @@ local function api(adapter)
         return vim.bo[buffer].channel
       end,
       channel_send = vim.api.nvim_chan_send,
+      buffer_valid = vim.api.nvim_buf_is_valid,
+      windows_for_buffer = vim.fn.win_findbuf,
+      hide_window = vim.api.nvim_win_hide,
+      register_buffer_cleanup = function(buffer, callback)
+        vim.api.nvim_create_autocmd("BufWipeout", { buffer = buffer, once = true, callback = callback })
+      end,
       attach_terminal = function(provider, buffer, runtime)
         M.attach(provider, buffer, runtime)
       end,
@@ -133,23 +140,41 @@ local function api(adapter)
   })
 end
 
-local function claude_handle(buffer)
-  return {
+local function claude_handle(buffer, runtime)
+  local cached = claude_handles[buffer]
+  if cached and runtime.buffer_valid(buffer) then
+    return cached
+  end
+  local handle
+  handle = {
     hide = function()
-      for _, window in ipairs(vim.fn.win_findbuf(buffer)) do
-        pcall(vim.api.nvim_win_hide, window)
+      if claude_handles[buffer] ~= handle then
+        return
+      end
+      for _, window in ipairs(runtime.windows_for_buffer(buffer)) do
+        pcall(runtime.hide_window, window)
       end
     end,
   }
+  claude_handles[buffer] = handle
+  runtime.register_buffer_cleanup(buffer, function()
+    if claude_handles[buffer] == handle then
+      claude_handles[buffer] = nil
+    end
+  end)
+  return handle
 end
 
 function M.attach(provider, buffer, adapter)
   local runtime = api(adapter)
+  if not runtime.buffer_valid(buffer) then
+    return
+  end
   vim.b[buffer].ai_dock_provider = provider
   vim.keymap.set("n", "p", M.switch_provider, { buffer = buffer, desc = "Switch AI provider" })
   vim.keymap.set("n", "r", M.resume, { buffer = buffer, desc = "Resume AI provider" })
   if provider == "claude" then
-    runtime.activate_dock("claude", claude_handle(buffer))
+    runtime.activate_dock("claude", claude_handle(buffer, runtime))
   end
 end
 
