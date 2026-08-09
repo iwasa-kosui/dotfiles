@@ -121,7 +121,7 @@ HTMLの基本構造もAST上で検証します。`summary`は`details`の先頭�
 ```
 
 - `tone`: 必須。`neutral`、`info`、`success`、`warning`、`danger`。
-- 子要素: 空でないインラインMarkdown。
+- 子要素: 空でないインラインMarkdown。safe HTMLは小文字のphrasing要素だけ、専用コンポーネントは`Icon`だけを許可し、子孫まで同じ制約で検査します。
 - WebcoreUI Badgeへ変換し、`neutral`は`secondary`、`danger`は`alert`へ対応させます。
 
 ### Status
@@ -131,7 +131,7 @@ HTMLの基本構造もAST上で検証します。`summary`は`details`の先頭�
 ```
 
 - `tone`: 必須。Badgeと同じ5値。
-- 子要素: 空でないインラインMarkdown。
+- 子要素: 空でないインラインMarkdown。safe HTMLは小文字のphrasing要素だけ、専用コンポーネントは`Icon`だけを許可し、子孫まで同じ制約で検査します。
 - `rpt`専用の状態ドットとラベルとして表示し、色だけに依存しないdata属性とテキストを維持します。
 
 ### Icon
@@ -178,7 +178,7 @@ HTMLの基本構造もAST上で検証します。`summary`は`details`の先頭�
 - activeは1件以下です。0件なら先頭を初期表示にします。
 - Tab本文は許可済みMarkdown、safe HTML、非Tabsコンポーネント、Mermaidを許可します。
 - Tabsの入れ子は拒否します。
-- 検証後にradio group名、tab ID、panel IDを一意に挿入します。これらの内部属性は`rpt`予約であり、利用者から指定できません。
+- 検証後にradio group名、tab ID、panel IDを一意に挿入します。radio group名はDOM ID集合と分離し、実DOMへ出力するIDだけをARIA参照先として登録します。これらの内部属性は`rpt`予約であり、利用者から指定できません。
 - 画面ではCSS radioで切り替えます。radioはキーボード操作可能で、labelとpanelをARIAで関連付けます。
 - 印刷CSSではradioとtab listを隠し、全panelを見出し付きで展開します。
 

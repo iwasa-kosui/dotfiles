@@ -344,13 +344,14 @@ function validateNode(
         sectionDepth,
         tabsDepth,
         timelineDepth,
-        allocateId: (base) =>
-          base === "rpt-tabs"
-            ? allocateHtmlId(
-                base + "-" + (++state.tabsGroupCount),
-                state.htmlIds,
-              )
-            : allocateHtmlId(base, state.htmlIds),
+        allocateId: (base) => allocateHtmlId(base, state.htmlIds),
+        allocateTabsGroup: () => {
+          state.tabsGroupCount += 1;
+          return {
+            name: "rpt-tabs-" + state.tabsGroupCount,
+            index: state.tabsGroupCount,
+          };
+        },
         addOutline: (item) => state.outline.push(item),
         insert: (offset, text) => state.sourceInsertions.push({ offset, text }),
       });

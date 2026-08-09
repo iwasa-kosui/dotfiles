@@ -12,6 +12,7 @@ export type ComponentContext = Readonly<{
   tabsDepth: number;
   timelineDepth: number;
   allocateId(base: string): string;
+  allocateTabsGroup(): Readonly<{ name: string; index: number }>;
   addOutline(item: Readonly<{ depth: 2 | 3; text: string; slug: string }>): void;
   insert(offset: number, text: string): void;
 }>;
@@ -24,6 +25,30 @@ type ComponentRule = Readonly<{
 
 const tones = ["neutral", "info", "success", "warning", "danger"] as const;
 const calloutTones = ["info", "success", "warning", "danger"] as const;
+const inlineHtmlElementNames = new Set([
+  "a",
+  "abbr",
+  "b",
+  "br",
+  "cite",
+  "code",
+  "data",
+  "em",
+  "i",
+  "kbd",
+  "mark",
+  "q",
+  "s",
+  "samp",
+  "small",
+  "span",
+  "strong",
+  "sub",
+  "sup",
+  "time",
+  "u",
+  "var",
+]);
 const iconNames = [
   "alert",
   "check",
@@ -338,8 +363,7 @@ function validateTabs(
     return issue("Tabs may only contain one active Tab", node);
   }
 
-  const group = context.allocateId("rpt-tabs");
-  const groupIndex = group.match(/^rpt-tabs-(\d+)/)?.[1] ?? "1";
+  const group = context.allocateTabsGroup();
   for (const [index, child] of children.entries()) {
     const offset = openingTagInsertionOffset(child, context.source);
     if (offset === undefined) {
@@ -349,18 +373,18 @@ function validateTabs(
     const checked =
       activeTabs.length === 0 ? index === 0 : attributeValue(child, "active") === "true";
     const controlId = context.allocateId(
-      "rpt-tab-control-" + groupIndex + "-" + tabIndex,
+      "rpt-tab-control-" + group.index + "-" + tabIndex,
     );
     const labelId = context.allocateId(
-      "rpt-tab-label-" + groupIndex + "-" + tabIndex,
+      "rpt-tab-label-" + group.index + "-" + tabIndex,
     );
     const panelId = context.allocateId(
-      "rpt-tab-panel-" + groupIndex + "-" + tabIndex,
+      "rpt-tab-panel-" + group.index + "-" + tabIndex,
     );
     context.insert(
       offset,
       " group=\"" +
-        group +
+        group.name +
         "\" controlId=\"" +
         controlId +
         "\" labelId=\"" +
@@ -404,7 +428,7 @@ function containerChildren(node: TreeNode): readonly TreeNode[] {
 }
 
 function isInlineContentNode(node: TreeNode): boolean {
-  return [
+  const isInlineMarkdown = [
     "text",
     "emphasis",
     "strong",
@@ -416,8 +440,15 @@ function isInlineContentNode(node: TreeNode): boolean {
     "imageReference",
     "break",
     "footnoteReference",
-    "mdxJsxTextElement",
   ].includes(node.type);
+  const isAllowedMdxElement =
+    node.type === "mdxJsxTextElement" &&
+    typeof node.name === "string" &&
+    (node.name === "Icon" || inlineHtmlElementNames.has(node.name));
+  if (!isInlineMarkdown && !isAllowedMdxElement) {
+    return false;
+  }
+  return (node.children ?? []).every(isInlineContentNode);
 }
 
 function isNamedComponent(
@@ -457,7 +488,7 @@ function openingTagInsertionOffset(
   for (let index = position.start.offset; index < position.end.offset; index += 1) {
     const character = source[index];
     if (quote !== undefined) {
-      if (character === quote && source[index - 1] !== "\\") {
+      if (character === quote && !hasOddPrecedingBackslashes(source, index)) {
         quote = undefined;
       }
       continue;
@@ -475,6 +506,14 @@ function openingTagInsertionOffset(
     }
   }
   return undefined;
+}
+
+function hasOddPrecedingBackslashes(source: string, offset: number): boolean {
+  let count = 0;
+  for (let index = offset - 1; index >= 0 && source[index] === "\\"; index -= 1) {
+    count += 1;
+  }
+  return count % 2 === 1;
 }
 
 function isSelfClosing(node: TreeNode, source: string): boolean {

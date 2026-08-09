@@ -264,6 +264,7 @@ export type ComponentContext = Readonly<{
   tabsDepth: number;
   timelineDepth: number;
   allocateId(base: string): string;
+  allocateTabsGroup(): Readonly<{ name: string; index: number }>;
   addOutline(item: Readonly<{ depth: 2 | 3; text: string; slug: string }>): void;
   insert(offset: number, text: string): void;
 }>;
@@ -274,7 +275,7 @@ export function validateComponent(
 ): ValidationIssue | undefined;
 ```
 
-Callout、Metric、Evidence、Sectionの現契約をそのまま移し、Badge、Status、Icon、Timeline、TimelineItem、Tabs、Tabを追加する。whitespace-only text nodeをcontainer直下の件数から除外する。inline contentはparagraphを作らないtext-level nodeだけ許可する。
+Callout、Metric、Evidence、Sectionの現契約をそのまま移し、Badge、Status、Icon、Timeline、TimelineItem、Tabs、Tabを追加する。whitespace-only text nodeをcontainer直下の件数から除外する。inline contentはparagraphを作らないtext-level node、小文字のphrasing safe HTML、Iconだけを子孫まで再帰的に許可する。
 
 - [ ] **Step 4: Tabsの内部propsを一意に挿入する**
 
@@ -288,7 +289,7 @@ panelId="rpt-tab-panel-1-1"
 checked="true|false"
 ```
 
-すべて`allocateId`を経由する。利用者が`group`、`controlId`、`labelId`、`panelId`、`checked`を指定した場合はreserved attributeとして拒否する。既存`anchorInsertions`を汎用`sourceInsertions: {offset,text}[]`へ変更する。
+radioの`group`名はDOM IDではないため専用連番で割り当て、`htmlIds`へ登録しない。実DOMへ出力する`controlId`、`labelId`、`panelId`だけを`allocateId`へ通す。利用者が`group`、`controlId`、`labelId`、`panelId`、`checked`を指定した場合はreserved attributeとして拒否する。既存`anchorInsertions`を汎用`sourceInsertions: {offset,text}[]`へ変更する。
 
 - [ ] **Step 5: 拒否E2Eと既存回帰をGREENにする**
 

@@ -490,6 +490,26 @@ const rejectedMdx = [
     "Status must contain inline content",
   ],
   [
+    "a Badge with a safe HTML block child",
+    "---\ntitle: X\n---\n<Badge tone=\"info\"><div>block</div></Badge>",
+    "Badge must contain inline content",
+  ],
+  [
+    "a Status with a Timeline child",
+    "---\ntitle: X\n---\n<Status tone=\"success\"><Timeline><TimelineItem>a</TimelineItem><TimelineItem>b</TimelineItem></Timeline></Status>",
+    "Status must contain inline content",
+  ],
+  [
+    "a Badge with a Tabs child",
+    "---\ntitle: X\n---\n<Badge tone=\"info\"><Tabs><Tab label=\"A\">a</Tab><Tab label=\"B\">b</Tab></Tabs></Badge>",
+    "Badge must contain inline content",
+  ],
+  [
+    "a Badge with a Timeline hidden in strong Markdown",
+    "---\ntitle: X\n---\n<Badge tone=\"info\">**inline <Timeline><TimelineItem>a</TimelineItem><TimelineItem>b</TimelineItem></Timeline>**</Badge>",
+    "Badge must contain inline content",
+  ],
+  [
     "an Icon with an unknown name",
     "---\ntitle: X\n---\n<Icon name=\"custom\" />",
     "Icon.name must be one of:",
@@ -596,6 +616,10 @@ const rejectedAriaReferences = [
   ["aria-describedby", '<div aria-describedby="missing">x</div>'],
   ["aria-details", '<div aria-details="missing">x</div>'],
   ["aria-controls", '<div aria-controls="missing-one missing-two">x</div>'],
+  [
+    "a Tabs radio group name",
+    '<Tabs><Tab label="A">a</Tab><Tab label="B">b</Tab></Tabs>\n<div aria-controls="rpt-tabs-1">x</div>',
+  ],
   ["aria-owns", '<div aria-owns="missing">x</div>'],
   ["aria-flowto", '<div aria-flowto="missing">x</div>'],
   ["aria-activedescendant", '<div aria-activedescendant="missing">x</div>'],
@@ -814,6 +838,42 @@ test("Tabs receive unique internal radio props in validated source", () => {
   expect(result.value.source).toContain(
     '<Tab label="C" group="rpt-tabs-2" controlId="rpt-tab-control-2-1" labelId="rpt-tab-label-2-1" panelId="rpt-tab-panel-2-1" checked="true">',
   );
+});
+
+test("build accepts Section titles and Tab labels ending in backslashes", async () => {
+  const testCase = await createCase(String.raw`---
+title: Trailing backslashes
+---
+
+<Section title="Path\\">
+Section body.
+</Section>
+
+<Tabs>
+  <Tab label="First\\">First body.</Tab>
+  <Tab label="Second">Second body.</Tab>
+</Tabs>`);
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    const elements = collectElements(parse(await Bun.file(testCase.output).text()));
+    const sectionHeading = elements.find(
+      (element) => element.tagName === "h2" && elementTextContent(element) === String.raw`Path\\`,
+    );
+    const panels = elements.filter(
+      (element) => element.tagName === "section" && hasClass(element, "rpt-tab-panel"),
+    );
+
+    expect(sectionHeading).toBeDefined();
+    expect(panels.map((panel) => attributeValue(panel, "data-label"))).toEqual([
+      String.raw`First\\`,
+      "Second",
+    ]);
+  } finally {
+    await testCase.cleanup();
+  }
 });
 
 test("Tabs and Timeline ignore whitespace-only direct children", () => {
