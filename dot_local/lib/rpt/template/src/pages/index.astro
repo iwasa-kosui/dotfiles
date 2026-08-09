@@ -1,0 +1,13 @@
+---
+import Callout from "../components/Callout.astro";
+import Evidence from "../components/Evidence.astro";
+import Metric from "../components/Metric.astro";
+import Section from "../components/Section.astro";
+import reportData from "../content/report-data.json";
+import { Content } from "../content/report.mdx";
+import ReportLayout from "../layouts/ReportLayout.astro";
+---
+
+<ReportLayout metadata={reportData.metadata} outline={reportData.outline}>
+  <Content components={{ Callout, Evidence, Metric, Section }} />
+</ReportLayout>

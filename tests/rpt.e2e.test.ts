@@ -277,33 +277,24 @@ test("build rejects a Section that shares a paragraph with another component", a
   }
 });
 
-test("build advances validated restricted MDX to the build stage", async () => {
-  const testCase = await createCase(
-    "---\ntitle: Valid report\n---\n\n## Finding\n\n<Section title=\"Next steps\">\nContinue.\n</Section>",
-  );
-  try {
-    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
-
-    expect(result.exitCode).toBe(4);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("rpt: report build is not implemented\n");
-    expect(await Bun.file(testCase.output).exists()).toBe(false);
-  } finally {
-    await testCase.cleanup();
-  }
-});
-
-test("build accepts the allowed component set before the build stage", async () => {
+test("build renders an allowed report as a readable static HTML document", async () => {
   const testCase = await createCase(
     "---\ntitle: 開発環境の移行調査\nsummary: 段階的な移行を推奨します。\nauthor: Platform Team\ncreatedAt: 2026-08-09\nstatus: final\ntags: [migration, tooling]\n---\n\n## 結論\n\n<Callout tone=\"success\" title=\"推奨案\">段階的に移行します。</Callout>\n\n<Metric label=\"削減工数\" value=\"24%\" />\n\n<Evidence title=\"試行結果\" source=\"https://example.com/evidence\">重大な障害はありませんでした。</Evidence>\n\n<Section title=\"次の対応\">\n2週間の試行を開始します。\n</Section>",
   );
   try {
     const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
 
-    expect(result.exitCode).toBe(4);
-    expect(result.stdout).toBe("");
-    expect(result.stderr).toBe("rpt: report build is not implemented\n");
-    expect(await Bun.file(testCase.output).exists()).toBe(false);
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe(`${testCase.output}\n`);
+    const html = await Bun.file(testCase.output).text();
+    expect(html).toContain("<title>開発環境の移行調査</title>");
+    expect(html).toContain('data-rpt-component="callout"');
+    expect(html).toContain('data-rpt-component="metric"');
+    expect(html).toContain('data-rpt-component="evidence"');
+    expect(html).toContain('id="section-次の対応"');
+    expect(html).toContain('aria-label="目次"');
+    expect(html).toContain('class="rpt-skip-link"');
+    expect(html).not.toContain("<script");
   } finally {
     await testCase.cleanup();
   }

@@ -1,4 +1,6 @@
+import { resolve } from "node:path";
 import { parseArgs, usage } from "./args.ts";
+import { buildReport } from "./build.ts";
 import { readInput } from "./input.ts";
 import type { Failure } from "./result.ts";
 import { validateReport } from "./validate.ts";
@@ -30,12 +32,31 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         writeFailure(report.error, command.value.debug);
         return report.error.exitCode;
       }
-      writeFailure({
-        kind: "build",
-        exitCode: 4,
-        message: "report build is not implemented",
-      });
-      return 4;
+      const build = await buildReport(report.value, resolve(import.meta.dir, ".."));
+      if (!build.ok) {
+        writeFailure(build.error, command.value.debug);
+        return build.error.exitCode;
+      }
+
+      const outputPath = resolve(process.cwd(), command.value.output);
+      try {
+        await Bun.write(outputPath, build.value.html);
+      } catch (cause) {
+        writeFailure(
+          {
+            kind: "io",
+            exitCode: 5,
+            message: "could not write output: " + command.value.output,
+            cause,
+          },
+          command.value.debug,
+        );
+        return 5;
+      } finally {
+        await build.value.cleanup();
+      }
+      console.log(outputPath);
+      return 0;
     }
   }
 }

@@ -1,0 +1,135 @@
+@use "webcoreui/styles" as *;
+
+@include setup();
+
+:root {
+  color-scheme: light;
+}
+
+.rpt-shell {
+  max-width: 72rem;
+  margin-inline: auto;
+  padding: 2rem 1.25rem 4rem;
+}
+
+.rpt-header {
+  max-width: 47.5rem;
+  margin-block-end: 3rem;
+}
+
+.rpt-header h1 {
+  margin-block-end: 0.75rem;
+}
+
+.rpt-metadata,
+.rpt-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.rpt-tags {
+  padding: 0;
+  margin-block: 1rem 0;
+  list-style: none;
+}
+
+.rpt-tags li {
+  padding: 0.125rem 0.5rem;
+  border: 1px solid currentcolor;
+  border-radius: 999px;
+}
+
+.rpt-grid {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 47.5rem);
+  gap: 3rem;
+}
+
+.rpt-toc {
+  position: sticky;
+  top: 1rem;
+  align-self: start;
+}
+
+.rpt-toc-details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.rpt-toc ol {
+  padding-inline-start: 1.25rem;
+}
+
+.rpt-toc-subitem {
+  margin-inline-start: 1rem;
+}
+
+.rpt-article {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.rpt-article > * + * {
+  margin-block-start: 1.5rem;
+}
+
+.rpt-callout-title,
+.rpt-evidence figcaption,
+.rpt-metric dt {
+  display: block;
+  font-weight: 700;
+}
+
+.rpt-metric {
+  margin: 0;
+}
+
+.rpt-metric dd {
+  margin: 0.25rem 0 0;
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.rpt-evidence {
+  margin: 0;
+}
+
+.rpt-evidence blockquote {
+  margin-inline: 0;
+}
+
+.rpt-skip-link:not(:focus) {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+}
+
+@media (max-width: 48rem) {
+  .rpt-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .rpt-toc {
+    position: static;
+  }
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 18mm;
+  }
+
+  .rpt-toc,
+  .rpt-skip-link {
+    display: none;
+  }
+
+  .rpt-grid {
+    display: block;
+  }
+}

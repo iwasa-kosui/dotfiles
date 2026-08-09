@@ -1,0 +1,8 @@
+---
+const { title, anchor } = Astro.props as { title: string; anchor: string };
+---
+
+<section id={anchor}>
+  <h2>{title}</h2>
+  <slot />
+</section>

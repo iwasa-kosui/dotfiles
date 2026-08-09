@@ -1,0 +1,8 @@
+{
+  "name": "rpt-report-template",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "astro": "astro"
+  }
+}

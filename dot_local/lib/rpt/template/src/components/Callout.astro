@@ -1,0 +1,15 @@
+---
+import Alert from "../../node_modules/webcoreui/components/Alert/Alert.astro";
+
+type Tone = "info" | "success" | "warning" | "danger";
+
+const { tone, title } = Astro.props as { tone: Tone; title?: string };
+const theme = tone === "danger" ? "alert" : tone;
+---
+
+<div data-rpt-component="callout">
+  <Alert theme={theme}>
+    {title !== undefined && <strong class="rpt-callout-title">{title}</strong>}
+    <slot />
+  </Alert>
+</div>
