@@ -10,7 +10,7 @@
 - PR一覧、レビュー開始、コメント、suggestionが別々のキープレフィックスへ分散しています。
 - Claude Code、Codex、PR画面を閉じた後に、通常表示であるLazyGitへ自動的に戻りません。
 
-この設計は、既存のNeovimキーマップを全体として維持しながら、LazyGitを右Dockの通常表示にします。PRレビューで普段使う操作だけを`<leader>p`へ集約します。
+この設計は、PR #133で変更されたNeovimキーマップを変更前の状態へ戻したうえで、LazyGitを右Dockの通常表示にします。PRレビューで普段使う操作だけを`<leader>p`へ集約します。現在の`<leader>p`単体のSnacks Pickerは使っていないため削除し、このprefixをPR専用にします。
 
 この仕様は、`2026-08-09-nvim-vscode-workflow-design.md`のうち、Utility Dock、Git Dock、PR表示・レビューに関する記述を更新します。Explorer常設、buffer/window/tabの扱い、検索、AI連携など、その他の設計は変更しません。
 
@@ -22,8 +22,10 @@
 - LazyGitで選択中のworktreeまたはlocal branchから、対応するPRを直接開けるようにします。
 - ローカルにbranchがない他者のPRは、リポジトリのPR一覧から選べるようにします。
 - PRレビュー操作を`<leader>p`グループへまとめます。
+- PR #133で削除・変更された従来キーマップを復元した状態を維持します。
+- 重複している`<leader>p`単体のSnacks Pickerマッピングを削除します。
 - Claude Code、Codex、PR画面を閉じたとき、LazyGitを右Dockへ復元します。
-- 既存のLazyGit操作と復元済みNeovimキーマップを壊しません。
+- 既存のLazyGit操作と、`<leader>p`のSnacks Pickerを除く復元済みNeovimキーマップを壊しません。
 
 ## 対象外
 
@@ -86,6 +88,8 @@ LazyGit本来のキーは維持します。特に次を上書きしません。
 ## PRレビューのキー体系
 
 PRレビューで普段使う操作は`<leader>p`へ統一します。
+
+`<leader>p`単体に登録されているSnacks Pickerは、`config/keymaps.lua`とSnacks plugin specの両方から削除します。Picker本体と、ファイル・buffer・診断などを直接開く既存キーは残します。`<leader>p`には単体actionを置かず、WhichKeyでPRグループとして表示します。
 
 | キー | 操作 | 有効な場所 |
 |---|---|---|
@@ -217,6 +221,8 @@ LazyGit設定はchezmoi sourceと配備先の両方を検証します。手動�
 - PR番号を整数として検証してからOcto commandへ渡すこと
 - `<leader>pp`からPR一覧、`<leader>po`から対象PRを開くこと
 - `<leader>pr/pc/ps/pS/pd/pq`が対応するreview操作を呼ぶこと
+- `<leader>p`単体のSnacks Pickerマッピングがなく、PRグループとして登録されること
+- PR #133で削除・変更された従来キーマップが、明示した`<leader>p`の例外を除いて復元状態を保つこと
 - LazyGit内の`Space`単独操作と既存の`G`、`P`を上書きしないこと
 - Claude Code、Codex、PR/Reviewを閉じるとLazyGitをrestoreすること
 - 終了済みLazyGit handleだけを再生成すること
@@ -243,5 +249,6 @@ LazyGit設定はchezmoi sourceと配備先の両方を検証します。手動�
 - PR一覧、対象PR、レビュー操作が`<leader>p`へ集約されている
 - 他者のPRと既存worktreeのPRの両方をcheckoutせずレビュー開始できる
 - Claude Code、Codex、PR/Review終了後にLazyGitへ戻る
-- 既存キーマップ、LazyGitの標準操作、Explorer常設が維持されている
+- PR #133以前のキーマップが`<leader>p`のSnacks Pickerを除いて維持されている
+- LazyGitの標準操作とExplorer常設が維持されている
 - 自動検証、headless検証、手動スモークテスト、chezmoi配備検証が完了している
