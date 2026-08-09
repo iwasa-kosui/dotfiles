@@ -526,6 +526,16 @@ const rejectedMermaid = [
     "%% { InIt: {\"theme\":\"dark\"} } %%\nflowchart LR\nA-->B",
     "Mermaid init directives are not allowed",
   ],
+  [
+    "init directive after a Mermaid comment",
+    "%% harmless comment\n%% { InIt : {\"theme\":\"dark\"} } %%\nflowchart LR\nA-->B",
+    "Mermaid init directives are not allowed",
+  ],
+  [
+    "initialize directive after a Mermaid comment",
+    "%% harmless comment\n%%{INITIALIZE: {\"theme\":\"dark\"}}%%\nflowchart LR\nA-->B",
+    "Mermaid init directives are not allowed",
+  ],
 ] as const;
 
 for (const [name, diagram, message] of rejectedMermaid) {

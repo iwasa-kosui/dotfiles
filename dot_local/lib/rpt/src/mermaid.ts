@@ -23,7 +23,7 @@ export function validateMermaidNode(
   if (/^---(?:\r?\n|$)/.test(source)) {
     return { message: "Mermaid frontmatter is not allowed", node };
   }
-  if (/^\s*%%\s*\{\s*init\s*:/i.test(source)) {
+  if (/%%\s*\{\s*init(?:ialize)?\s*:/i.test(source)) {
     return { message: "Mermaid init directives are not allowed", node };
   }
   if (state.count >= maximumMermaidDiagrams) {
