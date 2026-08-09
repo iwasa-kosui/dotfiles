@@ -3,6 +3,10 @@ local M = {}
 local Controller = {}
 Controller.__index = Controller
 
+local MIN_PANEL_HEIGHT = 4
+local MIN_EXPLORER_HEIGHT = 4
+local SPLIT_SEPARATOR_HEIGHT = 1
+
 local panel_namespace = vim.api.nvim_create_namespace("ExplorerBaseDiffTree")
 local lifecycle_group = vim.api.nvim_create_augroup("ExplorerBaseDiffTreeLifecycle", { clear = true })
 
@@ -89,6 +93,10 @@ local function old_filename(path)
   return (path or ""):match("([^/]+)$") or ""
 end
 
+local function display_name(name)
+  return vim.fn.strtrans(name or "")
+end
+
 local function collect_dirs(node, result)
   for _, child in ipairs(node.children or {}) do
     if child.kind == "directory" then
@@ -103,15 +111,15 @@ local function render_children(rendered, node, open_dirs, depth)
     local prefix = string.rep("  ", depth)
     if child.kind == "directory" then
       local open = open_dirs[child.path] == true
-      add_line(rendered, prefix .. (open and "⌄ " or "▸ ") .. child.name, child)
+      add_line(rendered, prefix .. (open and "⌄ " or "▸ ") .. display_name(child.name), child)
       if open then
         render_children(rendered, child, open_dirs, depth + 1)
       end
     else
       local file_prefix = string.rep("  ", math.max(depth, 3))
-      local line = file_prefix .. (child.status or "?") .. " " .. child.name
+      local line = file_prefix .. (child.status or "?") .. " " .. display_name(child.name)
       if child.status == "R" and child.old_path then
-        line = line .. " ← " .. old_filename(child.old_path)
+        line = line .. " ← " .. display_name(old_filename(child.old_path))
       end
       add_line(rendered, line, child)
     end
@@ -315,8 +323,29 @@ local function default_adapter(controller)
   end
 
   function adapter.open_file(path, target, callback)
-    if not vim.uv.fs_stat(path) or not controller.adapter.valid_win(target) then
+    local stat = vim.uv.fs_lstat(path)
+    if not stat or not controller.adapter.valid_win(target) then
       callback(false)
+      return
+    end
+    if stat.type == "link" then
+      local link_target = vim.uv.fs_readlink(path)
+      if not link_target then
+        callback(false)
+        return
+      end
+      local ok = pcall(vim.api.nvim_win_call, target, function()
+        local buf = vim.api.nvim_create_buf(false, true)
+        vim.api.nvim_buf_set_name(buf, "base-diff://worktree symlink: " .. path .. "#" .. buf)
+        vim.bo[buf].buftype = "nofile"
+        vim.bo[buf].bufhidden = "wipe"
+        vim.bo[buf].swapfile = false
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, { link_target })
+        vim.bo[buf].modifiable = false
+        vim.api.nvim_win_set_buf(target, buf)
+        vim.cmd("diffoff")
+      end)
+      callback(ok)
       return
     end
     local ok = pcall(vim.api.nvim_win_call, target, function()
@@ -380,35 +409,45 @@ function Controller:ensure(opts)
     return self.panel_win
   end
 
-  self.cwd = opts.cwd
-  self.explorer_win = opts.explorer_win
-  self.editor_win = opts.editor_win
-  if not self.state then
-    self.state = self.adapter.load_state(self.cwd)
-  end
-
-  local available_height = self.adapter.available_height(self.explorer_win)
-  if available_height < 8 then
-    self.state.collapsed = true
-  end
-  self.expanded_height = self.state.height or math.max(4, math.floor(available_height / 2))
-  local height = self.state.collapsed and 1 or self.expanded_height
-  self.panel_win, self.buf = self.adapter.create_panel(self.explorer_win, self.cwd, height)
-  self._subscription_generation = (self._subscription_generation or 0) + 1
-  local subscription_generation = self._subscription_generation
-  self.unsubscribe = self.adapter.subscribe_diff(self.cwd, function(snapshot, error)
-    if self._subscription_generation ~= subscription_generation then
-      return
+  local ok, result = xpcall(function()
+    self.cwd = opts.cwd
+    self.explorer_win = opts.explorer_win
+    self.editor_win = opts.editor_win
+    if not self.state then
+      self.state = self.adapter.load_state(self.cwd)
     end
+
+    local available_height = self.adapter.available_height(self.explorer_win)
+    local max_expanded_height = available_height - MIN_EXPLORER_HEIGHT - SPLIT_SEPARATOR_HEIGHT
+    self.force_collapsed = max_expanded_height < MIN_PANEL_HEIGHT
+    if self.force_collapsed then
+      self.state.collapsed = true
+    end
+    local desired_height = self.state.height or math.max(MIN_PANEL_HEIGHT, math.floor(available_height / 2))
+    self.expanded_height = self.force_collapsed and MIN_PANEL_HEIGHT or math.min(desired_height, max_expanded_height)
+    local height = self.state.collapsed and 1 or self.expanded_height
+    self.panel_win, self.buf = self.adapter.create_panel(self.explorer_win, self.cwd, height)
+    self._subscription_generation = (self._subscription_generation or 0) + 1
+    local subscription_generation = self._subscription_generation
+    self.unsubscribe = self.adapter.subscribe_diff(self.cwd, function(snapshot, error)
+      if self._subscription_generation ~= subscription_generation then
+        return
+      end
+      self:update(snapshot, error)
+    end)
+    local snapshot, error = self.adapter.current_diff(self.cwd)
     self:update(snapshot, error)
-  end)
-  local snapshot, error = self.adapter.current_diff(self.cwd)
-  self:update(snapshot, error)
-  self.adapter.set_keymaps(self.buf)
-  if self.adapter.install_lifecycle then
-    self.adapter.install_lifecycle()
+    self.adapter.set_keymaps(self.buf)
+    if self.adapter.install_lifecycle then
+      self.adapter.install_lifecycle()
+    end
+    return self.panel_win
+  end, debug.traceback)
+  if not ok then
+    self:close()
+    error(result, 0)
   end
-  return self.panel_win
+  return result
 end
 
 function Controller:update(snapshot, error)
@@ -433,10 +472,10 @@ function Controller:activate(line, action)
     self.state.collapsed = true
     state_changed = true
   elseif action == "expand" then
-    self.state.collapsed = false
+    self.state.collapsed = self.force_collapsed == true
     state_changed = true
   elseif item and item.kind == "header" then
-    self.state.collapsed = not self.state.collapsed
+    self.state.collapsed = self.force_collapsed == true or not self.state.collapsed
     state_changed = true
   elseif item and item.kind == "directory" then
     toggle_open_dir(self.state.open_dirs, item.path)
@@ -472,7 +511,7 @@ function Controller:activate(line, action)
     self.state.open_dirs = filter_open_dirs(self.state.open_dirs, self.rendered.valid_open_dirs)
   end
   self.adapter.save_state(self.cwd, self.state)
-  self.adapter.set_height(self.panel_win, self.state.collapsed and 1 or self.state.height or self.expanded_height)
+  self.adapter.set_height(self.panel_win, self.state.collapsed and 1 or self.expanded_height)
   self:update(self.snapshot, self.error)
 end
 
@@ -509,21 +548,26 @@ local controllers = {}
 
 function M.ensure(opts)
   local cwd = require("user.worktree_root").resolve(opts.cwd)
-  local controller = controllers[cwd]
+  local controller = controllers[opts.explorer_win]
+  if controller and controller.cwd ~= cwd then
+    controller:close()
+    controller = nil
+  end
   if not controller then
     controller = M.new()
-    controllers[cwd] = controller
+    controllers[opts.explorer_win] = controller
   end
   opts = vim.tbl_extend("force", opts, { cwd = cwd })
   return controller:ensure(opts)
 end
 
-function M.close(cwd)
+function M.close(cwd, target_explorer_win)
   cwd = require("user.worktree_root").resolve(cwd)
-  local controller = controllers[cwd]
-  if controller then
-    controller:close()
-    controllers[cwd] = nil
+  for explorer_win, controller in pairs(controllers) do
+    if controller.cwd == cwd and (not target_explorer_win or explorer_win == target_explorer_win) then
+      controller:close()
+      controllers[explorer_win] = nil
+    end
   end
 end
 

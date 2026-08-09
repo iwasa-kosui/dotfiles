@@ -205,9 +205,16 @@ local function default_adapter(controller)
         vim.api.nvim_win_set_buf(left_win, left_buffer)
 
         if plan.right.kind == "file" then
-          vim.api.nvim_win_call(right_win, function()
-            vim.cmd("edit " .. vim.fn.fnameescape(plan.right.path))
-          end)
+          local stat = vim.uv.fs_lstat(plan.right.path)
+          if stat and stat.type == "link" then
+            local target = assert(vim.uv.fs_readlink(plan.right.path), "symlink target is unavailable")
+            local right_buffer = new_scratch_buffer("base-diff://worktree symlink: " .. plan.right.path, { target })
+            vim.api.nvim_win_set_buf(right_win, right_buffer)
+          else
+            vim.api.nvim_win_call(right_win, function()
+              vim.cmd("edit " .. vim.fn.fnameescape(plan.right.path))
+            end)
+          end
         else
           local right_buffer = new_scratch_buffer("base-diff://" .. plan.right.label, {})
           vim.api.nvim_win_set_buf(right_win, right_buffer)

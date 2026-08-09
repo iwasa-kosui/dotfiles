@@ -34,6 +34,12 @@ local function defaults(adapter)
       ensure_base_diff = function(opts)
         return require("user.base_diff_tree").ensure(opts)
       end,
+      close_base_diff = function(cwd, explorer_win)
+        require("user.base_diff_tree").close(cwd, explorer_win)
+      end,
+      notify = function(message, level)
+        vim.notify(message, level)
+      end,
       editor_win = function()
         return M.editor_win()
       end,
@@ -66,10 +72,20 @@ local function defaults(adapter)
           buftype = vim.bo[buf].buftype,
           filetype = vim.bo[buf].filetype,
           relative = vim.api.nvim_win_get_config(win).relative,
+          diff = vim.wo[win].diff,
         }
       end,
       tab_windows = function(tab)
         return vim.api.nvim_tabpage_list_wins(tab)
+      end,
+      create_editor = function(source_win)
+        local created
+        vim.api.nvim_win_call(source_win, function()
+          vim.cmd("rightbelow vsplit")
+          created = vim.api.nvim_get_current_win()
+          vim.cmd("diffoff")
+        end)
+        return created
       end,
       restore_explorer = function(cwd)
         local state = require("user.explorer_state")
@@ -96,12 +112,18 @@ local function ensure_base_diff(picker, cwd, api)
   if not explorer_win then
     return false
   end
-  api.ensure_base_diff({
-    cwd = cwd,
-    explorer_win = explorer_win,
-    editor_win = api.editor_win,
-  })
-  api.refresh_base_diff(cwd)
+  local ok, error = pcall(function()
+    api.ensure_base_diff({
+      cwd = cwd,
+      explorer_win = explorer_win,
+      editor_win = api.editor_win,
+    })
+    api.refresh_base_diff(cwd)
+  end)
+  if not ok then
+    pcall(api.close_base_diff, cwd, explorer_win)
+    pcall(api.notify, "Base diff panel unavailable: " .. tostring(error), vim.log.levels.WARN)
+  end
   return true
 end
 
@@ -138,7 +160,7 @@ function M.ensure_explorer(opts, adapter)
   return picker
 end
 
-local function is_editor(win, api, tab)
+local function is_editor(win, api, tab, allow_diff)
   local info = api.window_info(win)
   return info
     and info.valid
@@ -147,6 +169,7 @@ local function is_editor(win, api, tab)
     and info.buftype == ""
     and info.filetype ~= "snacks_picker_list"
     and info.filetype ~= "BaseDiffTree"
+    and (allow_diff or info.diff ~= true)
 end
 
 function M.remember_editor(win, adapter)
@@ -168,10 +191,17 @@ function M.editor_win(adapter)
     return remembered
   end
   last_editor_by_tab[tab] = nil
+  local diff_editor
   for _, win in ipairs(api.tab_windows(tab)) do
     if is_editor(win, api, tab) then
       return win
     end
+    if not diff_editor and is_editor(win, api, tab, true) then
+      diff_editor = win
+    end
+  end
+  if diff_editor then
+    return api.create_editor(diff_editor)
   end
 end
 

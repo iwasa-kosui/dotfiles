@@ -52,7 +52,7 @@ local function normalize(value)
   value = type(value) == "table" and value or {}
   local open_dirs = {}
   local seen = {}
-  for _, path in ipairs(value.open_dirs or {}) do
+  for _, path in ipairs(type(value.open_dirs) == "table" and value.open_dirs or {}) do
     path = type(path) == "string" and normalize_dir(path) or nil
     if path and not seen[path] then
       seen[path] = true

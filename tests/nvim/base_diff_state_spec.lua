@@ -23,4 +23,15 @@ t.eq({
 }, state.load("/repo", adapter))
 t.eq({ collapsed = false, height = nil, open_dirs = {} }, state.load("/other", adapter))
 
+vim.fn.writefile({
+	vim.json.encode({
+		["/repo"] = { collapsed = "yes", height = "14", open_dirs = "lua/user" },
+	}),
+}, adapter.path)
+t.eq(
+	{ collapsed = false, height = nil, open_dirs = {} },
+	state.load("/repo", adapter),
+	"malformed persistent collection types must normalize to defaults"
+)
+
 vim.fn.delete(state_dir, "rf")

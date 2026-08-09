@@ -149,6 +149,56 @@ closed_picker.opts.on_show(closed_picker)
 t.eq(0, closed_panels, "closed Explorer must not create a deferred panel")
 t.eq(0, closed_refreshes, "closed Explorer must not start a deferred refresh")
 
+local failed_picker_focuses = 0
+local failed_picker = {
+	list = { win = { win = 33 } },
+	focus = function(_, target)
+		t.eq("list", target)
+		failed_picker_focuses = failed_picker_focuses + 1
+	end,
+}
+local failed_reveals = 0
+local failed_cleanups = 0
+local failed_refreshes = 0
+workspace.focus_explorer({
+	root = function()
+		return "/failed-repo"
+	end,
+	explorers = function()
+		return { failed_picker }
+	end,
+	track_explorer = function() end,
+	restore_explorer = function() end,
+	valid_win = function(win)
+		return win == 33
+	end,
+	current_file = function()
+		return "/failed-repo/lua/init.lua"
+	end,
+	ensure_base_diff = function()
+		error("injected panel initialization failure")
+	end,
+	close_base_diff = function(cwd)
+		t.eq("/failed-repo", cwd)
+		failed_cleanups = failed_cleanups + 1
+	end,
+	refresh_base_diff = function()
+		failed_refreshes = failed_refreshes + 1
+	end,
+	reveal = function(opts)
+		t.eq("/failed-repo/lua/init.lua", opts.file)
+		failed_reveals = failed_reveals + 1
+		return failed_picker
+	end,
+	notify = function()
+		error("injected notification failure")
+	end,
+})
+t.eq(1, failed_cleanups, "a partial panel controller must be cleaned up")
+t.eq(0, failed_refreshes, "a failed panel must not start a refresh")
+t.eq(1, failed_reveals, "panel failure must not block Explorer reveal")
+t.eq(1, failed_picker_focuses, "panel failure must not block Explorer focus")
+
 local git_terminal = { hide = function() end }
 local delegated
 local git_result = workspace.git_dock({ focus = true }, {
