@@ -19,7 +19,7 @@ local function decode_json(output, description, report)
 end
 
 local function run(command, callback)
-  vim.system(command, { text = true }, callback)
+  vim.system(command, { text = true }, vim.schedule_wrap(callback))
 end
 
 function M.parse_porcelain(lines)

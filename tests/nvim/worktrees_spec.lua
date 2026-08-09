@@ -1,4 +1,5 @@
 local t = require("testlib")
+local root = require("user.worktree_root")
 local worktrees = require("user.worktrees")
 
 local items = worktrees.parse_porcelain({
@@ -123,3 +124,44 @@ worktrees.record_activity({
 	end,
 })
 t.eq({ "worktree-activity", "record", "nvim", "/canonical/worktree" }, activity_command)
+
+local original_system = vim.system
+local original_resolve = root.resolve
+local original_select = vim.ui.select
+local callback_in_fast_event
+local selected = false
+local responses_by_command = {
+	["git worktree list --porcelain"] = {
+		code = 0,
+		stdout = "worktree /repo\nHEAD aaaa\nbranch refs/heads/main\n\n",
+	},
+	["worktree-activity list"] = { code = 0, stdout = "[]" },
+}
+
+vim.system = function(command, _, callback)
+	local timer = vim.uv.new_timer()
+	timer:start(0, 0, function()
+		timer:stop()
+		timer:close()
+		callback(responses_by_command[table.concat(command, " ")])
+	end)
+end
+root.resolve = function()
+	callback_in_fast_event = vim.in_fast_event()
+	return "/repo"
+end
+vim.ui.select = function()
+	selected = true
+end
+
+worktrees.open()
+local completed = vim.wait(1000, function()
+	return selected
+end)
+
+vim.system = original_system
+root.resolve = original_resolve
+vim.ui.select = original_select
+
+t.truthy(completed, "worktree selection must be reached")
+t.eq(false, callback_in_fast_event, "vim.system callbacks must leave fast event context")
