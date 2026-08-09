@@ -50,6 +50,7 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         const inlined = await inlineAssets(
           build.value.html,
           build.value.distDirectory,
+          build.value.finalDomPolicy,
         );
         if (!inlined.ok) {
           writeFailure(inlined.error, command.value.debug);

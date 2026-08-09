@@ -1,5 +1,6 @@
 ---
 import Badge from "@webcoreui/components/Badge/Badge.astro";
+import MermaidScripts from "../components/MermaidScripts.astro";
 import "../styles/report.scss";
 
 type Metadata = {
@@ -17,10 +18,21 @@ type OutlineItem = {
   slug: string;
 };
 
-const { metadata, outline, mainContentId } = Astro.props as {
+type FinalDomPolicy =
+  | Readonly<{ kind: "static"; csp: string }>
+  | Readonly<{
+      kind: "mermaid";
+      nonce: string;
+      csp: string;
+      cdnUrl: "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js";
+      initScript: string;
+    }>;
+
+const { metadata, outline, mainContentId, policy } = Astro.props as {
   metadata: Metadata;
   outline: OutlineItem[];
   mainContentId: string;
+  policy: FinalDomPolicy;
 };
 
 const statusTheme = {
@@ -35,6 +47,7 @@ const statusTheme = {
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content={policy.csp} />
     <title>{metadata.title}</title>
   </head>
   <body>
@@ -72,5 +85,6 @@ const statusTheme = {
         </main>
       </div>
     </div>
+    {policy.kind === "mermaid" && <MermaidScripts policy={policy} />}
   </body>
 </html>

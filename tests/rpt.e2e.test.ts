@@ -7,10 +7,66 @@ import {
   type DefaultTreeAdapterTypes,
 } from "../dot_local/lib/rpt/node_modules/parse5/dist/index.js";
 import { inlineAssets } from "../dot_local/lib/rpt/src/inline-assets.ts";
+import { buildReport } from "../dot_local/lib/rpt/src/build.ts";
 import { writeOutput } from "../dot_local/lib/rpt/src/output.ts";
+import { validateReport } from "../dot_local/lib/rpt/src/validate.ts";
 
 type Element = DefaultTreeAdapterTypes.Element;
 type ParentNode = DefaultTreeAdapterTypes.ParentNode;
+
+type TestFinalDomPolicy =
+  | Readonly<{ kind: "static"; csp: string }>
+  | Readonly<{
+      kind: "mermaid";
+      nonce: string;
+      csp: string;
+      cdnUrl: "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js";
+      initScript: string;
+    }>;
+
+const staticCsp =
+  "default-src 'none'; img-src data:; style-src 'unsafe-inline'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+const mermaidCdnUrl =
+  "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js" as const;
+const mermaidNonce = "test-mermaid-nonce";
+const mermaidInitScript = `(() => {
+  const showError = (element) => {
+    const error = document.createElement("p");
+    error.setAttribute("role", "alert");
+    error.textContent = "Mermaid diagram could not be rendered.";
+    element.after(error);
+  };
+  const elements = document.querySelectorAll("[data-rpt-mermaid]");
+  const nonce = document.currentScript?.nonce ?? "";
+  if (!/^[A-Za-z0-9_-]+$/.test(nonce)) {
+    elements.forEach(showError);
+    return;
+  }
+  const mermaid = window.mermaid;
+  if (mermaid === undefined) {
+    elements.forEach(showError);
+    return;
+  }
+  mermaid.initialize({ startOnLoad: false, securityLevel: "strict" });
+  const renderIdPrefix = "rpt-mermaid-" + nonce + "-";
+  elements.forEach(async (element, index) => {
+    const source = element.textContent ?? "";
+    try {
+      const { svg } = await mermaid.render(renderIdPrefix + index, source);
+      element.innerHTML = svg;
+    } catch {
+      showError(element);
+    }
+  });
+})();`;
+const staticPolicy: TestFinalDomPolicy = { kind: "static", csp: staticCsp };
+const mermaidPolicy: TestFinalDomPolicy = {
+  kind: "mermaid",
+  nonce: mermaidNonce,
+  csp: staticCsp + "; script-src 'nonce-" + mermaidNonce + "'",
+  cdnUrl: mermaidCdnUrl,
+  initScript: mermaidInitScript,
+};
 
 const repositoryRoot = join(import.meta.dir, "..");
 const cliPath = join(repositoryRoot, "dot_local/bin/executable_rpt");
@@ -45,6 +101,16 @@ function attributeValue(element: Element, name: string): string | undefined {
   return element.attrs.find(
     (attribute) => attribute.name.toLowerCase() === name,
   )?.value;
+}
+
+function elementTextContent(element: Element): string {
+  return element.childNodes
+    .filter(
+      (node): node is DefaultTreeAdapterTypes.TextNode =>
+        node.nodeName === "#text",
+    )
+    .map((node) => node.value)
+    .join("");
 }
 
 function collectElements(parent: ParentNode): Element[] {
@@ -180,13 +246,85 @@ async function createCase(source: string) {
   };
 }
 
-async function runInlineFixture(html: string) {
+async function runInlineFixture(
+  html: string,
+  policy: TestFinalDomPolicy = staticPolicy,
+  includeExpectedCsp = true,
+) {
   const directory = await mkdtemp(join(tmpdir(), "rpt-inline-e2e-"));
   try {
-    return await inlineAssets(html, directory);
+    const csp = includeExpectedCsp
+      ? `<meta http-equiv="Content-Security-Policy" content="${policy.csp}">`
+      : "";
+    return await inlineAssets(csp + html, directory, policy);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+function mermaidScriptMarkup(
+  options: Readonly<{
+    cdnUrl?: string;
+    cdnNonce?: string;
+    initNonce?: string;
+    initScript?: string;
+    extraScript?: string;
+    reverse?: boolean;
+  }> = {},
+): string {
+  const cdn = `<script src="${options.cdnUrl ?? mermaidCdnUrl}" nonce="${options.cdnNonce ?? mermaidNonce}"></script>`;
+  const init = `<script nonce="${options.initNonce ?? mermaidNonce}">${options.initScript ?? mermaidInitScript}</script>`;
+  const scripts = options.reverse ? init + cdn : cdn + init;
+  return scripts + (options.extraScript ?? "");
+}
+
+function runMermaidInitProbe(scriptSource: string, nonce?: string) {
+  type ProbeAlert = {
+    attributes: Record<string, string>;
+    textContent: string;
+    setAttribute(name: string, value: string): void;
+  };
+
+  const alerts: ProbeAlert[] = [];
+  const diagram = {
+    textContent: "flowchart LR\nA-->B",
+    innerHTML: "",
+    after(alert: ProbeAlert) {
+      alerts.push(alert);
+    },
+  };
+  const renderIds: string[] = [];
+  let initializeCalls = 0;
+  const fakeDocument = {
+    currentScript: nonce === undefined ? null : { nonce },
+    querySelectorAll() {
+      return [diagram];
+    },
+    createElement() {
+      const alert: ProbeAlert = {
+        attributes: {},
+        textContent: "",
+        setAttribute(name, value) {
+          this.attributes[name] = value;
+        },
+      };
+      return alert;
+    },
+  };
+  const fakeWindow = {
+    mermaid: {
+      initialize() {
+        initializeCalls += 1;
+      },
+      async render(id: string) {
+        renderIds.push(id);
+        return { svg: "<svg></svg>" };
+      },
+    },
+  };
+
+  new Function("window", "document", scriptSource)(fakeWindow, fakeDocument);
+  return { alerts, diagram, initializeCalls, renderIds };
 }
 
 test("--help displays the rpt build usage", async () => {
@@ -194,6 +332,38 @@ test("--help displays the rpt build usage", async () => {
 
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toContain("Usage: rpt build <input.mdx|-> -o <output.html>");
+  expect(result.stderr).toBe("");
+});
+
+test("no arguments displays the detailed AI authoring guide", async () => {
+  const [result, explicitHelp] = await Promise.all([
+    runRpt([]),
+    runRpt(["--help"]),
+  ]);
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toBe(explicitHelp.stdout);
+  expect(result.stdout).toContain(
+    "Turn AI-authored, restricted MDX into a self-contained HTML report.",
+  );
+  expect(result.stdout).toContain("Quick start:");
+  expect(result.stdout).toContain("AI authoring contract:");
+  expect(result.stdout).toContain("title: required non-empty string");
+  expect(result.stdout).toContain("Allowed components:");
+  expect(result.stdout).toContain("Callout, Metric, Evidence, Section");
+  expect(result.stdout).toContain("Safe HTML:");
+  expect(result.stdout).toContain(
+    "Badge, Status, Icon, Timeline, TimelineItem, Tabs, Tab",
+  );
+  expect(result.stdout).toContain("```mermaid");
+  expect(result.stdout).toContain(
+    "Mermaid uses a pinned CDN and client-side JavaScript",
+  );
+  expect(result.stdout).toContain(
+    "Both Mermaid scripts require the build nonce",
+  );
+  expect(result.stdout).toContain("class and event attributes are not allowed");
+  expect(result.stdout).toContain("rpt build - -o report.html");
   expect(result.stderr).toBe("");
 });
 
@@ -252,7 +422,7 @@ const rejectedMdx = [
   [
     "raw HTML",
     "---\ntitle: X\n---\n<script>alert(1)</script>",
-    "raw HTML is not allowed",
+    "element script is not allowed",
   ],
   [
     "an unknown component",
@@ -309,7 +479,186 @@ const rejectedMdx = [
     "---\ntitle: X\n---\n<Section title=\"X\" anchor=\"user-value\">\nx\n</Section>",
     "attribute anchor is not allowed on Section",
   ],
+  [
+    "a Badge with an invalid tone",
+    "---\ntitle: X\n---\n<Badge tone=\"other\">x</Badge>",
+    "Badge.tone must be neutral, info, success, warning, or danger",
+  ],
+  [
+    "a Status with a block child",
+    "---\ntitle: X\n---\n<Status tone=\"success\">\n\nparagraph\n\n</Status>",
+    "Status must contain inline content",
+  ],
+  [
+    "a Badge with a safe HTML block child",
+    "---\ntitle: X\n---\n<Badge tone=\"info\"><div>block</div></Badge>",
+    "Badge must contain inline content",
+  ],
+  [
+    "a Status with a Timeline child",
+    "---\ntitle: X\n---\n<Status tone=\"success\"><Timeline><TimelineItem>a</TimelineItem><TimelineItem>b</TimelineItem></Timeline></Status>",
+    "Status must contain inline content",
+  ],
+  [
+    "a Badge with a Tabs child",
+    "---\ntitle: X\n---\n<Badge tone=\"info\"><Tabs><Tab label=\"A\">a</Tab><Tab label=\"B\">b</Tab></Tabs></Badge>",
+    "Badge must contain inline content",
+  ],
+  [
+    "a Badge with a Timeline hidden in strong Markdown",
+    "---\ntitle: X\n---\n<Badge tone=\"info\">**inline <Timeline><TimelineItem>a</TimelineItem><TimelineItem>b</TimelineItem></Timeline>**</Badge>",
+    "Badge must contain inline content",
+  ],
+  [
+    "an Icon with an unknown name",
+    "---\ntitle: X\n---\n<Icon name=\"custom\" />",
+    "Icon.name must be one of:",
+  ],
+  [
+    "an Icon with children",
+    "---\ntitle: X\n---\n<Icon name=\"check\">x</Icon>",
+    "Icon must not have children",
+  ],
+  [
+    "an Icon that is not self-closing",
+    "---\ntitle: X\n---\n<Icon name=\"check\"></Icon>",
+    "Icon must be self-closing",
+  ],
+  [
+    "a Timeline with a non-TimelineItem child",
+    "---\ntitle: X\n---\n<Timeline><div>x</div><TimelineItem>x</TimelineItem></Timeline>",
+    "Timeline may only contain TimelineItem children",
+  ],
+  [
+    "an icons Timeline without item icons",
+    "---\ntitle: X\n---\n<Timeline theme=\"icons\"><TimelineItem>x</TimelineItem><TimelineItem>y</TimelineItem></Timeline>",
+    "Timeline theme icons requires every TimelineItem.icon",
+  ],
+  [
+    "Tabs with one Tab",
+    "---\ntitle: X\n---\n<Tabs><Tab label=\"A\">a</Tab></Tabs>",
+    "Tabs must contain between 2 and 10 Tab children",
+  ],
+  [
+    "Tabs with two active Tabs",
+    "---\ntitle: X\n---\n<Tabs><Tab label=\"A\" active=\"true\">a</Tab><Tab label=\"B\" active=\"true\">b</Tab></Tabs>",
+    "Tabs may only contain one active Tab",
+  ],
+  [
+    "nested Tabs",
+    "---\ntitle: X\n---\n<Tabs><Tab label=\"A\"><Tabs><Tab label=\"B\">b</Tab><Tab label=\"C\">c</Tab></Tabs></Tab><Tab label=\"D\">d</Tab></Tabs>",
+    "Tabs must not be nested",
+  ],
+  [
+    "a Tab with an internal prop",
+    "---\ntitle: X\n---\n<Tabs><Tab label=\"A\" group=\"user\">a</Tab><Tab label=\"B\">b</Tab></Tabs>",
+    "attribute group is not allowed on Tab",
+  ],
 ] as const;
+
+test("build renders safe semantic HTML without executable content", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Safe HTML\n---\n\n<section id=\"details\" role=\"region\" aria-label=\"詳細\" style=\"display: grid; gap: 1rem\">\n  <details open=\"true\">\n    <summary>内訳</summary>\n    <table><tbody><tr><th scope=\"row\">状態</th><td>正常</td></tr></tbody></table>\n  </details>\n</section>",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    const document = parse(await Bun.file(testCase.output).text());
+    const section = findElement(
+      document,
+      (element) => element.tagName === "section" && attributeValue(element, "id") === "details",
+    );
+    expect(section).toBeDefined();
+    expect(attributeValue(section!, "aria-label")).toBe("詳細");
+    expect(attributeValue(section!, "style")).toContain("display: grid");
+    expect(collectElements(document).some((element) => element.tagName === "script")).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+const rejectedSafeHtml = [
+  ["script", "<script>alert(1)</script>", "element script is not allowed"],
+  ["class", '<div class="x">x</div>', "attribute class is not allowed on div"],
+  ["event", '<div onClick="x">x</div>', "attribute onClick is not allowed on div"],
+  ["raw image", '<img src="x.png" />', "element img is not allowed"],
+  ["heading", "<h2>Hidden outline</h2>", "element h2 is not allowed"],
+  ["reserved id", '<div id="rpt-user">x</div>', "id prefix rpt- is reserved"],
+  ["duplicate id", '<div id="same">a</div><span id="same">b</span>', "id may only be specified once"],
+  ["invalid child", "<ul><div>x</div></ul>", "ul may only contain li elements"],
+  ["invalid description child", "<dl><div>x</div></dl>", "dl may only contain dt and dd elements"],
+  ["invalid description order", "<dl><dd>x</dd><dt>term</dt></dl>", "dl elements are in an invalid order"],
+  ["details body before summary", "<details>body<summary>Summary</summary></details>", "summary must be the first element in details"],
+  ["unsafe style", '<div style="position: fixed">x</div>', "style property position is not allowed"],
+  ["unsafe HTML URL with a tab", '<a href="java\tscript:alert(1)">x</a>', "href URL is not allowed"],
+] as const;
+
+for (const [name, html, message] of rejectedSafeHtml) {
+  test("build rejects unsafe HTML " + name + " before creating an output file", async () => {
+    const testCase = await createCase("---\ntitle: X\n---\n" + html);
+    try {
+      const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+      expect(result.exitCode).toBe(3);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toMatch(/^rpt: \d+:\d+:/);
+      expect(result.stderr).toContain(message);
+      expect(await Bun.file(testCase.output).exists()).toBe(false);
+    } finally {
+      await testCase.cleanup();
+    }
+  });
+}
+
+const rejectedAriaReferences = [
+  ["aria-labelledby", '<div aria-labelledby="missing-one missing-two">x</div>'],
+  ["aria-describedby", '<div aria-describedby="missing">x</div>'],
+  ["aria-details", '<div aria-details="missing">x</div>'],
+  ["aria-controls", '<div aria-controls="missing-one missing-two">x</div>'],
+  [
+    "a Tabs radio group name",
+    '<Tabs><Tab label="A">a</Tab><Tab label="B">b</Tab></Tabs>\n<div aria-controls="rpt-tabs-1">x</div>',
+  ],
+  ["aria-owns", '<div aria-owns="missing">x</div>'],
+  ["aria-flowto", '<div aria-flowto="missing">x</div>'],
+  ["aria-activedescendant", '<div aria-activedescendant="missing">x</div>'],
+  ["aria-errormessage", '<div aria-errormessage="missing">x</div>'],
+  ["an empty aria ID reference", '<div aria-controls="">x</div>'],
+] as const;
+
+for (const [name, html] of rejectedAriaReferences) {
+  test("build rejects unresolved " + name + " as an input error", async () => {
+    const testCase = await createCase("---\ntitle: X\n---\n" + html);
+    try {
+      const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+      expect(result.exitCode).toBe(3);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toMatch(/^rpt: \d+:\d+:/);
+      expect(result.stderr).toContain("ARIA reference");
+      expect(await Bun.file(testCase.output).exists()).toBe(false);
+    } finally {
+      await testCase.cleanup();
+    }
+  });
+}
+
+test("build rejects Markdown links with C0 controls in the scheme", async () => {
+  const testCase = await createCase(
+    "---\ntitle: X\n---\n[unsafe](java&#x09;script:alert(1))",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stderr).toMatch(/^rpt: \d+:\d+:/);
+    expect(result.stderr).toContain("link URL is not allowed");
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
 
 for (const [name, source, message] of rejectedMdx) {
   test("build rejects " + name + " before creating an output file", async () => {
@@ -327,6 +676,367 @@ for (const [name, source, message] of rejectedMdx) {
     }
   });
 }
+
+const rejectedMermaid = [
+  [
+    "oversized diagram",
+    "x".repeat(64 * 1024 + 1),
+    "Mermaid diagram exceeds the 64 KiB limit",
+  ],
+  [
+    "frontmatter",
+    "---\ntheme: dark\n---\nflowchart LR\nA-->B",
+    "Mermaid frontmatter is not allowed",
+  ],
+  [
+    "init directive",
+    '%%{init: {"theme":"dark"}}%%\nflowchart LR\nA-->B',
+    "Mermaid init directives are not allowed",
+  ],
+  [
+    "init directive with whitespace and mixed case",
+    "%% { InIt: {\"theme\":\"dark\"} } %%\nflowchart LR\nA-->B",
+    "Mermaid init directives are not allowed",
+  ],
+  [
+    "init directive after a Mermaid comment",
+    "%% harmless comment\n%% { InIt : {\"theme\":\"dark\"} } %%\nflowchart LR\nA-->B",
+    "Mermaid init directives are not allowed",
+  ],
+  [
+    "initialize directive after a Mermaid comment",
+    "%% harmless comment\n%%{INITIALIZE: {\"theme\":\"dark\"}}%%\nflowchart LR\nA-->B",
+    "Mermaid init directives are not allowed",
+  ],
+] as const;
+
+for (const [name, diagram, message] of rejectedMermaid) {
+  test("build rejects Mermaid " + name + " before creating an output file", async () => {
+    const testCase = await createCase(
+      "---\ntitle: X\n---\n```mermaid\n" + diagram + "\n```",
+    );
+    try {
+      const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+      expect(result.exitCode).toBe(3);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toMatch(/^rpt: \d+:\d+:/);
+      expect(result.stderr).toContain(message);
+      expect(await Bun.file(testCase.output).exists()).toBe(false);
+    } finally {
+      await testCase.cleanup();
+    }
+  });
+}
+
+test("build rejects more than 20 Mermaid diagrams before creating an output file", async () => {
+  const diagram = "```mermaid\nflowchart LR\nA-->B\n```";
+  const testCase = await createCase(
+    "---\ntitle: X\n---\n" + Array.from({ length: 21 }, () => diagram).join("\n\n"),
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toMatch(/^rpt: \d+:\d+:/);
+    expect(result.stderr).toContain("Mermaid diagrams exceed the 20 diagram limit");
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build treats case-variant Mermaid fences as ordinary code", async () => {
+  const testCase = await createCase(
+    "---\ntitle: X\n---\n```Mermaid\n%%{init: {\"theme\":\"dark\"}}%%\nflowchart LR\nA-->B\n```",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(await Bun.file(testCase.output).text()).toContain("flowchart LR");
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("validateReport derives hasMermaid and rejects user-provided metadata", () => {
+  const mermaid = validateReport({
+    source: "---\ntitle: X\n---\n```mermaid\nflowchart LR\nA-->B\n```",
+    baseDirectory: repositoryRoot,
+  });
+  expect(mermaid.ok).toBe(true);
+  if (mermaid.ok) {
+    expect(mermaid.value.hasMermaid).toBe(true);
+  }
+
+  const ordinaryCode = validateReport({
+    source: "---\ntitle: X\n---\n```Mermaid\nflowchart LR\nA-->B\n```",
+    baseDirectory: repositoryRoot,
+  });
+  expect(ordinaryCode.ok).toBe(true);
+  if (ordinaryCode.ok) {
+    expect(ordinaryCode.value.hasMermaid).toBe(false);
+  }
+
+  const userMetadata = validateReport({
+    source: "---\ntitle: X\nhasMermaid: true\n---",
+    baseDirectory: repositoryRoot,
+  });
+  expect(userMetadata.ok).toBe(false);
+  if (!userMetadata.ok) {
+    expect(userMetadata.error.message).toBe("frontmatter.hasMermaid is not allowed");
+  }
+});
+
+test("build writes validator-derived Mermaid metadata", async () => {
+  const report = validateReport({
+    source: "---\ntitle: X\n---\n```mermaid\nflowchart LR\nA-->B\n```",
+    baseDirectory: repositoryRoot,
+  });
+  expect(report.ok).toBe(true);
+  if (!report.ok) {
+    return;
+  }
+
+  const built = await buildReport(report.value, join(repositoryRoot, "dot_local/lib/rpt"));
+  expect(built.ok).toBe(true);
+  if (!built.ok) {
+    return;
+  }
+  try {
+    const metadata = JSON.parse(
+      await Bun.file(
+        join(built.value.distDirectory, "..", "src/content/report-data.json"),
+      ).text(),
+    ) as { hasMermaid?: unknown };
+    expect(metadata.hasMermaid).toBe(true);
+  } finally {
+    await built.value.cleanup();
+  }
+});
+
+test("Tabs receive unique internal radio props in validated source", () => {
+  const result = validateReport({
+    source:
+      "---\ntitle: X\n---\n<Tabs><Tab label=\"A\" active=\"true\">a</Tab><Tab label=\"B\">b</Tab></Tabs>\n\n<Tabs><Tab label=\"C\">c</Tab><Tab label=\"D\">d</Tab></Tabs>",
+    baseDirectory: repositoryRoot,
+  });
+
+  expect(result.ok).toBe(true);
+  if (!result.ok) {
+    return;
+  }
+  expect(result.value.source).toContain(
+    '<Tab label="A" active="true" group="rpt-tabs-1" controlId="rpt-tab-control-1-1" labelId="rpt-tab-label-1-1" panelId="rpt-tab-panel-1-1" checked="true">',
+  );
+  expect(result.value.source).toContain(
+    '<Tab label="B" group="rpt-tabs-1" controlId="rpt-tab-control-1-2" labelId="rpt-tab-label-1-2" panelId="rpt-tab-panel-1-2" checked="false">',
+  );
+  expect(result.value.source).toContain(
+    '<Tab label="C" group="rpt-tabs-2" controlId="rpt-tab-control-2-1" labelId="rpt-tab-label-2-1" panelId="rpt-tab-panel-2-1" checked="true">',
+  );
+});
+
+test("build accepts Section titles and Tab labels ending in backslashes", async () => {
+  const testCase = await createCase(String.raw`---
+title: Trailing backslashes
+---
+
+<Section title="Path\\">
+Section body.
+</Section>
+
+<Tabs>
+  <Tab label="First\\">First body.</Tab>
+  <Tab label="Second">Second body.</Tab>
+</Tabs>`);
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    const elements = collectElements(parse(await Bun.file(testCase.output).text()));
+    const sectionHeading = elements.find(
+      (element) => element.tagName === "h2" && elementTextContent(element) === String.raw`Path\\`,
+    );
+    const panels = elements.filter(
+      (element) => element.tagName === "section" && hasClass(element, "rpt-tab-panel"),
+    );
+
+    expect(sectionHeading).toBeDefined();
+    expect(panels.map((panel) => attributeValue(panel, "data-label"))).toEqual([
+      String.raw`First\\`,
+      "Second",
+    ]);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("Tabs and Timeline ignore whitespace-only direct children", () => {
+  const result = validateReport({
+    source: `---
+title: X
+---
+<Timeline theme="icons">
+  <TimelineItem title="調査" icon="search">要件を確認します。</TimelineItem>
+  <TimelineItem title="実装" icon="check">機能を追加します。</TimelineItem>
+</Timeline>
+<Tabs>
+  <Tab label="概要" active="true">概要本文</Tab>
+  <Tab label="詳細">詳細本文</Tab>
+</Tabs>`,
+    baseDirectory: repositoryRoot,
+  });
+
+  expect(result.ok).toBe(true);
+});
+
+test("rich components render static accessible markup without scripts", async () => {
+  const testCase = await createCase(`---
+title: Rich components
+---
+
+<Badge tone="success">承認済み</Badge>
+<Status tone="warning">確認待ち</Status>
+<Icon name="circle-check" label="完了" size="20" />
+<Icon name="info" />
+<Timeline theme="icons">
+  <TimelineItem title="調査" icon="search">要件を確認します。</TimelineItem>
+  <TimelineItem title="実装" icon="check">機能を追加します。</TimelineItem>
+</Timeline>
+<Tabs>
+  <Tab label="概要" active="true">概要本文</Tab>
+  <Tab label="詳細">詳細本文</Tab>
+</Tabs>`);
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    const html = await Bun.file(testCase.output).text();
+    const document = parse(html);
+    const components = collectElements(document).filter((element) =>
+      element.attrs.some((attribute) => attribute.name === "data-rpt-component"),
+    );
+    for (const component of [
+      "badge",
+      "status",
+      "icon",
+      "timeline",
+      "timeline-item",
+      "tabs",
+      "tab",
+    ]) {
+      expect(
+        components.some(
+          (element) => attributeValue(element, "data-rpt-component") === component,
+        ),
+      ).toBe(true);
+    }
+    expect(
+      components.some(
+        (element) =>
+          attributeValue(element, "data-rpt-component") === "badge" &&
+          attributeValue(element, "data-tone") === "success",
+      ),
+    ).toBe(true);
+    expect(
+      components.some(
+        (element) =>
+          attributeValue(element, "data-rpt-component") === "status" &&
+          attributeValue(element, "data-tone") === "warning",
+      ),
+    ).toBe(true);
+
+    expect(
+      components.some(
+        (element) =>
+          attributeValue(element, "data-rpt-component") === "icon" &&
+          hasAttribute(element, "role", "img") &&
+          hasAttribute(element, "aria-label", "完了"),
+      ),
+    ).toBe(true);
+    expect(
+      components.some(
+        (element) =>
+          attributeValue(element, "data-rpt-component") === "icon" &&
+          hasAttribute(element, "aria-hidden", "true"),
+      ),
+    ).toBe(true);
+
+    const timeline = components.find(
+      (element) => attributeValue(element, "data-rpt-component") === "timeline",
+    );
+    expect(timeline).toBeDefined();
+    if (timeline === undefined) {
+      return;
+    }
+    const timelineList = findElement(
+      timeline,
+      (element) => element.tagName === "ul",
+    );
+    expect(timelineList).toBeDefined();
+    expect(
+      collectElements(timelineList!).filter((element) => element.tagName === "li"),
+    ).toHaveLength(2);
+
+    const controls = collectElements(document).filter(
+      (element) =>
+        element.tagName === "input" &&
+        hasClass(element, "rpt-tab-control") &&
+        hasAttribute(element, "type", "radio"),
+    );
+    expect(controls).toHaveLength(2);
+    expect(attributeValue(controls[0]!, "name")).toBe(attributeValue(controls[1]!, "name"));
+    expect(controls.filter((control) => hasAttribute(control, "checked", ""))).toHaveLength(1);
+    for (const control of controls) {
+      const controlId = attributeValue(control, "id");
+      const panelId = attributeValue(control, "aria-controls");
+      expect(controlId).toBeDefined();
+      expect(panelId).toBeDefined();
+      const label = findElement(
+        document,
+        (element) =>
+          element.tagName === "label" &&
+          hasClass(element, "rpt-tab-label") &&
+          hasAttribute(element, "for", controlId!),
+      );
+      expect(label).toBeDefined();
+      expect(
+        findElement(
+          document,
+          (element) =>
+            element.tagName === "section" &&
+            hasClass(element, "rpt-tab-panel") &&
+            hasAttribute(element, "id", panelId!) &&
+            hasAttribute(element, "aria-labelledby", attributeValue(label!, "id")!),
+        ),
+      ).toBeDefined();
+    }
+    const panels = collectElements(document).filter(
+      (element) =>
+        element.tagName === "section" && hasClass(element, "rpt-tab-panel"),
+    );
+    expect(panels.map((panel) => attributeValue(panel, "data-label"))).toEqual([
+      "概要",
+      "詳細",
+    ]);
+    expect(html).toMatch(
+      /@media\s*print\s*\{[\s\S]*?\.rpt-tab-panel\s*\{\s*display:\s*block/,
+    );
+    expect(html).not.toContain("--w-color-secondary");
+    expect(html).not.toContain("--w-color-on-info");
+    expect(html).toContain("var(--w-color-primary-50)");
+    expect(html).toContain("var(--w-color-info-fg)");
+    expect(collectElements(document).filter((element) => element.tagName === "script")).toHaveLength(0);
+  } finally {
+    await testCase.cleanup();
+  }
+});
 
 const rejectedRasterDataUrls = [
   [
@@ -591,9 +1301,120 @@ test("build renders an allowed report as a readable static HTML document", async
     expect(html).toContain('id="section-次の対応"');
     expect(html).toContain('aria-label="目次"');
     expect(html).toContain('class="rpt-skip-link"');
-    expect(html).not.toContain("<script");
+    const elements = collectElements(parse(html));
+    expect(elements.filter((element) => element.tagName === "script")).toHaveLength(0);
+    expect(
+      elements.filter(
+        (element) =>
+          element.tagName === "meta" &&
+          attributeValue(element, "http-equiv")?.toLowerCase() ===
+            "content-security-policy",
+      ).map((element) => attributeValue(element, "content")),
+    ).toEqual([staticCsp]);
+    expect(
+      elements.filter(
+        (element) =>
+          element.tagName === "link" ||
+          ((element.tagName === "img" || element.tagName === "source") &&
+            !attributeValue(element, "src")?.startsWith("data:")),
+      ),
+    ).toHaveLength(0);
   } finally {
     await testCase.cleanup();
+  }
+});
+
+test("build renders Mermaid with only the fixed CDN and nonce-bound init script", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Mermaid report\n---\n\n```mermaid\nflowchart LR\nA-->B\n```",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    const html = await Bun.file(testCase.output).text();
+    const elements = collectElements(parse(html));
+    const scripts = elements.filter((element) => element.tagName === "script");
+    const csp = elements.filter(
+      (element) =>
+        element.tagName === "meta" &&
+        attributeValue(element, "http-equiv")?.toLowerCase() ===
+          "content-security-policy",
+    );
+
+    expect(scripts).toHaveLength(2);
+    expect(attributeValue(scripts[0]!, "src")).toBe(mermaidCdnUrl);
+    expect(attributeValue(scripts[0]!, "nonce")).toBeTruthy();
+    expect(attributeValue(scripts[1]!, "nonce")).toBe(
+      attributeValue(scripts[0]!, "nonce"),
+    );
+    expect(attributeValue(scripts[1]!, "src")).toBeUndefined();
+    expect(elementTextContent(scripts[1]!)).toBe(mermaidInitScript);
+    expect(csp).toHaveLength(1);
+    expect(attributeValue(csp[0]!, "content")).toBe(
+      staticCsp +
+        "; script-src 'nonce-" +
+        attributeValue(scripts[0]!, "nonce") +
+        "'",
+    );
+    expect(attributeValue(csp[0]!, "content")).toContain("connect-src 'none'");
+    expect(attributeValue(csp[0]!, "content")).toContain("object-src 'none'");
+    expect(attributeValue(csp[0]!, "content")).toContain("base-uri 'none'");
+    expect(html).toContain("data-rpt-mermaid");
+    expect(html).toContain('securityLevel: "strict"');
+    expect(html).toContain("flowchart LR");
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("Mermaid runtime render ids include the script nonce when a heading uses the legacy id", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Mermaid id collision\n---\n\n## rpt-mermaid-0\n\n```mermaid\nflowchart LR\nA-->B\n```",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    const document = parse(await Bun.file(testCase.output).text());
+    const elements = collectElements(document);
+    const heading = elements.find(
+      (element) =>
+        element.tagName === "h2" && attributeValue(element, "id") === "rpt-mermaid-0",
+    );
+    const scripts = elements.filter((element) => element.tagName === "script");
+    const nonce = attributeValue(scripts[1]!, "nonce");
+    const initScript = elementTextContent(scripts[1]!);
+
+    expect(heading).toBeDefined();
+    expect(nonce).toMatch(/^[A-Za-z0-9_-]{24}$/);
+    expect(initScript).toBe(mermaidInitScript);
+    expect(initScript).not.toContain(nonce!);
+    const probe = runMermaidInitProbe(initScript, nonce);
+    expect(probe.renderIds).toEqual(["rpt-mermaid-" + nonce + "-0"]);
+    expect(probe.initializeCalls).toBe(1);
+    expect(probe.renderIds[0]).not.toBe(attributeValue(heading!, "id"));
+    expect(probe.alerts).toHaveLength(0);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("Mermaid init keeps source and shows an alert without a valid script nonce", () => {
+  for (const nonce of [undefined, "not base64url!"]) {
+    const probe = runMermaidInitProbe(mermaidInitScript, nonce);
+
+    expect(probe.renderIds).toHaveLength(0);
+    expect(probe.initializeCalls).toBe(0);
+    expect(probe.diagram.textContent).toBe("flowchart LR\nA-->B");
+    expect(probe.diagram.innerHTML).toBe("");
+    expect(probe.alerts).toHaveLength(1);
+    expect(probe.alerts[0]!.attributes.role).toBe("alert");
+    expect(probe.alerts[0]!.textContent).toBe(
+      "Mermaid diagram could not be rendered.",
+    );
   }
 });
 
@@ -989,6 +1810,166 @@ for (const [name, html] of rejectedFinalDom) {
     expect(result.ok).toBe(false);
   });
 }
+
+const rejectedFinalDomAriaReferences = [
+  ["aria-labelledby", '<div aria-labelledby="missing"></div>'],
+  ["aria-describedby", '<div aria-describedby="missing"></div>'],
+  ["aria-details", '<div aria-details="missing"></div>'],
+  ["aria-controls", '<div aria-controls="missing"></div>'],
+  ["aria-owns", '<div aria-owns="missing"></div>'],
+  ["aria-flowto", '<div aria-flowto="missing"></div>'],
+  ["aria-activedescendant", '<div aria-activedescendant="missing"></div>'],
+  ["aria-errormessage", '<div aria-errormessage="missing"></div>'],
+  ["an empty reference", '<div aria-controls=""></div>'],
+] as const;
+
+for (const [name, html] of rejectedFinalDomAriaReferences) {
+  test("final DOM rejects unresolved " + name + " ARIA references", async () => {
+    const result = await runInlineFixture(html);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain("ARIA reference");
+    }
+  });
+}
+
+test("final DOM accepts only the complete Mermaid script and CSP policy", async () => {
+  const result = await runInlineFixture(
+    '<pre data-rpt-mermaid><code class="language-mermaid">flowchart LR\nA--&gt;B</code></pre>' +
+      mermaidScriptMarkup(),
+    mermaidPolicy,
+  );
+
+  expect(result.ok).toBe(true);
+});
+
+const rejectedScriptPolicies = [
+  [
+    "any script under the static policy",
+    "<script>alert(1)</script>",
+    staticPolicy,
+  ],
+  [
+    "a different Mermaid CDN URL",
+    mermaidScriptMarkup({
+      cdnUrl: "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js",
+    }),
+    mermaidPolicy,
+  ],
+  [
+    "a Mermaid CDN nonce mismatch",
+    mermaidScriptMarkup({ cdnNonce: "different-nonce" }),
+    mermaidPolicy,
+  ],
+  [
+    "a Mermaid init nonce mismatch",
+    mermaidScriptMarkup({ initNonce: "different-nonce" }),
+    mermaidPolicy,
+  ],
+  [
+    "a third Mermaid script",
+    mermaidScriptMarkup({ extraScript: '<script nonce="test-mermaid-nonce"></script>' }),
+    mermaidPolicy,
+  ],
+  [
+    "reversed Mermaid script order",
+    mermaidScriptMarkup({ reverse: true }),
+    mermaidPolicy,
+  ],
+  [
+    "a one-character Mermaid init mutation",
+    mermaidScriptMarkup({
+      initScript: mermaidInitScript.replace("rendered.", "rendered!"),
+    }),
+    mermaidPolicy,
+  ],
+  [
+    "Mermaid scripts in the SVG namespace",
+    "<svg>" + mermaidScriptMarkup() + "</svg>",
+    mermaidPolicy,
+  ],
+] as const;
+
+for (const [name, html, policy] of rejectedScriptPolicies) {
+  test("final DOM rejects " + name, async () => {
+    const result = await runInlineFixture(html, policy);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain("script");
+    }
+  });
+}
+
+test("final DOM rejects a missing CSP meta", async () => {
+  const result = await runInlineFixture("<main>body</main>", staticPolicy, false);
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain("Content Security Policy");
+  }
+});
+
+test("final DOM rejects multiple CSP metas", async () => {
+  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${staticCsp}">`;
+  const result = await runInlineFixture(cspMeta + cspMeta, staticPolicy, false);
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain("Content Security Policy");
+  }
+});
+
+test("final DOM rejects a CSP that differs from the policy", async () => {
+  const result = await runInlineFixture(
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'">',
+    staticPolicy,
+    false,
+  );
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain("Content Security Policy");
+  }
+});
+
+test("final DOM rejects a CSP meta outside the document head", async () => {
+  const result = await runInlineFixture(
+    `<!doctype html><html><head></head><body><main>body</main><meta http-equiv="Content-Security-Policy" content="${staticCsp}"></body></html>`,
+    staticPolicy,
+    false,
+  );
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain("Content Security Policy");
+  }
+});
+
+for (const [name, html] of [
+  ["aria-labelledby", '<div aria-labelledby="missing"></div>'],
+  ["aria-describedby", '<div aria-describedby="missing"></div>'],
+  ["aria-details", '<div aria-details="missing"></div>'],
+] as const) {
+  test("policy-aware final DOM rejects unresolved " + name, async () => {
+    const result = await runInlineFixture(html, staticPolicy);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain("ARIA reference");
+    }
+  });
+}
+
+test("final DOM rejects C0 controls in navigation URL schemes", async () => {
+  const result = await runInlineFixture('<a href="java\tscript:alert(1)">x</a>');
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain("unsafe navigation URL");
+  }
+});
 
 test("final DOM rejects duplicate ids", async () => {
   const result = await runInlineFixture(

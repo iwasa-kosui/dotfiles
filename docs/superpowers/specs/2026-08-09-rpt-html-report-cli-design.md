@@ -4,7 +4,7 @@
 
 `rpt` は、生成AIが作成した制限付きMDXを、人間が読みやすい自己完結型HTMLへ変換するCLIです。Astroで静的HTMLを生成し、WebcoreUIでレポート内の重要情報を見分けやすくします。
 
-初期版はmacOSとBunを対象にします。生成したHTMLはネット接続なしで閲覧でき、PC、スマートフォン、印刷で読みやすい構成にします。
+初期版はmacOSとBunを対象にします。Mermaidを含まない生成HTMLはネット接続なしで閲覧でき、PC、スマートフォン、印刷で読みやすい構成にします。Mermaidを含む場合だけ、固定CDNと固定のクライアントJavaScriptを使う例外があります。詳細は[リッチコンテンツ拡張設計](2026-08-09-rpt-rich-content-design.md)を正本とします。
 
 ## 目的
 
@@ -20,7 +20,7 @@
 - Astro開発サーバーやブラウザの自動起動
 - HTMLとアセットを分けた複数ファイル出力
 - 外部URLからの画像取得
-- Mermaidなどの図表レンダラー
+- Mermaid以外の図表レンダラー、Mermaidの任意設定、ビルド時SVG生成、オフライン図表示
 - PDF出力
 - LinuxとWindowsでの動作保証
 - 実CLIで検証できる挙動を内部モジュールだけで確認するテスト
@@ -42,6 +42,8 @@ rpt build - -o report.html
 - `-h, --help`: 使用方法を表示します。
 - `-v, --version`: バージョンを表示します。
 
+引数なしで実行した場合も成功として`--help`と同じ詳細な案内をstdoutへ表示します。案内には、基本コマンド、AIがMDXを生成するためのfrontmatter契約、safe HTMLとinline styleの制約、全許可コンポーネントの最小例、MermaidのCDN例外、入力・画像・図の上限、単一HTMLの出力規則を含めます。完全なCSS propertyとIcon nameの列挙は案内せず、固定catalogと代表例を示します。
+
 入力に `-` を指定した場合はstdinから読み取ります。それ以外は指定したUTF-8のMDXファイルを読み取ります。入力MDXの上限は5MiBです。ファイル入力は実際に開いたdescriptorがregular fileであることを確認し、最大5MiB+1byteだけを読みます。FIFO、device、directoryは読み始める前にI/Oエラーとして拒否します。
 
 成功時は生成したHTMLの絶対パスをstdoutへ1行で表示し、終了コード`0`を返します。診断情報はstderrへ出します。
@@ -61,7 +63,7 @@ frontmatterでは次のキーだけを許可します。未知のキーは入力
 
 通常のMarkdownに加え、GFMのテーブル、取り消し線、タスクリスト、脚注、コードブロックを許可します。
 
-次のレポート専用タグだけを許可します。タグ名と属性名は大文字と小文字を区別し、属性値は引用符で囲んだ静的文字列に限ります。`class`、`style`、`id`、イベント属性は渡せません。
+次のレポート専用タグと、allowlistにある小文字safe HTMLだけを許可します。タグ名と属性名は大文字と小文字を区別し、属性値は引用符で囲んだ静的文字列に限ります。レポート専用タグには`class`、`style`、`id`、イベント属性を渡せません。
 
 ### Callout
 
@@ -116,6 +118,49 @@ frontmatterでは次のキーだけを許可します。未知のキーは入力
 - `title`: 必須の文字列です。
 - 子要素には許可済みMarkdownと、`Section`以外のレポート専用タグを記述できます。
 
+## リッチコンテンツ
+
+### safe HTMLとinline style
+
+小文字のsafe HTMLでは構造（`article`、`section`、`aside`、`header`、`footer`、`div`、`span`）、本文、リスト、表、補助要素（`details`、`summary`、`figure`、`time`、`a`など）だけを許可します。静的な`id`、`role`、`aria-*`、`title`、`lang`、`dir`、`style`と、要素固有のallowlist属性だけを使えます。リンクとciteのURLは相対URL、fragment、HTTPS、`mailto:`に限ります。
+
+`style`は色、文字、box、Flex/Grid、表、リストの固定allowlistだけを使えます。重複property、`!important`、カスタムproperty、危険なURL/image関数、position、animation、transformなどは拒否します。`var()`はfallbackなしの`--w-`で始まるWebcoreUI変数だけを許可します。`class`、`data-*`、イベント属性、spread属性、式属性は許可しません。
+
+### 専用コンポーネント
+
+既存の`Callout`、`Metric`、`Evidence`、`Section`に加えて、`Badge`、`Status`、`Icon`、`Timeline`、`TimelineItem`、`Tabs`、`Tab`を許可します。全属性は静的文字列です。
+
+```mdx
+<Badge tone="success">承認済み</Badge>
+<Status tone="warning">確認待ち</Status>
+<Icon name="circle-check" label="完了" size="20" />
+
+<Timeline theme="icons">
+  <TimelineItem title="調査" icon="search">要件を確認します。</TimelineItem>
+  <TimelineItem title="実装" icon="check">機能を追加します。</TimelineItem>
+</Timeline>
+
+<Tabs>
+  <Tab label="概要" active="true">概要の本文</Tab>
+  <Tab label="詳細">詳細の本文</Tab>
+</Tabs>
+```
+
+`Badge`と`Status`の`tone`は`neutral`、`info`、`success`、`warning`、`danger`です。`Icon.name`と`TimelineItem.icon`は固定WebcoreUI icon catalogから選びます（例: `alert`、`circle-check`、`github`、`info`、`warning`）。`Timeline`は2件以上の直接の`TimelineItem`だけを持ち、`theme="icons"`では各itemにiconが必須です。`Tabs`は2〜10件の直接の`Tab`だけを持ち、activeは最大1件です。入れ子のTimelineとTabsは拒否します。
+
+### Mermaid
+
+小文字の`mermaid` fenced code blockだけを図として扱います。1図は64KiB以下、1レポートは20図以下で、Mermaid frontmatterとinit directiveは拒否します。
+
+````md
+```mermaid
+flowchart LR
+  A[入力] --> B[検証] --> C[HTML]
+```
+````
+
+Mermaidを含むレポートだけは、固定した`mermaid@11.16.0` CDNとnonce付きの固定初期化scriptを使うクライアントJavaScript例外があります。JavaScriptが無効またはCDN取得に失敗した場合、元のsourceを表示します。Mermaidを含まないレポートは外部アセットとclient JavaScriptを持ちません。安全性、最終DOM、CSPの詳細は[リッチコンテンツ拡張設計](2026-08-09-rpt-rich-content-design.md)に従います。
+
 ## 禁止する構文
 
 次の構文を検出した場合は、Astroへ渡す前に入力を拒否します。
@@ -123,8 +168,8 @@ frontmatterでは次のキーだけを許可します。未知のキーは入力
 - `import`と`export`
 - JavaScript式
 - 未登録のMDXタグ
-- 生HTML
-- スクリプト、イベント属性、危険なURLスキーム
+- allowlist外のHTML、属性、親子構造、inline style
+- スクリプト、`class`、イベント属性、危険なURLスキーム
 - 動的な属性値とスプレッド属性
 - `Section`の入れ子
 
@@ -152,7 +197,7 @@ Markdown画像はbase64形式のdata URLまたは相対パスを許可します�
 - OS標準フォントを使い、フォントファイルを参照しません。
 - スキップリンク、セマンティックHTML、十分な色コントラストを使用します。
 - 印刷時は目次を除き、A4で読みやすい余白と文字サイズへ変更します。
-- 初期版はクライアントJavaScriptを出力しません。
+- Mermaidを含まないレポートはクライアントJavaScriptを出力しません。Mermaidを含む場合だけ、固定CDNとnonce付き固定初期化scriptを出力します。
 
 ## アーキテクチャ
 
@@ -190,7 +235,7 @@ run_onchange_after_install-rpt-dependencies.sh.tmpl
 - `input.ts`: ファイルまたはstdinを上限付きで読み、サイズと画像の基準ディレクトリを決めます。
 - `validate.ts`: frontmatterとMDX ASTを検査し、許可した入力だけを返します。
 - `build.ts`: 一時Astroプロジェクトを準備し、Astroビルドを子プロセスとして実行します。
-- `inline-assets.ts`: 画像などをdata URLへ変換し、外部アセット参照が残っていないことを検査します。
+- `inline-assets.ts`: 画像などをdata URLへ変換し、Mermaidの固定CDN例外以外の外部アセット参照が残っていないことを検査します。
 - Astro layoutとcomponents: 画面構造とレポート専用タグのWebcoreUI表現を担当します。
 - `cli.ts`: 各処理を順番に呼び、診断表示と終了コードを決めます。
 
@@ -203,7 +248,7 @@ run_onchange_after_install-rpt-dependencies.sh.tmpl
 5. インストール済みパッケージの`node_modules`を作業ディレクトリから参照できるようにします。
 6. Astroの静的ビルドを子プロセスで実行します。
 7. CSSをHTML内へ配置し、画像をdata URLへ変換します。
-8. 外部stylesheet、外部script、外部画像、外部font参照が残っていないこと、全IDが一意であること、内部fragment linkが一意な実在IDへ解決することを検査します。通常のHTTPSリンクはfragmentを含めて残せます。
+8. Mermaidを含まない場合は外部stylesheet、script、外部画像、外部font参照が残っていないことを検査します。Mermaidを含む場合は固定CDN scriptとnonce付き固定初期化scriptだけを例外として検査します。全IDが一意であり、内部fragment linkが一意な実在IDへ解決することも検査します。通常のHTTPSリンクはfragmentを含めて残せます。
 9. 出力先と同じディレクトリに一時ファイルを書き、成功後に指定先へ置き換えます。
 10. 成否にかかわらず作業ディレクトリを片付けます。
 
@@ -213,7 +258,7 @@ run_onchange_after_install-rpt-dependencies.sh.tmpl
 
 Astro設定へ`@astrojs/mdx`と`webcoreui/integration`を追加します。WebcoreUIのAstroコンポーネントは`webcoreui/astro`から読み込みます。
 
-生成CSSはAstroの`build.inlineStylesheets: "always"`でHTMLへ埋め込みます。WebcoreUIの既定フォント参照は使わず、システムフォントへ置き換えます。クライアント側の処理が必要なWebcoreUIコンポーネントは初期版では使いません。
+生成CSSはAstroの`build.inlineStylesheets: "always"`でHTMLへ埋め込みます。WebcoreUIの既定フォント参照は使わず、システムフォントへ置き換えます。TabsはJavaScriptなしで表示し、Mermaidだけが固定CDNを使うクライアント処理の例外です。
 
 実装時点ではWebcoreUI 1.5.0とAstro 5系を基準に互換性を確認し、採用した正確なバージョンを`package.json`と`bun.lock`へ固定します。
 
@@ -243,11 +288,11 @@ Astro設定へ`@astrojs/mdx`と`webcoreui/integration`を追加します。Webco
 - ファイル入力から自己完結型HTMLを生成できます。
 - stdin入力から自己完結型HTMLを生成できます。
 - 出力にタイトル、メタデータ、目次、見出し、レポート専用タグが含まれます。
-- CSSとローカル画像が埋め込まれ、外部アセット参照が残りません。
+- MermaidなしではCSSとローカル画像が埋め込まれ、外部アセットとscriptが残りません。Mermaidありでは固定CDNと固定初期化scriptだけを許可します。
 - 許可したbase64 raster data URLを維持し、不正なdata URLをAstro build前に拒否します。
 - ファイル入力と画像の1件5MiB、画像合計20MiBを超過前に拒否します。
 - main、見出し、`Section`、脚注を含む全IDが一意で、skip link、目次、脚注のfragmentが一意な実在IDへ解決します。
-- import、JavaScript式、生HTML、未登録タグ、危険なURLを行と列付きで拒否します。
+- import、JavaScript式、allowlist外HTML、未登録タグ、`class`とイベント属性、危険なURLを行と列付きで拒否します。
 - `--force`なしでは既存ファイルを変更しません。
 - `--force`付きでは既存ファイルを置き換えます。
 - 失敗時に新しい不完全なHTMLを残しません。
@@ -261,7 +306,7 @@ HTML全体のスナップショットは使いません。利用者が確認で�
 - 合意したCLI契約でファイル入力とstdin入力を処理できます。
 - 制限付きMDX以外はAstro実行前に拒否されます。
 - WebcoreUIを使った読み物型レポートを生成できます。
-- 生成HTMLは外部アセットなしで表示でき、クライアントJavaScriptを必要としません。
+- Mermaidなしの生成HTMLは外部アセットなしで表示でき、クライアントJavaScriptを必要としません。Mermaidありでは固定CDNと固定初期化scriptだけを例外として許可します。
 - スマートフォン表示と印刷用CSSを含みます。
 - 実CLI E2Eとfocused boundary testがすべて成功します。
 - 型検査、Astroビルド、`git diff --check`、chezmoi配布差分の確認が成功します。

@@ -13,6 +13,10 @@ import {
   type DefaultTreeAdapterTypes,
 } from "parse5";
 import { detectImageMimeType } from "./image.ts";
+import type { FinalDomPolicy } from "./final-dom-policy.ts";
+import { ariaIdReferenceAttributes } from "./safe-html.ts";
+import { safeStyleViolation } from "./safe-style.ts";
+import { isAllowedNavigationUrl } from "./safe-url.ts";
 import type { Result } from "./result.ts";
 
 type Element = DefaultTreeAdapterTypes.Element;
@@ -21,6 +25,7 @@ type ParentNode = DefaultTreeAdapterTypes.ParentNode;
 export async function inlineAssets(
   html: string,
   distDirectory: string,
+  policy: FinalDomPolicy,
 ): Promise<Result<string>> {
   try {
     const realDistDirectory = await realpath(distDirectory);
@@ -28,11 +33,11 @@ export async function inlineAssets(
       scriptingEnabled: false,
       sourceCodeLocationInfo: true,
     });
-    const processing = await processChildren(document, realDistDirectory);
+    const processing = await processChildren(document, realDistDirectory, policy);
     if (!processing.ok) {
       return processing;
     }
-    const validation = validateFinalDom(document);
+    const validation = validateFinalDom(document, policy);
     if (!validation.ok) {
       return validation;
     }
@@ -45,13 +50,20 @@ export async function inlineAssets(
 async function processChildren(
   parent: ParentNode,
   distDirectory: string,
+  policy: FinalDomPolicy,
 ): Promise<Result<void>> {
   for (let index = 0; index < parent.childNodes.length; index += 1) {
     const child = parent.childNodes[index];
     if (!("tagName" in child)) {
       continue;
     }
-    const processing = await processElement(child, parent, index, distDirectory);
+    const processing = await processElement(
+      child,
+      parent,
+      index,
+      distDirectory,
+      policy,
+    );
     if (!processing.ok) {
       return processing;
     }
@@ -64,17 +76,19 @@ async function processElement(
   parent: ParentNode,
   index: number,
   distDirectory: string,
+  policy: FinalDomPolicy,
 ): Promise<Result<void>> {
   const tagName = element.tagName.toLowerCase();
   if (tagName === "script") {
-    return unsafeHtml("report HTML contains a script");
+    return isAllowedScript(element, policy)
+      ? { ok: true, value: undefined }
+      : unsafeHtml("report HTML contains a script outside the final DOM policy");
   }
   const style = attribute(element, "style");
   if (style !== undefined) {
-    if (isGeneratedMarkdownStyle(element, style.value)) {
-      element.attrs = element.attrs.filter((candidate) => candidate !== style);
-    } else {
-      return unsafeHtml("report HTML contains a style attribute");
+    const violation = safeStyleViolation(style.value);
+    if (violation !== undefined) {
+      return unsafeHtml("report HTML contains unsafe style: " + violation);
     }
   }
 
@@ -135,12 +149,12 @@ async function processElement(
     return unsafeHtml("report HTML contains an SVG use reference");
   }
 
-  const children = await processChildren(element, distDirectory);
+  const children = await processChildren(element, distDirectory, policy);
   if (!children.ok) {
     return children;
   }
   if (isTemplate(element)) {
-    return processChildren(element.content, distDirectory);
+    return processChildren(element.content, distDirectory, policy);
   }
   return { ok: true, value: undefined };
 }
@@ -531,6 +545,7 @@ const activeElementNames = new Set([
   "script",
 ]);
 
+const htmlNamespace = "http://www.w3.org/1999/xhtml";
 const svgNamespace = "http://www.w3.org/2000/svg";
 const svgDynamicElementNames = new Set([
   "animate",
@@ -542,15 +557,76 @@ const svgDynamicElementNames = new Set([
   "set",
 ]);
 
+function isAllowedScript(
+  element: Element,
+  policy: FinalDomPolicy,
+): boolean {
+  return (
+    policy.kind === "mermaid" &&
+    (isMermaidCdnScript(element, policy) ||
+      isMermaidInitScript(element, policy))
+  );
+}
+
+function isMermaidCdnScript(
+  element: Element,
+  policy: Extract<FinalDomPolicy, { kind: "mermaid" }>,
+): boolean {
+  return (
+    element.namespaceURI === htmlNamespace &&
+    hasExactAttributes(element, {
+      src: policy.cdnUrl,
+      nonce: policy.nonce,
+    }) &&
+    element.childNodes.length === 0
+  );
+}
+
+function isMermaidInitScript(
+  element: Element,
+  policy: Extract<FinalDomPolicy, { kind: "mermaid" }>,
+): boolean {
+  return (
+    element.namespaceURI === htmlNamespace &&
+    hasExactAttributes(element, { nonce: policy.nonce }) &&
+    element.childNodes.every((node) => node.nodeName === "#text") &&
+    textContent(element) === policy.initScript
+  );
+}
+
+function hasExactAttributes(
+  element: Element,
+  expected: Readonly<Record<string, string>>,
+): boolean {
+  const entries = Object.entries(expected);
+  return (
+    element.attrs.length === entries.length &&
+    entries.every(
+      ([name, value]) => attribute(element, name)?.value === value,
+    )
+  );
+}
+
 type FinalDomState = {
   readonly idCounts: Map<string, number>;
   readonly fragmentTargets: string[];
+  readonly ariaTargets: string[];
+  readonly scripts: Element[];
+  readonly cspMetas: Array<
+    Readonly<{ element: Element; parent: ParentNode }>
+  >;
 };
 
-function validateFinalDom(parent: ParentNode): Result<void> {
+function validateFinalDom(
+  parent: ParentNode,
+  policy: FinalDomPolicy,
+): Result<void> {
   const state: FinalDomState = {
     idCounts: new Map(),
     fragmentTargets: [],
+    ariaTargets: [],
+    scripts: [],
+    cspMetas: [],
   };
   const validation = validateFinalDomInto(parent, state);
   if (!validation.ok) {
@@ -568,6 +644,38 @@ function validateFinalDom(parent: ParentNode): Result<void> {
           target,
       );
     }
+  }
+  for (const target of state.ariaTargets) {
+    if (state.idCounts.get(target) !== 1) {
+      return unsafeHtml(
+        "report HTML ARIA reference must resolve to exactly one id: " + target,
+      );
+    }
+  }
+  if (
+    state.cspMetas.length !== 1 ||
+    !isHtmlHead(state.cspMetas[0]!.parent) ||
+    !hasExactAttributes(state.cspMetas[0]!.element, {
+      "http-equiv": "Content-Security-Policy",
+      content: policy.csp,
+    })
+  ) {
+    return unsafeHtml(
+      "report HTML must contain exactly one matching Content Security Policy meta",
+    );
+  }
+  if (policy.kind === "static") {
+    if (state.scripts.length !== 0) {
+      return unsafeHtml("report HTML contains a script under the static policy");
+    }
+  } else if (
+    state.scripts.length !== 2 ||
+    !isMermaidCdnScript(state.scripts[0]!, policy) ||
+    !isMermaidInitScript(state.scripts[1]!, policy)
+  ) {
+    return unsafeHtml(
+      "report HTML scripts do not exactly match the Mermaid final DOM policy",
+    );
   }
   return { ok: true, value: undefined };
 }
@@ -587,8 +695,19 @@ function validateFinalDomInto(
     ) {
       return unsafeHtml("report HTML contains dynamic SVG content");
     }
+    if (tagName === "script") {
+      state.scripts.push(child);
+      continue;
+    }
     if (activeElementNames.has(tagName)) {
       return unsafeHtml("report HTML contains an active element");
+    }
+    if (
+      tagName === "meta" &&
+      (attribute(child, "http-equiv")?.value ?? "").toLowerCase() ===
+        "content-security-policy"
+    ) {
+      state.cspMetas.push({ element: child, parent });
     }
     if (
       tagName === "meta" &&
@@ -602,8 +721,28 @@ function validateFinalDomInto(
     }
     for (const candidate of child.attrs) {
       const name = candidate.name.toLowerCase();
-      if (name === "style" || name === "srcdoc" || name.startsWith("on")) {
+      if (name === "style") {
+        const violation = safeStyleViolation(candidate.value);
+        if (violation !== undefined) {
+          return unsafeHtml("report HTML contains unsafe style: " + violation);
+        }
+        continue;
+      }
+      if (name === "srcdoc" || name.startsWith("on")) {
         return unsafeHtml("report HTML contains an executable attribute");
+      }
+      const ariaReferenceKind = ariaIdReferenceAttributes.get(name);
+      if (ariaReferenceKind !== undefined) {
+        const targets = candidate.value.trim().split(/\s+/).filter(Boolean);
+        if (targets.length === 0) {
+          return unsafeHtml("report HTML ARIA reference must not be empty: " + name);
+        }
+        if (ariaReferenceKind === "single" && targets.length !== 1) {
+          return unsafeHtml(
+            "report HTML ARIA reference must name exactly one id: " + name,
+          );
+        }
+        state.ariaTargets.push(...targets);
       }
       if (cssUrlAttributeNames.has(name)) {
         const cssValidation = validateCssValue(candidate.value);
@@ -624,14 +763,14 @@ function validateFinalDomInto(
           return unsafeHtml("report HTML contains an external asset reference");
         }
       } else if (
-        name === "href" &&
-        (tagName === "a" || tagName === "area")
+        (name === "href" && (tagName === "a" || tagName === "area")) ||
+        (name === "cite" && (tagName === "blockquote" || tagName === "q"))
       ) {
-        if (!isSafeNavigationUrl(candidate.value)) {
+        if (!isAllowedNavigationUrl(candidate.value)) {
           return unsafeHtml("report HTML contains an unsafe navigation URL");
         }
         const trimmed = candidate.value.trim();
-        if (trimmed.startsWith("#")) {
+        if (name === "href" && trimmed.startsWith("#")) {
           try {
             state.fragmentTargets.push(decodeURIComponent(trimmed.slice(1)));
           } catch (cause) {
@@ -662,32 +801,8 @@ function validateFinalDomInto(
   return { ok: true, value: undefined };
 }
 
-function isSafeNavigationUrl(value: string): boolean {
-  const trimmed = value.trim();
-  if (trimmed.startsWith("#")) {
-    return true;
-  }
-  try {
-    const url = new URL(trimmed, "https://rpt.invalid/");
-    return (
-      url.origin === "https://rpt.invalid" ||
-      url.protocol === "https:" ||
-      url.protocol === "mailto:"
-    );
-  } catch {
-    return false;
-  }
-}
-
 function attribute(element: Element, name: string) {
   return element.attrs.find((candidate) => candidate.name.toLowerCase() === name);
-}
-
-function isGeneratedMarkdownStyle(element: Element, value: string): boolean {
-  return (
-    (element.tagName === "td" || element.tagName === "th") &&
-    /^\s*text-align\s*:\s*(?:left|center|right)\s*;?\s*$/.test(value)
-  );
 }
 
 function hasRel(element: Element, token: string): boolean {
@@ -735,6 +850,14 @@ function isTemplate(
   element: Element,
 ): element is DefaultTreeAdapterTypes.Template {
   return element.nodeName === "template";
+}
+
+function isHtmlHead(parent: ParentNode): boolean {
+  return (
+    "tagName" in parent &&
+    parent.tagName.toLowerCase() === "head" &&
+    parent.namespaceURI === htmlNamespace
+  );
 }
 
 function isDataUrl(value: string): boolean {

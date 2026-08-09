@@ -1,0 +1,12 @@
+---
+import WebcoreBadge from "@webcoreui/components/Badge/Badge.astro";
+
+type Tone = "neutral" | "info" | "success" | "warning" | "danger";
+
+const { tone } = Astro.props as { tone: Tone };
+const theme = tone === "neutral" ? "secondary" : tone === "danger" ? "alert" : tone;
+---
+
+<span data-rpt-component="badge" data-tone={tone}>
+  <WebcoreBadge theme={theme}><slot /></WebcoreBadge>
+</span>

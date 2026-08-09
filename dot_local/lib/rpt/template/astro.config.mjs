@@ -4,6 +4,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { webcore } from "webcoreui/integration";
+import rehypeMermaid from "./src/rehype-mermaid.mjs";
 
 const templateRoot = fileURLToPath(new URL(".", import.meta.url));
 const localNodeModules = join(templateRoot, "node_modules");
@@ -16,7 +17,7 @@ export default defineConfig({
   outDir: "./dist",
   cacheDir: "./.astro-cache",
   markdown: { syntaxHighlight: false },
-  integrations: [mdx(), webcore()],
+  integrations: [mdx({ rehypePlugins: [rehypeMermaid] }), webcore()],
   image: { service: passthroughImageService() },
   build: { format: "file", inlineStylesheets: "always" },
   vite: {

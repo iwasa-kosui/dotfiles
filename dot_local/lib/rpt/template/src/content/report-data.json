@@ -3,5 +3,10 @@
     "title": "Report"
   },
   "outline": [],
-  "mainContentId": "report-content"
+  "mainContentId": "report-content",
+  "hasMermaid": false,
+  "finalDomPolicy": {
+    "kind": "static",
+    "csp": "default-src 'none'; img-src data:; style-src 'unsafe-inline'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
+  }
 }

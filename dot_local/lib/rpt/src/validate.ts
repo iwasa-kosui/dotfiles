@@ -6,10 +6,22 @@ import remarkGfm from "remark-gfm";
 import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
 import { parseDocument } from "yaml";
+import { validateComponent } from "./component-rules.ts";
 import { decodeRasterDataUrl } from "./image.ts";
 import { maximumTotalImageBytes } from "./limits.ts";
+import {
+  validateMermaidNode,
+  type MermaidValidationState,
+} from "./mermaid.ts";
+import {
+  safeHtmlAriaReferences,
+  validateSafeHtmlElement,
+  type AriaIdReference,
+} from "./safe-html.ts";
+import { isAllowedNavigationUrl } from "./safe-url.ts";
 import type { ReportInput } from "./input.ts";
 import type { Result } from "./result.ts";
+import type { Positioned, TreeNode } from "./validation-types.ts";
 
 export type ReportMetadata = Readonly<{
   title: string;
@@ -39,46 +51,7 @@ export type ValidatedReport = Readonly<{
   assets: readonly AssetReference[];
   decodedDataImageBytes: number;
   mainContentId: string;
-}>;
-
-type Point = Readonly<{
-  line: number;
-  column: number;
-  offset?: number;
-}>;
-
-type Positioned = Readonly<{
-  position?: Readonly<{ start: Point; end: Point }>;
-}>;
-
-type Attribute = Positioned &
-  Readonly<{
-    type: string;
-    name?: string;
-    value?: string | Positioned | null;
-  }>;
-
-type TreeNode = Positioned &
-  Readonly<{
-    type: string;
-    value?: string;
-    name?: string | null;
-    url?: string;
-    alt?: string | null;
-    depth?: number;
-    identifier?: string;
-    attributes?: readonly Attribute[];
-    children?: readonly TreeNode[];
-  }>;
-
-type ComponentRule = Readonly<{
-  required: readonly string[];
-  optional: readonly string[];
-  tones?: readonly string[];
-  children: boolean;
-  topLevelOnly?: boolean;
-  nested?: boolean;
-  sourceProtocol?: "https:";
+  hasMermaid: boolean;
 }>;
 
 type ValidationState = {
@@ -89,35 +62,11 @@ type ValidationState = {
   readonly assets: AssetReference[];
   readonly assetPaths: Set<string>;
   readonly imageReferenceIdentifiers: Set<string>;
-  readonly anchorInsertions: Array<Readonly<{ offset: number; anchor: string }>>;
+  readonly ariaReferences: AriaIdReference[];
+  readonly sourceInsertions: Array<Readonly<{ offset: number; text: string }>>;
+  tabsGroupCount: number;
   decodedDataImageBytes: number;
-};
-
-const componentRules: Readonly<Record<string, ComponentRule>> = {
-  Callout: {
-    required: ["tone"],
-    optional: ["title"],
-    tones: ["info", "success", "warning", "danger"],
-    children: true,
-  },
-  Metric: {
-    required: ["label", "value"],
-    optional: [],
-    children: false,
-  },
-  Evidence: {
-    required: ["title", "source"],
-    optional: [],
-    children: true,
-    sourceProtocol: "https:",
-  },
-  Section: {
-    required: ["title"],
-    optional: [],
-    children: true,
-    topLevelOnly: true,
-    nested: false,
-  },
+  readonly mermaid: MermaidValidationState;
 };
 
 const allowedFrontmatter = new Set([
@@ -159,25 +108,33 @@ export function validateReport(input: ReportInput): Result<ValidatedReport> {
     assets: [],
     assetPaths: new Set(),
     imageReferenceIdentifiers: collectImageReferenceIdentifiers(tree),
-    anchorInsertions: [],
+    ariaReferences: [],
+    sourceInsertions: [],
+    tabsGroupCount: 0,
     decodedDataImageBytes: 0,
+    mermaid: { count: 0, hasMermaid: false },
   };
-  const validation = validateNode(tree, undefined, 0, input, state);
+  const validation = validateNode(tree, undefined, undefined, 0, 0, 0, input, state);
   if (!validation.ok) {
     return validation;
+  }
+  const ariaValidation = validateAriaReferences(state);
+  if (!ariaValidation.ok) {
+    return ariaValidation;
   }
   const mainContentId = allocateHtmlId("report-content", state.htmlIds);
 
   return {
     ok: true,
     value: {
-      source: insertSectionAnchors(input.source, state.anchorInsertions),
+      source: insertSource(input.source, state.sourceInsertions),
       baseDirectory: input.baseDirectory,
       metadata: metadata.value,
       outline: state.outline,
       assets: state.assets,
       decodedDataImageBytes: state.decodedDataImageBytes,
       mainContentId,
+      hasMermaid: state.mermaid.hasMermaid,
     },
   };
 }
@@ -310,10 +267,17 @@ function optionalString(
 function validateNode(
   node: TreeNode,
   parent: TreeNode | undefined,
+  safeHtmlParent: TreeNode | undefined,
   sectionDepth: number,
+  tabsDepth: number,
+  timelineDepth: number,
   input: ReportInput,
   state: ValidationState,
 ): Result<void> {
+  const mermaidIssue = validateMermaidNode(node, state.mermaid);
+  if (mermaidIssue !== undefined) {
+    return inputFailure(mermaidIssue.message, mermaidIssue.node);
+  }
   if (node.type === "mdxjsEsm") {
     return inputFailure("import and export are not allowed", node);
   }
@@ -361,29 +325,71 @@ function validateNode(
   }
 
   let nextSectionDepth = sectionDepth;
+  let nextTabsDepth = tabsDepth;
+  let nextTimelineDepth = timelineDepth;
   if (
     node.type === "mdxJsxFlowElement" ||
     node.type === "mdxJsxTextElement"
   ) {
-    const componentValidation = validateComponent(
-      node,
-      parent,
-      sectionDepth,
-      state,
-    );
-    if (!componentValidation.ok) {
-      return componentValidation;
-    }
-    if (node.name === "Section") {
-      nextSectionDepth += 1;
+    if (node.name !== null && node.name !== undefined && node.name === node.name.toLowerCase()) {
+      const htmlIssue = validateSafeHtmlElement(node, safeHtmlParent, state.htmlIds);
+      if (htmlIssue !== undefined) {
+        return inputFailure(htmlIssue.message, htmlIssue.node);
+      }
+      state.ariaReferences.push(...safeHtmlAriaReferences(node));
+    } else {
+      const componentIssue = validateComponent(node, {
+        source: state.source,
+        parent,
+        sectionDepth,
+        tabsDepth,
+        timelineDepth,
+        allocateId: (base) => allocateHtmlId(base, state.htmlIds),
+        allocateTabsGroup: () => {
+          state.tabsGroupCount += 1;
+          return {
+            name: "rpt-tabs-" + state.tabsGroupCount,
+            index: state.tabsGroupCount,
+          };
+        },
+        addOutline: (item) => state.outline.push(item),
+        insert: (offset, text) => state.sourceInsertions.push({ offset, text }),
+      });
+      if (componentIssue !== undefined) {
+        return inputFailure(componentIssue.message, componentIssue.node);
+      }
+      if (node.name === "Section") {
+        nextSectionDepth += 1;
+      }
+      if (node.name === "Tabs") {
+        nextTabsDepth += 1;
+      }
+      if (node.name === "Timeline") {
+        nextTimelineDepth += 1;
+      }
     }
   }
 
+  const childSafeHtmlParent =
+    node.name !== null && node.name !== undefined && node.name === node.name.toLowerCase()
+      ? node
+      : node.type === "paragraph"
+        ? safeHtmlParent
+        : undefined;
+
   for (const child of node.children ?? []) {
+    const childParent =
+      node.type === "paragraph" &&
+      (parent?.name === "Tabs" || parent?.name === "Timeline")
+        ? parent
+        : node;
     const childValidation = validateNode(
       child,
-      node,
+      childParent,
+      childSafeHtmlParent,
       nextSectionDepth,
+      nextTabsDepth,
+      nextTimelineDepth,
       input,
       state,
     );
@@ -394,120 +400,24 @@ function validateNode(
   return { ok: true, value: undefined };
 }
 
-function validateComponent(
-  node: TreeNode,
-  parent: TreeNode | undefined,
-  sectionDepth: number,
-  state: ValidationState,
-): Result<void> {
-  const name = node.name;
-  if (name === null || name === undefined) {
-    return inputFailure("MDX fragments are not allowed", node);
-  }
-  if (name === name.toLowerCase()) {
-    return inputFailure("raw HTML is not allowed", node);
-  }
-
-  const rule = componentRules[name];
-  if (rule === undefined) {
-    return inputFailure("component " + name + " is not allowed", node);
-  }
-  if (name === "Section" && isSelfClosing(node, state.source)) {
-    return inputFailure("Section must not be self-closing", node);
-  }
-  if (
-    rule.topLevelOnly &&
-    (node.type !== "mdxJsxFlowElement" || parent?.type !== "root")
-  ) {
-    if (sectionDepth > 0) {
-      return inputFailure("Section must not be nested", node);
-    }
-    return inputFailure("Section must be at the document top level", node);
-  }
-  if (rule.nested === false && sectionDepth > 0) {
-    return inputFailure("Section must not be nested", node);
-  }
-  if (!rule.children && (node.children?.length ?? 0) > 0) {
-    return inputFailure(name + " must not have children", node);
-  }
-
-  const values = new Map<string, string>();
-  for (const attribute of node.attributes ?? []) {
-    if (attribute.type !== "mdxJsxAttribute") {
-      return inputFailure("dynamic component attributes are not allowed", attribute);
-    }
-    if (attribute.name === undefined || typeof attribute.value !== "string") {
-      return inputFailure("dynamic component attributes are not allowed", attribute);
-    }
-    if (values.has(attribute.name)) {
-      return inputFailure(
-        "attribute " + attribute.name + " may only be specified once on " + name,
-        attribute,
-      );
-    }
-    if (
-      attribute.name === "style" ||
-      attribute.name === "class" ||
-      attribute.name === "id" ||
-      attribute.name === "anchor" ||
-      attribute.name.startsWith("on") ||
-      (!rule.required.includes(attribute.name) &&
-        !rule.optional.includes(attribute.name))
-    ) {
-      return inputFailure(
-        "attribute " + attribute.name + " is not allowed on " + name,
-        attribute,
-      );
-    }
-    values.set(attribute.name, attribute.value);
-  }
-
-  for (const required of rule.required) {
-    if (!values.has(required)) {
-      return inputFailure(name + "." + required + " is required", node);
-    }
-  }
-
-  if (rule.tones !== undefined && !rule.tones.includes(values.get("tone") ?? "")) {
-    return inputFailure(
-      "Callout.tone must be info, success, warning, or danger",
-      node,
-    );
-  }
-  if (rule.sourceProtocol !== undefined) {
-    const source = values.get("source") ?? "";
-    try {
-      if (new URL(source).protocol !== rule.sourceProtocol) {
-        return inputFailure("Evidence.source must use https", node);
-      }
-    } catch {
-      return inputFailure("Evidence.source must use https", node);
-    }
-  }
-
-  if (name === "Section") {
-    const title = values.get("title") ?? "";
-    const anchor = allocateHtmlId(
-      "section-" + new GithubSlugger().slug(title),
-      state.htmlIds,
-    );
-    state.outline.push({ depth: 2, text: title, slug: anchor });
-    const offset = openingTagEnd(node, state.source);
-    if (offset === undefined) {
-      return inputFailure("could not determine Section anchor position", node);
-    }
-    state.anchorInsertions.push({ offset, anchor });
-  }
-
-  return { ok: true, value: undefined };
-}
-
 function validateLink(node: TreeNode): Result<void> {
   const url = node.url ?? "";
-  if (isAllowedLink(url)) {
+  if (isAllowedNavigationUrl(url)) {
     return { ok: true, value: undefined };
   }
   return inputFailure("link URL is not allowed", node);
+}
+
+function validateAriaReferences(state: ValidationState): Result<void> {
+  for (const reference of state.ariaReferences) {
+    if (!state.htmlIds.has(reference.target)) {
+      return inputFailure(
+        "ARIA reference must resolve to exactly one id: " + reference.target,
+        reference.node,
+      );
+    }
+  }
+  return { ok: true, value: undefined };
 }
 
 function validateImage(
@@ -548,70 +458,24 @@ function validateImage(
   return { ok: true, value: undefined };
 }
 
-function isAllowedLink(url: string): boolean {
-  if (url.startsWith("#") || url.toLowerCase().startsWith("mailto:")) {
-    return true;
-  }
-  if (url.startsWith("//")) {
-    return false;
-  }
-  const scheme = hasScheme(url);
-  return scheme === false || scheme.toLowerCase() === "https:";
-}
-
 function hasScheme(value: string): string | false {
   const match = /^[a-zA-Z][a-zA-Z\d+.-]*:/.exec(value);
   return match?.[0] ?? false;
 }
 
-function insertSectionAnchors(
+function insertSource(
   source: string,
-  insertions: readonly Readonly<{ offset: number; anchor: string }>[],
+  insertions: readonly Readonly<{ offset: number; text: string }>[],
 ): string {
   return [...insertions]
     .sort((left, right) => right.offset - left.offset)
     .reduce(
       (result, insertion) =>
         result.slice(0, insertion.offset) +
-        " anchor=\"" +
-        insertion.anchor +
-        "\"" +
+        insertion.text +
         result.slice(insertion.offset),
       source,
     );
-}
-
-function openingTagEnd(node: TreeNode, source: string): number | undefined {
-  const position = node.position;
-  if (
-    position?.start.offset === undefined ||
-    position.end.offset === undefined
-  ) {
-    return undefined;
-  }
-
-  let quote: "\"" | "'" | undefined;
-  for (
-    let index = position.start.offset;
-    index < position.end.offset;
-    index += 1
-  ) {
-    const character = source[index];
-    if (quote !== undefined) {
-      if (character === quote && source[index - 1] !== "\\") {
-        quote = undefined;
-      }
-      continue;
-    }
-    if (character === "\"" || character === "'") {
-      quote = character;
-      continue;
-    }
-    if (character === ">") {
-      return index;
-    }
-  }
-  return undefined;
 }
 
 function textContent(node: TreeNode): string {
@@ -622,20 +486,6 @@ function textContent(node: TreeNode): string {
     return node.value;
   }
   return (node.children ?? []).map(textContent).join("");
-}
-
-function isSelfClosing(node: TreeNode, source: string): boolean {
-  const position = node.position;
-  if (
-    position?.start.offset === undefined ||
-    position.end.offset === undefined
-  ) {
-    return false;
-  }
-  return source
-    .slice(position.start.offset, position.end.offset)
-    .trimEnd()
-    .endsWith("/>");
 }
 
 function collectMarkdownHeadingIds(node: TreeNode): Set<string> {

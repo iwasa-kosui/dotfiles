@@ -1,0 +1,9 @@
+---
+import WebcoreTimelineItem from "@webcoreui/components/TimelineItem/TimelineItem.astro";
+
+const { title, icon } = Astro.props as { title?: string; icon?: string };
+---
+
+<WebcoreTimelineItem title={title} icon={icon}>
+  <div data-rpt-component="timeline-item"><slot /></div>
+</WebcoreTimelineItem>

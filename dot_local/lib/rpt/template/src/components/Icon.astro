@@ -1,0 +1,16 @@
+---
+import WebcoreIcon from "@webcoreui/components/Icon/Icon.astro";
+
+const { name, label, size = "20" } = Astro.props as {
+  name: string;
+  label?: string;
+  size?: string;
+};
+const aria = label === undefined
+  ? { "aria-hidden": true }
+  : { role: "img" as const, "aria-label": label };
+---
+
+<span data-rpt-component="icon" {...aria}>
+  <WebcoreIcon type={name} size={Number(size)} />
+</span>
