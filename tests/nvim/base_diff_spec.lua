@@ -3,16 +3,23 @@ local diff = require("user.base_diff")
 
 t.eq(
 	{
-		["lua/new.lua"] = "A",
-		["lua/edit.lua"] = "M",
-		["lua/moved.lua"] = "R",
+		{ status = "A", path = "lua/new file.lua" },
+		{ status = "M", path = "lua/edit.lua" },
+		{ status = "R", path = "lua/moved.lua", old_path = "lua/old.lua" },
+		{ status = "D", path = "lua/gone.lua" },
 	},
-	diff.parse_name_status({
-		"A\tlua/new.lua",
-		"M\tlua/edit.lua",
-		"R100\tlua/old.lua\tlua/moved.lua",
-		"D\tlua/gone.lua",
-	})
+	diff.parse_name_status_z(table.concat({
+		"A",
+		"lua/new file.lua",
+		"M",
+		"lua/edit.lua",
+		"R100",
+		"lua/old.lua",
+		"lua/moved.lua",
+		"D",
+		"lua/gone.lua",
+		"",
+	}, "\0"))
 )
 
 t.eq(

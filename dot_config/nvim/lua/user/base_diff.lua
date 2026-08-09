@@ -1,7 +1,9 @@
 local M = {}
 local worktree_root = require("user.worktree_root")
 
-local caches = {}
+local snapshots = {}
+local errors = {}
+local subscribers = {}
 local generations = {}
 local timers = {}
 
@@ -19,25 +21,48 @@ local function normalize(path)
   return worktree_root.normalize(path)
 end
 
-local function output_lines(output)
-  return vim.split(output or "", "\n", { trimempty = true })
-end
-
 local function run(command, cwd, callback)
   vim.system(command, { cwd = cwd, text = true }, callback)
 end
 
-function M.parse_name_status(lines)
-  local result = {}
-  for _, line in ipairs(lines) do
-    local columns = vim.split(line, "\t", { plain = true })
-    local code = columns[1] and columns[1]:sub(1, 1)
-    local path = code == "R" and columns[3] or columns[2]
-    if path and code ~= "D" then
-      result[path] = code
+---@class BaseDiffChange
+---@field status "A"|"M"|"R"|"D"
+---@field path string
+---@field old_path? string
+
+---@class BaseDiffSnapshot
+---@field cwd string
+---@field base_ref string
+---@field base_name string
+---@field merge_base string
+---@field changes BaseDiffChange[]
+---@field statuses table<string, string>
+
+function M.parse_name_status_z(output)
+  local records = vim.split(output or "", "\0", { plain = true })
+  local changes = {}
+  local index = 1
+  while index <= #records do
+    local raw = records[index]
+    local status = raw:sub(1, 1)
+    if raw == "" then
+      break
+    end
+    if status == "R" then
+      changes[#changes + 1] = {
+        status = "R",
+        old_path = records[index + 1],
+        path = records[index + 2],
+      }
+      index = index + 3
+    elseif vim.tbl_contains({ "A", "M", "D" }, status) then
+      changes[#changes + 1] = { status = status, path = records[index + 1] }
+      index = index + 2
+    else
+      index = index + 1
     end
   end
-  return result
+  return changes
 end
 
 function M.parse_porcelain_z(output)
@@ -92,12 +117,48 @@ function M.base_candidates(pr_base, origin_head)
   return candidates
 end
 
-local function complete(callback, success)
+local function complete(callback, success, snapshot, err, current)
   if callback then
     vim.schedule(function()
-      callback(success)
+      if current() then
+        callback(success, snapshot, err)
+      end
     end)
   end
+end
+
+function M.snapshot(cwd)
+  return snapshots[worktree_root.resolve(cwd)]
+end
+
+function M.error(cwd)
+  return errors[worktree_root.resolve(cwd)]
+end
+
+function M.subscribe(cwd, callback)
+  cwd = worktree_root.resolve(cwd)
+  subscribers[cwd] = subscribers[cwd] or {}
+  subscribers[cwd][callback] = true
+  return function()
+    if subscribers[cwd] then
+      subscribers[cwd][callback] = nil
+    end
+  end
+end
+
+local function publish(cwd, snapshot, err, current)
+  for callback in pairs(subscribers[cwd] or {}) do
+    vim.schedule(function()
+      if current() then
+        callback(snapshot, err)
+      end
+    end)
+  end
+end
+
+local function result_error(result, fallback)
+  local detail = vim.trim((result and (result.stderr or result.stdout)) or "")
+  return detail ~= "" and detail or fallback
 end
 
 function M.refresh(cwd, callback, adapter)
@@ -111,9 +172,18 @@ function M.refresh(cwd, callback, adapter)
     return generations[cwd] == generation
   end
 
-  local function finish(success)
+  local function finish(success, snapshot, err)
     if current() then
-      complete(callback, success)
+      complete(callback, success, snapshot, err, current)
+    end
+  end
+
+  local function fail(err)
+    if current() then
+      errors[cwd] = err
+      local snapshot = snapshots[cwd]
+      publish(cwd, snapshot, err, current)
+      finish(false, snapshot, err)
     end
   end
 
@@ -145,7 +215,7 @@ function M.refresh(cwd, callback, adapter)
 
         local base = candidates[index]
         if not base then
-          finish(false)
+          fail("Unable to resolve a merge base from configured base candidates")
           return
         end
 
@@ -165,13 +235,13 @@ function M.refresh(cwd, callback, adapter)
             return
           end
 
-          execute({ "git", "diff", "--name-status", "--find-renames", merge_base }, cwd, function(diff_result)
+          execute({ "git", "diff", "--name-status", "-z", "--find-renames", merge_base }, cwd, function(diff_result)
             if not current() then
               return
             end
 
             if diff_result.code ~= 0 then
-              finish(false)
+              fail(result_error(diff_result, "git diff failed"))
               return
             end
 
@@ -181,23 +251,45 @@ function M.refresh(cwd, callback, adapter)
               end
 
               if status_result.code ~= 0 then
-                finish(false)
+                fail(result_error(status_result, "git status failed"))
                 return
               end
 
-              local changes = M.parse_name_status(output_lines(diff_result.stdout))
+              local changes = M.parse_name_status_z(diff_result.stdout)
+              local seen = {}
+              for _, change in ipairs(changes) do
+                seen[change.path] = true
+              end
               for path, status in pairs(M.parse_porcelain_z(status_result.stdout)) do
-                if status == "A" then
-                  changes[path] = status
+                if status == "A" and not seen[path] then
+                  changes[#changes + 1] = { status = "A", path = path }
+                  seen[path] = true
                 end
               end
 
-              local cache = {}
-              for path, status in pairs(changes) do
-                cache[normalize(cwd .. "/" .. path)] = status
+              table.sort(changes, function(left, right)
+                return left.path < right.path
+              end)
+              local statuses = {}
+              for _, change in ipairs(changes) do
+                if change.status ~= "D" then
+                  statuses[normalize(cwd .. "/" .. change.path)] = change.status
+                end
               end
-              caches[cwd] = cache
-              finish(true)
+              local snapshot = {
+                cwd = cwd,
+                base_ref = base,
+                base_name = base:gsub("^origin/", ""),
+                merge_base = merge_base,
+                changes = changes,
+                statuses = statuses,
+              }
+              if current() then
+                snapshots[cwd] = snapshot
+                errors[cwd] = nil
+                publish(cwd, snapshot, nil, current)
+                finish(true, snapshot, nil)
+              end
             end)
           end)
         end)
@@ -218,18 +310,21 @@ function M.refresh_explorers(cwd)
   end
 end
 
-function M.refresh_and_render(cwd)
-  M.refresh(cwd, function(success)
+function M.refresh_and_render(cwd, opts)
+  opts = opts or {}
+  M.refresh(cwd, function(success, _, err)
     if success then
       M.refresh_explorers(cwd)
+    elseif opts.notify and err then
+      vim.notify("Base diff refresh failed: " .. err, vim.log.levels.WARN)
     end
   end)
 end
 
 function M.status(path)
   local normalized = normalize(path)
-  for _, cache in pairs(caches) do
-    local status = cache[normalized]
+  for _, snapshot in pairs(snapshots) do
+    local status = snapshot.statuses[normalized]
     if status then
       return status
     end
