@@ -511,7 +511,7 @@ export async function writeOutput(
 ): Promise<Result<string>>;
 ```
 
-出力先を絶対パス化し、親ディレクトリが存在することを確認します。`--force`なしで出力が存在すれば書込前に`io`失敗を返します。`.<basename>.rpt-<random>.tmp`を同じディレクトリへexclusive createし、HTMLを書いてcloseした後にrenameします。失敗時は一時ファイルだけを削除します。`--force`なしではrename直前にも出力存在を再確認します。
+出力先を絶対パス化し、親ディレクトリが存在することを確認します。`--force`なしで出力が存在すれば書込前に`io`失敗を返します。`.<basename>.rpt-<random>.tmp`を同じディレクトリへexclusive createし、HTMLを書いてcloseした後、`--force`なしはexclusive hard linkでno-replace publishして成功後にtempをunlinkし、`--force`ありだけrenameで置換します。失敗時は一時ファイルだけを削除します。
 
 - [ ] **Step 6: CLI処理順を完成させて全E2Eを通す**
 
