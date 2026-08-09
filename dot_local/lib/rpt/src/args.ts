@@ -11,7 +11,41 @@ export type Command =
       debug: boolean;
     }>;
 
-export const usage = `Usage: rpt build <input.mdx|-> -o <output.html>
+export const usage = `rpt — AI-native HTML report builder
+
+Turn AI-authored, restricted MDX into a self-contained HTML report.
+
+Usage: rpt build <input.mdx|-> -o <output.html>
+
+Quick start:
+  rpt build report.mdx -o report.html
+  cat report.mdx | rpt build - -o report.html
+
+AI authoring contract:
+  Required frontmatter:
+    title: required non-empty string
+
+  Optional frontmatter:
+    summary: string
+    author: string
+    createdAt: YYYY-MM-DD
+    status: draft | final | archived
+    tags: array of non-empty strings
+
+  Body:
+    Markdown and GFM (tables, task lists, footnotes, and code blocks)
+
+  Allowed components:
+    Callout, Metric, Evidence, Section
+    <Callout tone="info|success|warning|danger" title="Optional">...</Callout>
+    <Metric label="Label" value="Value" />
+    <Evidence title="Source" source="https://example.com">...</Evidence>
+    <Section title="Section title">...</Section>
+
+  Restrictions:
+    Do not use imports, exports, JavaScript expressions, raw HTML, or other components.
+    Images must be relative local raster files or valid raster data URLs.
+    Input and each image are limited to 5 MiB; all decoded images total 20 MiB.
 
 Options:
   -o, --output <path>  Write the report to this HTML file
@@ -19,17 +53,21 @@ Options:
       --debug          Show stack traces for internal errors
   -h, --help           Show this help message
   -v, --version        Show the rpt version
+
+Output:
+  On success, rpt writes the absolute output path to stdout.
+  Diagnostics are written to stderr. Existing files require --force.
 `;
 
 export function parseArgs(argv: readonly string[]): Result<Command> {
-  if (argv.length === 1 && isHelp(argv[0])) {
+  if (argv.length === 0 || (argv.length === 1 && isHelp(argv[0]))) {
     return { ok: true, value: { kind: "help" } };
   }
   if (argv.length === 1 && isVersion(argv[0])) {
     return { ok: true, value: { kind: "version" } };
   }
   if (argv[0] !== "build") {
-    return failure(argv.length === 0 ? "a command is required" : `unknown command: ${argv[0]}`);
+    return failure(`unknown command: ${argv[0]}`);
   }
 
   let input: string | undefined;

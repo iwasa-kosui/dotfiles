@@ -42,6 +42,8 @@ rpt build - -o report.html
 - `-h, --help`: 使用方法を表示します。
 - `-v, --version`: バージョンを表示します。
 
+引数なしで実行した場合も成功として`--help`と同じ詳細な案内をstdoutへ表示します。案内には、基本コマンド、AIがMDXを生成するためのfrontmatter契約、許可コンポーネント、禁止構文、画像上限、出力規則を含めます。
+
 入力に `-` を指定した場合はstdinから読み取ります。それ以外は指定したUTF-8のMDXファイルを読み取ります。入力MDXの上限は5MiBです。ファイル入力は実際に開いたdescriptorがregular fileであることを確認し、最大5MiB+1byteだけを読みます。FIFO、device、directoryは読み始める前にI/Oエラーとして拒否します。
 
 成功時は生成したHTMLの絶対パスをstdoutへ1行で表示し、終了コード`0`を返します。診断情報はstderrへ出します。

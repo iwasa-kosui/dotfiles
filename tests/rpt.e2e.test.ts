@@ -197,6 +197,26 @@ test("--help displays the rpt build usage", async () => {
   expect(result.stderr).toBe("");
 });
 
+test("no arguments displays the detailed AI authoring guide", async () => {
+  const [result, explicitHelp] = await Promise.all([
+    runRpt([]),
+    runRpt(["--help"]),
+  ]);
+
+  expect(result.exitCode).toBe(0);
+  expect(result.stdout).toBe(explicitHelp.stdout);
+  expect(result.stdout).toContain(
+    "Turn AI-authored, restricted MDX into a self-contained HTML report.",
+  );
+  expect(result.stdout).toContain("Quick start:");
+  expect(result.stdout).toContain("AI authoring contract:");
+  expect(result.stdout).toContain("title: required non-empty string");
+  expect(result.stdout).toContain("Allowed components:");
+  expect(result.stdout).toContain("Callout, Metric, Evidence, Section");
+  expect(result.stdout).toContain("rpt build - -o report.html");
+  expect(result.stderr).toBe("");
+});
+
 test("--version displays the current CLI version", async () => {
   const result = await runRpt(["--version"]);
 
