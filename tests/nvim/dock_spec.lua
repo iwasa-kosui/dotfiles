@@ -38,6 +38,18 @@ t.eq(next_resume, dock.active.handle, "only the replacement handle may remain ac
 dock:activate("codex", next_resume)
 t.eq(0, next_resume.hidden, "reactivating the same handle must not hide itself")
 
+local guarded = { managed = 0, direct = 0 }
+function guarded:dock_hide()
+	self.managed = self.managed + 1
+end
+function guarded:hide()
+	self.direct = self.direct + 1
+end
+dock:activate("guarded", guarded)
+dock:activate("git", git)
+t.eq(1, guarded.managed, "Dock transitions must use the callback-suppressed hide path")
+t.eq(0, guarded.direct, "Dock transitions must not look like a user window close")
+
 local fallback_dock = require("user.dock").new()
 local created = 0
 local lazygit = { hidden = 0, shown = 0, live = true }

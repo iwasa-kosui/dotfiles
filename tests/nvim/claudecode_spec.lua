@@ -56,6 +56,12 @@ package.loaded["user.ai_dock"] = {
 		t.eq(77, buffer)
 		notified = notified + 1
 	end,
+	toggle_claude = function()
+		notified = notified + 1
+	end,
+	focus_claude = function()
+		notified = notified + 1
+	end,
 }
 
 local plugin = dofile(vim.fn.getcwd() .. "/dot_config/nvim/lua/plugins/claudecode.lua")
@@ -68,4 +74,19 @@ hide({
 })
 t.eq(1, hidden)
 t.eq(1, notified)
+
+local on_close = plugin[1].opts.terminal.snacks_win_opts.on_close
+on_close({ buf = 77 })
+t.eq(2, notified, "Snacks normal-mode q/window close must notify the Dock")
+
+local keys = {}
+for _, mapping in ipairs(plugin[1].keys) do
+	keys[mapping[1]] = mapping[2]
+end
+t.eq("function", type(keys["<leader>aa"]), "Claude toggle key must be controller-aware")
+t.eq("function", type(keys["<leader>af"]), "Claude focus key must be controller-aware")
+t.eq("function", type(keys["<C-,>"]), "global Claude focus key must be controller-aware")
+keys["<leader>aa"]()
+keys["<C-,>"]()
+t.eq(4, notified)
 package.loaded["user.ai_dock"] = previous_ai_dock

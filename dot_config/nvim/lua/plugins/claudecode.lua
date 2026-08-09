@@ -6,8 +6,20 @@ return {
     dependencies = { "folke/snacks.nvim" },
     keys = {
       { "<leader>a", "", desc = "+ai", mode = { "n", "v" } },
-      { "<leader>aa", "<cmd>ClaudeCode<cr>", desc = "Toggle Claude" },
-      { "<leader>af", "<cmd>ClaudeCodeFocus<cr>", desc = "Focus Claude" },
+      {
+        "<leader>aa",
+        function()
+          require("user.ai_dock").toggle_claude()
+        end,
+        desc = "Toggle Claude",
+      },
+      {
+        "<leader>af",
+        function()
+          require("user.ai_dock").focus_claude()
+        end,
+        desc = "Focus Claude",
+      },
       { "<leader>ar", "<cmd>ClaudeCode --resume<cr>", desc = "Resume Claude" },
       { "<leader>aC", "<cmd>ClaudeCode --continue<cr>", desc = "Continue Claude" },
       { "<leader>ab", "<cmd>ClaudeCodeAdd %<cr>", desc = "Add current buffer" },
@@ -20,7 +32,14 @@ return {
       },
       { "<leader>aA", "<cmd>ClaudeCodeDiffAccept<cr>", desc = "Accept diff" },
       { "<leader>ad", "<cmd>ClaudeCodeDiffDeny<cr>", desc = "Deny diff" },
-      { toggle_key, "<cmd>ClaudeCodeFocus<cr>", desc = "Claude Code", mode = { "n", "x" } },
+      {
+        toggle_key,
+        function()
+          require("user.ai_dock").focus_claude()
+        end,
+        desc = "Claude Code",
+        mode = { "n", "x" },
+      },
     },
     cmd = {
       "ClaudeCode",
@@ -54,6 +73,9 @@ return {
           },
           on_buf = function(self)
             require("user.ai_dock").attach("claude", self.buf)
+          end,
+          on_close = function(self)
+            require("user.ai_dock").on_hidden("claude", self.buf)
           end,
         },
       },

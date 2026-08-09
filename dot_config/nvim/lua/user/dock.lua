@@ -2,14 +2,16 @@ local Controller = {}
 Controller.__index = Controller
 
 local function hide(handle)
-  if handle and type(handle.hide) == "function" then
-    pcall(handle.hide, handle)
+  local method = handle and (handle.dock_hide or handle.hide)
+  if type(method) == "function" then
+    pcall(method, handle)
   end
 end
 
 local function show(handle)
-  if handle and type(handle.show) == "function" then
-    pcall(handle.show, handle)
+  local method = handle and (handle.dock_show or handle.show)
+  if type(method) == "function" then
+    pcall(method, handle)
   end
 end
 

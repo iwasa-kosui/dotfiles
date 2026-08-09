@@ -310,7 +310,14 @@ end, function(handle)
 	return handle.live
 end)
 cleanup_dock:activate("lazygit", cleanup_lazygit)
-local cleanup_codex = { hide = function() end }
+local cleanup_discards = 0
+local cleanup_codex = {
+	hide = function() end,
+	close = function(_, opts)
+		t.eq({ buf = true }, opts)
+		cleanup_discards = cleanup_discards + 1
+	end,
+}
 cleanup_dock:activate("codex", cleanup_codex)
 ai.attach("codex", cleanup_buffer, {
 	buffer_valid = function()
@@ -320,6 +327,12 @@ ai.attach("codex", cleanup_buffer, {
 	deactivate_dock = function(name, handle)
 		cleanup_dock:deactivate(name, handle)
 	end,
+	discard_terminal = function(handle)
+		handle:close({ buf = true })
+	end,
+	schedule = function(callback)
+		callback()
+	end,
 }, cleanup_codex)
 t.eq({ "TermClose", "BufDelete", "BufWipeout" }, registered_cleanup_events)
 for _, event in ipairs({ "TermClose", "BufDelete", "BufWipeout" }) do
@@ -327,6 +340,7 @@ for _, event in ipairs({ "TermClose", "BufDelete", "BufWipeout" }) do
 end
 t.eq(cleanup_lazygit, cleanup_dock.active.handle, "the active Codex cleanup must restore LazyGit once")
 t.eq(1, cleanup_lazygit.shown, "duplicate cleanup events must be idempotent")
+t.eq(1, cleanup_discards, "Codex TermClose must destroy its dead Snacks window and buffer once")
 
 local current_codex = { hide = function() end }
 cleanup_dock:activate("codex", current_codex)
@@ -433,8 +447,12 @@ local transition_adapter = {
 				focus = function() end,
 				hide = function(self)
 					self.hidden = self.hidden + 1
+					if self.on_close then
+						self.on_close(self)
+					end
 				end,
 			}
+			terminal.on_close = opts.win.on_close
 			transition_terminals[key] = terminal
 		end
 		return terminal
@@ -444,6 +462,9 @@ local transition_adapter = {
 	end,
 	discard_terminal = function() end,
 	attach_terminal = function() end,
+	deactivate_dock = function(name, terminal)
+		transition_dock:deactivate(name, terminal)
+	end,
 	notify = function(message)
 		error(message)
 	end,
@@ -457,6 +478,230 @@ t.truthy(resumed and resumed ~= normal, "resume must create a distinct command t
 t.eq(1, normal.hidden, "resume must hide the live normal Codex terminal")
 t.eq(0, resumed.hidden, "the resumed Codex terminal must remain visible")
 t.eq(resumed, transition_dock.active.handle, "only the resumed terminal may remain active")
+
+local hide_dock = require("user.dock").new()
+local hide_lazygit = { live = true, shown = 0, hide = function() end }
+function hide_lazygit:show()
+	self.shown = self.shown + 1
+end
+hide_dock:set_default("lazygit", function()
+	return hide_lazygit
+end, function(handle)
+	return handle.live
+end)
+hide_dock:activate("lazygit", hide_lazygit)
+local codex_opts
+local hidden_codex_buffer = vim.api.nvim_create_buf(false, true)
+local hidden_codex = {
+	buf = hidden_codex_buffer,
+	live = true,
+	show = function() end,
+	focus = function() end,
+	hide = function(self)
+		if codex_opts and codex_opts.win.on_close then
+			codex_opts.win.on_close(self)
+		end
+	end,
+}
+local hide_adapter = {
+	root = function()
+		return "/repo/hide"
+	end,
+	provider = function()
+		return "codex"
+	end,
+	select_provider = function() end,
+	ensure_explorer = function() end,
+	prepare_dock = function(name)
+		hide_dock:prepare(name)
+	end,
+	activate_dock = function(name, handle)
+		hide_dock:activate(name, handle)
+	end,
+	deactivate_dock = function(name, handle)
+		hide_dock:deactivate(name, handle)
+	end,
+	terminal_get = function(_, opts)
+		if opts.create == false and not codex_opts then
+			return nil
+		end
+		codex_opts = opts.create == false and codex_opts or opts
+		return hidden_codex
+	end,
+	terminal_live = function()
+		return true
+	end,
+	terminal_visible = function()
+		return codex_opts ~= nil and hide_dock.active and hide_dock.active.handle == hidden_codex
+	end,
+	attach_terminal = function(provider, buffer, runtime, handle)
+		ai.attach(provider, buffer, runtime, handle)
+	end,
+	buffer_valid = function()
+		return true
+	end,
+	register_buffer_cleanup = function() end,
+	notify = function(message)
+		error(message)
+	end,
+}
+ai.toggle(hide_adapter)
+t.eq(hidden_codex, hide_dock.active.handle)
+codex_opts.win.on_close(hidden_codex)
+t.eq(hide_lazygit, hide_dock.active.handle, "Codex normal q/window close must restore LazyGit")
+t.eq(1, hide_lazygit.shown)
+codex_opts.win.on_close(hidden_codex)
+t.eq(hide_lazygit, hide_dock.active.handle, "duplicate Codex close must not disturb restored LazyGit")
+vim.api.nvim_buf_delete(hidden_codex_buffer, { force = true })
+
+local claude_dock_toggle = require("user.dock").new()
+local claude_lazygit = { live = true, shown = 0, hide = function() end }
+function claude_lazygit:show()
+	self.shown = self.shown + 1
+end
+claude_dock_toggle:set_default("lazygit", function()
+	return claude_lazygit
+end, function(handle)
+	return handle.live
+end)
+claude_dock_toggle:activate("lazygit", claude_lazygit)
+local claude_buffer = vim.api.nvim_create_buf(false, true)
+local claude_visible = false
+local claude_command_calls = 0
+local claude_toggle_adapter = {
+	prepare_dock = function(name)
+		claude_dock_toggle:prepare(name)
+	end,
+	activate_dock = function(name, handle)
+		claude_dock_toggle:activate(name, handle)
+	end,
+	deactivate_dock = function(name, handle)
+		claude_dock_toggle:deactivate(name, handle)
+	end,
+	ensure_explorer = function() end,
+	claude_buffer = function()
+		return claude_buffer
+	end,
+	buffer_valid = function()
+		return true
+	end,
+	buffer_visible = function()
+		return claude_visible
+	end,
+	buffer_focused = function()
+		return claude_visible
+	end,
+	command = function()
+		claude_command_calls = claude_command_calls + 1
+		claude_visible = not claude_visible
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	register_buffer_cleanup = function() end,
+	windows_for_buffer = function()
+		return {}
+	end,
+}
+ai.toggle_claude(claude_toggle_adapter)
+t.eq("claude", claude_dock_toggle.active.name, "<leader>aa must activate Claude when opening")
+ai.toggle_claude(claude_toggle_adapter)
+t.eq(claude_lazygit, claude_dock_toggle.active.handle, "<leader>aa must restore LazyGit when hiding")
+ai.focus_claude(claude_toggle_adapter)
+t.eq("claude", claude_dock_toggle.active.name, "global <C-,> must activate Claude when opening")
+ai.focus_claude(claude_toggle_adapter)
+t.eq(claude_lazygit, claude_dock_toggle.active.handle, "global <C-,> must restore LazyGit when hiding")
+t.eq(4, claude_command_calls)
+vim.api.nvim_buf_delete(claude_buffer, { force = true })
+
+local provider_dock = require("user.dock").new()
+local provider_lazygit = { live = true, shown = 0, hide = function() end }
+function provider_lazygit:show()
+	self.shown = self.shown + 1
+end
+provider_dock:set_default("lazygit", function()
+	return provider_lazygit
+end, function(handle)
+	return handle.live
+end)
+provider_dock:activate("lazygit", provider_lazygit)
+local provider_claude_buffer = vim.api.nvim_create_buf(false, true)
+local provider_codex_buffer = vim.api.nvim_create_buf(false, true)
+local provider_codex_opts
+local provider_codex = {
+	buf = provider_codex_buffer,
+	live = true,
+	show = function() end,
+	focus = function() end,
+	hide = function(self)
+		provider_codex_opts.win.on_close(self)
+	end,
+}
+local selected_provider = "claude"
+local provider_adapter
+provider_adapter = {
+	provider = function()
+		return selected_provider
+	end,
+	select_provider = function(provider)
+		selected_provider = provider
+	end,
+	root = function()
+		return "/repo/providers"
+	end,
+	ensure_explorer = function() end,
+	prepare_dock = function(name)
+		provider_dock:prepare(name)
+	end,
+	activate_dock = function(name, handle)
+		provider_dock:activate(name, handle)
+	end,
+	deactivate_dock = function(name, handle)
+		provider_dock:deactivate(name, handle)
+	end,
+	terminal_get = function(_, opts)
+		if opts.create == false and not provider_codex_opts then
+			return nil
+		end
+		provider_codex_opts = opts.create == false and provider_codex_opts or opts
+		return provider_codex
+	end,
+	terminal_live = function()
+		return true
+	end,
+	attach_terminal = function(provider, buffer, runtime, handle)
+		ai.attach(provider, buffer, runtime, handle)
+	end,
+	claude_buffer = function()
+		return provider_claude_buffer
+	end,
+	buffer_valid = function()
+		return true
+	end,
+	register_buffer_cleanup = function() end,
+	windows_for_buffer = function()
+		return { 9001 }
+	end,
+	hide_window = function()
+		ai.on_hidden("claude", provider_claude_buffer, provider_adapter)
+	end,
+	command = function() end,
+	schedule = function(callback)
+		callback()
+	end,
+	notify = function(message)
+		error(message)
+	end,
+}
+ai.attach("claude", provider_claude_buffer, provider_adapter)
+ai.switch_provider(provider_adapter)
+t.eq("codex", provider_dock.active.name, "Claude to Codex must not restore LazyGit between providers")
+t.eq(0, provider_lazygit.shown)
+ai.switch_provider(provider_adapter)
+t.eq("claude", provider_dock.active.name, "Codex to Claude must not restore LazyGit between providers")
+t.eq(0, provider_lazygit.shown)
+vim.api.nvim_buf_delete(provider_claude_buffer, { force = true })
+vim.api.nvim_buf_delete(provider_codex_buffer, { force = true })
 
 local commands = {}
 local sent_contexts = {}
