@@ -4,6 +4,7 @@ local lazygit_dock = require("user.lazygit_dock")
 
 local created = 0
 local registered = {}
+local pr_list_calls = 0
 local terminal = {
 	buf = 51,
 	live = true,
@@ -46,6 +47,9 @@ local adapter = {
 		terminal.cleanup = callback
 	end,
 	ensure_explorer = function() end,
+	pr_list = function()
+		pr_list_calls = pr_list_calls + 1
+	end,
 }
 
 lazygit_dock.reset_for_tests()
@@ -55,6 +59,8 @@ t.eq(terminal, first)
 t.eq(terminal, second)
 t.eq(1, created, "startup ensure must run once per canonical root")
 t.truthy(registered["t<leader>pp"])
+registered["t<leader>pp"].rhs()
+t.eq(1, pr_list_calls, "the terminal-local mapping must call the PR list boundary directly")
 t.eq("<F12>", registered["t<leader>po"].rhs)
 t.eq("q", registered["tq"].rhs(), "q must be forwarded after marking an explicit close")
 t.eq("<C-c>", registered["t<C-c>"].rhs(), "Ctrl-c must keep LazyGit's alternate quit")

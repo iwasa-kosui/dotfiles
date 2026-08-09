@@ -61,6 +61,9 @@ local function defaults(adapter)
       ensure_explorer = function()
         require("user.workspace").ensure_explorer({ focus = false })
       end,
+      pr_list = function()
+        require("user.pr_review").list()
+      end,
       notify = function(message)
         vim.notify(message, vim.log.levels.WARN)
       end,
@@ -70,7 +73,7 @@ end
 
 local function setup_keymaps(root, terminal, runtime)
   runtime.set_keymap("t", "<leader>pp", function()
-    require("user.pr_review").list()
+    runtime.pr_list()
   end, { buffer = terminal.buf, desc = "List pull requests" })
   runtime.set_keymap("t", "<leader>po", "<F12>", {
     buffer = terminal.buf,

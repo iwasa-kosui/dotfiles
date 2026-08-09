@@ -7,6 +7,7 @@ local review_tabs = {}
 local session
 local next_generation = 0
 local surface_check_tokens = {}
+local retire_session
 
 local function current_candidate()
   local candidate = vim.uv.cwd() or vim.fn.getcwd()
@@ -63,8 +64,11 @@ local function defaults(adapter)
           request:kill(15)
         end
       end,
-      load_pr = function(target, cwd, callback)
+      load_octo = function()
         require("lazy").load({ plugins = { "octo.nvim" } })
+        return require("octo")
+      end,
+      load_pr = function(target, cwd, callback)
         local graphql = require("octo.gh.graphql")
         local query = graphql("pull_request_query", target.owner, target.name, target.number, _G.octo_pv2_fragment)
         local args = { "gh", "api", "graphql", "--paginate", "--jq", ".", "--raw-field", "query=" .. query }
@@ -160,9 +164,8 @@ local function defaults(adapter)
 end
 
 local function enter(runtime)
-  if session and session.request and not session.request.completed then
-    session.request.completed = true
-    pcall(session.runtime.cancel_request, session.request.handle)
+  if session and not retire_session() then
+    return nil
   end
   next_generation = next_generation + 1
   local handle = { hide = function() end }
@@ -191,6 +194,16 @@ local function finish(runtime, generation)
   end
   surface_check_tokens[active.generation] = nil
   active.runtime.dock:deactivate("pr", active.handle)
+end
+
+local function ensure_octo(runtime, generation)
+  local ok, load_error = pcall(runtime.load_octo)
+  if not ok then
+    runtime.notify("Octoを読み込めませんでした: " .. tostring(load_error))
+    finish(runtime, generation)
+    return false
+  end
+  return session ~= nil and session.generation == generation
 end
 
 local function start_managed_request(runtime, generation, start, on_complete, on_start_error, on_timeout)
@@ -291,7 +304,7 @@ local function schedule_surface_check(runtime, generation)
     local has_surface = has_live_buffer(picker_buffers, generation, runtime)
       or has_live_buffer(octo_buffers, generation, runtime)
       or has_live_tab(generation, runtime)
-    local pending = session and session.generation == generation and session.pending
+    local pending = session and session.generation == generation and (session.pending or session.transitioning)
     if not has_surface and not pending then
       finish(runtime, generation)
     end
@@ -539,6 +552,12 @@ function M.open(target, adapter)
   vim.list_extend(args, { "--json", "number,url" })
 
   local generation = enter(runtime)
+  if not generation then
+    return
+  end
+  if not ensure_octo(runtime, generation) then
+    return
+  end
   start_managed_request(runtime, generation, function(callback)
     return runtime.system(args, { cwd = cwd, text = true }, callback)
   end, function(result)
@@ -589,6 +608,12 @@ function M.list(adapter)
     return
   end
   local generation = enter(runtime)
+  if not generation then
+    return
+  end
+  if not ensure_octo(runtime, generation) then
+    return
+  end
   start_managed_request(runtime, generation, function(callback)
     return runtime.system({ "gh", "repo", "view", "--json", "nameWithOwner" }, { cwd = cwd, text = true }, callback)
   end, function(result)
@@ -755,54 +780,83 @@ local function close_buffers(entries, generation, runtime)
   return ok
 end
 
+local function close_review_tabs(generation, runtime)
+  local ok, reviews = pcall(runtime.reviews)
+  if not ok then
+    runtime.notify("review tabを確認できませんでした: " .. tostring(reviews))
+    return false
+  end
+  local closed_all = true
+  local closed_review = false
+  local tracked_review = false
+  for key, tracked in pairs(review_tabs) do
+    if tracked.generation == generation then
+      tracked_review = true
+      if runtime.tab_valid(tracked.handle) then
+        local close = tracked.octo_detached and runtime.close_tab or reviews.close
+        local closed, close_error = pcall(close, tracked.handle)
+        if not closed then
+          closed_all = false
+          runtime.notify("review tabを閉じられませんでした: " .. tostring(close_error))
+        elseif runtime.tab_valid(tracked.handle) then
+          tracked.octo_detached = true
+          closed_all = false
+          runtime.notify("review tabが閉じられていません。もう一度<leader>pqを実行してください")
+        else
+          closed_review = true
+          review_tabs[key] = nil
+        end
+      else
+        review_tabs[key] = nil
+      end
+    end
+  end
+  if not tracked_review and not closed_review and reviews.get_current_review() then
+    local tab = runtime.current_tab()
+    local closed, close_error = pcall(reviews.close, tab)
+    if not closed then
+      closed_all = false
+      runtime.notify("review tabを閉じられませんでした: " .. tostring(close_error))
+    elseif runtime.tab_valid(tab) then
+      review_tabs[tostring(tab)] = { handle = tab, generation = generation, octo_detached = true }
+      closed_all = false
+      runtime.notify("review tabが閉じられていません。もう一度<leader>pqを実行してください")
+    end
+  end
+  return closed_all
+end
+
+retire_session = function()
+  local active = session
+  if not active then
+    return true
+  end
+  local generation = active.generation
+  local runtime = active.runtime
+  active.transitioning = true
+  if active.request and not active.request.completed then
+    active.request.completed = true
+    pcall(runtime.cancel_request, active.request.handle)
+  end
+  local closed_all = close_review_tabs(generation, runtime)
+  closed_all = close_buffers(picker_buffers, generation, runtime) and closed_all
+  closed_all = close_buffers(octo_buffers, generation, runtime) and closed_all
+  if not closed_all then
+    active.transitioning = false
+    return false
+  end
+  surface_check_tokens[generation] = nil
+  session = nil
+  return true
+end
+
 function M.close(adapter, requested_generation)
   local runtime = defaults(adapter)
   local generation = session and session.generation
   if not generation or (requested_generation and requested_generation ~= generation) then
     return
   end
-  local ok, reviews = pcall(runtime.reviews)
-  local closed_all = ok
-  local closed_review = false
-  local tracked_review = false
-  if ok then
-    for key, tracked in pairs(review_tabs) do
-      if tracked.generation == generation then
-        tracked_review = true
-        if runtime.tab_valid(tracked.handle) then
-          local close = tracked.octo_detached and runtime.close_tab or reviews.close
-          local closed, close_error = pcall(close, tracked.handle)
-          if not closed then
-            closed_all = false
-            runtime.notify("review tabを閉じられませんでした: " .. tostring(close_error))
-          elseif runtime.tab_valid(tracked.handle) then
-            tracked.octo_detached = true
-            closed_all = false
-            runtime.notify(
-              "review tabが閉じられていません。もう一度<leader>pqを実行してください"
-            )
-          else
-            closed_review = true
-            review_tabs[key] = nil
-          end
-        else
-          review_tabs[key] = nil
-        end
-      end
-    end
-    if not tracked_review and not closed_review and reviews.get_current_review() then
-      local tab = runtime.current_tab()
-      local closed, close_error = pcall(reviews.close, tab)
-      if not closed then
-        closed_all = false
-        runtime.notify("review tabを閉じられませんでした: " .. tostring(close_error))
-      elseif runtime.tab_valid(tab) then
-        review_tabs[tostring(tab)] = { handle = tab, generation = generation, octo_detached = true }
-        closed_all = false
-        runtime.notify("review tabが閉じられていません。もう一度<leader>pqを実行してください")
-      end
-    end
-  end
+  local closed_all = close_review_tabs(generation, runtime)
   closed_all = close_buffers(picker_buffers, generation, runtime) and closed_all
   closed_all = close_buffers(octo_buffers, generation, runtime) and closed_all
   if closed_all then

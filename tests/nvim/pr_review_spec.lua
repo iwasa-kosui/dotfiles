@@ -1,6 +1,31 @@
 local t = require("testlib")
 local review = require("user.pr_review")
 
+local previous_lazy_loaded = package.loaded["lazy"]
+local previous_lazy_preload = package.preload["lazy"]
+local previous_octo_loaded = package.loaded["octo"]
+local previous_octo_preload = package.preload["octo"]
+local previous_octo_reviews_loaded = package.loaded["octo.reviews"]
+local previous_octo_reviews_preload = package.preload["octo.reviews"]
+local default_octo_loads = 0
+package.loaded["lazy"] = nil
+package.loaded["octo"] = nil
+package.preload["lazy"] = function()
+	return {
+		load = function(opts)
+			t.eq({ plugins = { "octo.nvim" } }, opts)
+			default_octo_loads = default_octo_loads + 1
+		end,
+	}
+end
+package.preload["octo"] = function()
+	return {}
+end
+package.loaded["octo.reviews"] = nil
+package.preload["octo.reviews"] = function()
+	return { get_current_review = function() end }
+end
+
 t.eq(133, review.parse_pr('{"number":133}'))
 t.eq(nil, review.parse_pr(""))
 t.eq(nil, review.parse_pr("not-json"))
@@ -14,6 +39,7 @@ local calls = {}
 local restored = 0
 local loaded_prs = {}
 local notifications = {}
+local primary_buffer_live = false
 local branch = "feat/$(touch hacked);quote'and\"double"
 local adapter = {
 	root = function(path)
@@ -68,12 +94,20 @@ local adapter = {
 		})
 	end,
 	create_pr = function()
+		primary_buffer_live = true
 		return 801
 	end,
 	buffer_valid = function(target)
-		return target == 801
+		return target == 801 and primary_buffer_live
+	end,
+	delete_buffer = function(target)
+		t.eq(801, target)
+		primary_buffer_live = false
 	end,
 	register_cleanup = function() end,
+	reviews = function()
+		return { get_current_review = function() end }
+	end,
 	notify = function(message)
 		notifications[#notifications + 1] = message
 	end,
@@ -370,6 +404,7 @@ local repo_system_calls = {}
 local repo_picker_calls = {}
 local repo_loaded_prs = {}
 local repo_restores = 0
+local repo_buffer_live = false
 local repo_adapter = {
 	root = function(path)
 		if path ~= nil then
@@ -411,10 +446,12 @@ local repo_adapter = {
 		complete_pr_load(target, cwd, callback)
 	end,
 	create_pr = function()
+		repo_buffer_live = true
 		return 1001
 	end,
 	pick_prs = function(repo, pull_requests)
 		repo_picker_calls[#repo_picker_calls + 1] = { repo = repo, pull_requests = pull_requests }
+		repo_buffer_live = true
 		return 1001
 	end,
 	notify = function(message)
@@ -424,7 +461,11 @@ local repo_adapter = {
 		return 1001
 	end,
 	buffer_valid = function(target)
-		return target == 1001
+		return target == 1001 and repo_buffer_live
+	end,
+	delete_buffer = function(target)
+		t.eq(1001, target)
+		repo_buffer_live = false
 	end,
 	register_cleanup = function() end,
 }
@@ -640,6 +681,7 @@ t.eq(1, silent_direct_close_attempts, "leader-pq must directly retry the tab tha
 t.eq(1, silent_restores)
 
 local reused_cleanups = {}
+local reused_buffer_live = false
 local reused_adapter = {
 	root = function()
 		return "/repo"
@@ -663,6 +705,7 @@ local reused_adapter = {
 	command = function() end,
 	load_pr = complete_pr_load,
 	create_pr = function()
+		reused_buffer_live = true
 		return 930
 	end,
 	notify = function(message)
@@ -673,7 +716,10 @@ local reused_adapter = {
 		reused_cleanups[#reused_cleanups + 1] = callback
 	end,
 	buffer_valid = function()
-		return true
+		return reused_buffer_live
+	end,
+	delete_buffer = function()
+		reused_buffer_live = false
 	end,
 	buffer_filetype = function()
 		return "octo"
@@ -1197,3 +1243,313 @@ t.eq(1, metadata_list_restores, "a timed-out repository metadata request must re
 metadata_list_callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
 t.eq(1, metadata_list_system_calls, "late repository metadata must not start the PR list request")
 t.eq(0, metadata_list_picker_calls, "late repository metadata must not create an Octo picker")
+
+local unloaded_octo_picker = 1301
+local unloaded_octo_live = true
+local unloaded_octo_restores = 0
+local unloaded_octo_adapter = {
+	root = function()
+		return "/canonical/selected/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			unloaded_octo_restores = unloaded_octo_restores + 1
+		end,
+	},
+	system = function(argv, _, callback)
+		if argv[2] == "repo" then
+			callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+		else
+			callback({
+				code = 0,
+				stdout = '[{"number":91,"title":"Unloaded Octo","url":"https://github.com/selected/repo/pull/91","state":"OPEN","isDraft":false,"headRefName":"unloaded"}]',
+				stderr = "",
+			})
+		end
+		return { kill = function() end }
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function() end,
+	pick_prs = function()
+		t.eq(1, default_octo_loads, "the terminal-local list path must load Octo before creating its picker")
+		return unloaded_octo_picker
+	end,
+	buffer_valid = function(buffer)
+		return buffer == unloaded_octo_picker and unloaded_octo_live
+	end,
+	register_cleanup = function() end,
+	delete_buffer = function(buffer)
+		t.eq(unloaded_octo_picker, buffer)
+		unloaded_octo_live = false
+	end,
+	reviews = function()
+		return { get_current_review = function() end }
+	end,
+	notify = function(message)
+		error(message)
+	end,
+}
+
+default_octo_loads = 0
+review.list(unloaded_octo_adapter)
+t.eq(1, default_octo_loads, "list must explicitly load Octo without lazy.nvim's key handler")
+review.close(unloaded_octo_adapter)
+t.eq(1, unloaded_octo_restores)
+
+local failed_octo_system_calls = 0
+local failed_octo_notifications = {}
+local failed_octo_restores = 0
+local failed_octo_adapter = vim.tbl_extend("force", unloaded_octo_adapter, {
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			failed_octo_restores = failed_octo_restores + 1
+		end,
+	},
+	load_octo = function()
+		error("Octo unavailable")
+	end,
+	system = function()
+		failed_octo_system_calls = failed_octo_system_calls + 1
+	end,
+	notify = function(message)
+		failed_octo_notifications[#failed_octo_notifications + 1] = message
+	end,
+})
+
+review.list(failed_octo_adapter)
+t.eq(0, failed_octo_system_calls, "a failed Octo load must not start repository requests")
+t.eq(1, failed_octo_restores, "a failed Octo load must restore LazyGit")
+t.truthy(failed_octo_notifications[1]:find("Octo", 1, true))
+
+local transition_next_buffer = 1400
+local transition_live_buffers = {}
+local transition_filetypes = {}
+local transition_cleanups = {}
+local transition_deferred = {}
+local transition_maps = {}
+local transition_events = {}
+local transition_picker_callbacks
+local transition_review = nil
+local transition_tabs = {}
+local transition_current_tab = 41
+local transition_delete_failure = false
+local transition_notifications = {}
+local transition_system_calls = 0
+local function create_transition_buffer(filetype)
+	transition_next_buffer = transition_next_buffer + 1
+	transition_live_buffers[transition_next_buffer] = true
+	transition_filetypes[transition_next_buffer] = filetype
+	return transition_next_buffer
+end
+local function run_transition_deferred()
+	while #transition_deferred > 0 do
+		table.remove(transition_deferred, 1)()
+	end
+end
+local function transition_has_event(event)
+	return vim.tbl_contains(transition_events, event)
+end
+local transition_adapter = {
+	root = function()
+		return "/canonical/selected/repo"
+	end,
+	dock = {
+		prepare = function()
+			transition_events[#transition_events + 1] = "prepare"
+		end,
+		activate = function()
+			transition_events[#transition_events + 1] = "activate"
+		end,
+		deactivate = function()
+			transition_events[#transition_events + 1] = "deactivate"
+		end,
+	},
+	load_octo = function() end,
+	system = function(argv, _, callback)
+		transition_system_calls = transition_system_calls + 1
+		if argv[2] == "repo" then
+			callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+		elseif argv[3] == "list" then
+			callback({
+				code = 0,
+				stdout = '[{"number":102,"title":"Next PR","url":"https://github.com/selected/repo/pull/102","state":"OPEN","isDraft":false,"headRefName":"next"}]',
+				stderr = "",
+			})
+		else
+			local number = argv[4] == "third" and 103 or 101
+			callback({
+				code = 0,
+				stdout = ('{"number":%d,"url":"https://github.com/selected/repo/pull/%d"}'):format(number, number),
+				stderr = "",
+			})
+		end
+		return { kill = function() end }
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function(callback)
+		transition_deferred[#transition_deferred + 1] = callback
+	end,
+	load_pr = function(target, _, callback)
+		callback({
+			code = 0,
+			stdout = vim.json.encode({
+				data = {
+					repository = {
+						pullRequest = {
+							id = "PR_" .. target.number,
+							number = target.number,
+							url = target.url,
+							timelineItems = { nodes = {} },
+						},
+					},
+				},
+			}),
+			stderr = "",
+		})
+		return { kill = function() end }
+	end,
+	create_pr = function()
+		return create_transition_buffer("octo")
+	end,
+	pick_prs = function(_, _, callbacks)
+		transition_picker_callbacks = callbacks
+		return create_transition_buffer("TelescopePrompt")
+	end,
+	buffer_valid = function(buffer)
+		return transition_live_buffers[buffer] == true
+	end,
+	buffer_filetype = function(buffer)
+		return transition_filetypes[buffer] or ""
+	end,
+	register_cleanup = function(buffer, callback)
+		transition_cleanups[buffer] = transition_cleanups[buffer] or {}
+		transition_cleanups[buffer][#transition_cleanups[buffer] + 1] = callback
+	end,
+	delete_buffer = function(buffer)
+		transition_events[#transition_events + 1] = "delete:" .. buffer
+		if transition_delete_failure then
+			error("buffer delete failed")
+		end
+		transition_live_buffers[buffer] = false
+		for _, callback in ipairs(transition_cleanups[buffer] or {}) do
+			callback()
+		end
+	end,
+	set_keymap = function(mode, lhs, rhs, opts)
+		transition_maps[opts.buffer] = transition_maps[opts.buffer] or {}
+		transition_maps[opts.buffer][mode .. lhs] = rhs
+	end,
+	current_buffer = function()
+		return transition_next_buffer
+	end,
+	current_tab = function()
+		return transition_current_tab
+	end,
+	tab_valid = function(tab)
+		return transition_tabs[tab] == true
+	end,
+	close_tab = function(tab)
+		transition_tabs[tab] = false
+	end,
+	reviews = function()
+		return {
+			get_current_review = function()
+				return transition_review
+			end,
+			close = function(tab)
+				transition_tabs[tab] = false
+				transition_review = nil
+			end,
+			add_review_comment = function() end,
+			submit_review = function() end,
+			discard_review = function() end,
+		}
+	end,
+	notify = function(message)
+		transition_notifications[#transition_notifications + 1] = message
+	end,
+}
+
+review.open({ cwd = "/repo", branch = "first" }, transition_adapter)
+local first_pr_surface = transition_next_buffer
+review.attach(first_pr_surface, transition_adapter)
+local first_pr_close = transition_maps[first_pr_surface]["n<leader>pq"]
+transition_events = {}
+review.list(transition_adapter)
+local next_pr_picker = transition_next_buffer
+t.eq(false, transition_live_buffers[first_pr_surface], "starting a PR list must retire the previous PR surface")
+t.eq(true, transition_live_buffers[next_pr_picker], "the replacement generation must own its exact picker")
+run_transition_deferred()
+t.eq(false, transition_has_event("deactivate"), "a successful PR session transition must not flash LazyGit")
+first_pr_close()
+t.eq(true, transition_live_buffers[next_pr_picker], "an old PR keymap must not close the replacement picker")
+
+transition_picker_callbacks.transition()
+transition_adapter.delete_buffer(next_pr_picker)
+transition_picker_callbacks.select({
+	__typename = "PullRequest",
+	number = 102,
+	title = "Next PR",
+	url = "https://github.com/selected/repo/pull/102",
+	state = "OPEN",
+	isDraft = false,
+	headRefName = "next",
+	repository = { nameWithOwner = "selected/repo" },
+})
+local next_pr_surface = transition_next_buffer
+run_transition_deferred()
+t.eq(true, transition_live_buffers[next_pr_surface], "the selected PR must replace its picker in one generation")
+t.eq(false, transition_has_event("deactivate"), "picker selection must not restore LazyGit between surfaces")
+
+transition_review = {}
+transition_tabs[transition_current_tab] = true
+review.attach_if_review(next_pr_surface, transition_adapter)
+local review_close = transition_maps[next_pr_surface]["n<leader>pq"]
+review.open({ cwd = "/repo", branch = "third" }, transition_adapter)
+local third_pr_surface = transition_next_buffer
+t.eq(false, transition_tabs[transition_current_tab], "a replacement PR session must close the old review tab")
+t.eq(false, transition_live_buffers[next_pr_surface], "a reviewed PR surface must retire with its review tab")
+t.eq(true, transition_live_buffers[third_pr_surface])
+review_close()
+t.eq(true, transition_live_buffers[third_pr_surface], "an old review keymap must not close the new PR generation")
+run_transition_deferred()
+t.eq(false, transition_has_event("deactivate"), "review-to-PR transition must keep LazyGit hidden")
+review.close(transition_adapter)
+run_transition_deferred()
+t.eq(true, transition_has_event("deactivate"), "closing the final PR generation must restore LazyGit")
+
+transition_events = {}
+review.open({ cwd = "/repo", branch = "first" }, transition_adapter)
+local retry_surface = transition_next_buffer
+local system_calls_before_failed_transition = transition_system_calls
+transition_delete_failure = true
+review.list(transition_adapter)
+t.eq(true, transition_live_buffers[retry_surface], "a failed cleanup must keep the old PR surface tracked")
+t.eq(
+	system_calls_before_failed_transition,
+	transition_system_calls,
+	"a failed cleanup must abort before starting replacement repository requests"
+)
+t.eq(false, transition_has_event("deactivate"), "a failed cleanup must not restore or overlap LazyGit")
+transition_delete_failure = false
+review.list(transition_adapter)
+local retry_picker = transition_next_buffer
+t.eq(false, transition_live_buffers[retry_surface], "a later transition must retry the old surface cleanup")
+t.eq(true, transition_live_buffers[retry_picker], "the replacement picker may open only after cleanup succeeds")
+review.close(transition_adapter)
+run_transition_deferred()
+
+package.loaded["lazy"] = previous_lazy_loaded
+package.preload["lazy"] = previous_lazy_preload
+package.loaded["octo"] = previous_octo_loaded
+package.preload["octo"] = previous_octo_preload
+package.loaded["octo.reviews"] = previous_octo_reviews_loaded
+package.preload["octo.reviews"] = previous_octo_reviews_preload
