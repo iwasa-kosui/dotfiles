@@ -80,3 +80,25 @@ t.eq(1, replacement.shown)
 fallback_dock:deactivate("lazygit", replacement, { explicit = true, restore = false })
 fallback_dock:restore_default()
 t.eq(nil, fallback_dock.active, "explicit LazyGit close must disable automatic restore")
+
+local stale_dock = require("user.dock").new()
+local stale_handle = { live = true, hide = function() end }
+local current_handle = { live = true, shown = 0, hide = function() end }
+function current_handle:show()
+	self.shown = self.shown + 1
+end
+stale_dock:set_default("lazygit", function()
+	return current_handle
+end, function(handle)
+	return handle.live
+end)
+stale_dock:activate("lazygit", stale_handle)
+stale_dock:activate("lazygit", current_handle)
+stale_dock:deactivate("lazygit", stale_handle, { explicit = true })
+t.eq(current_handle, stale_dock.active.handle, "a stale close must not clear the replacement LazyGit handle")
+
+local stale_codex = { hide = function() end }
+stale_dock:activate("codex", stale_codex)
+stale_dock:deactivate("codex", stale_codex)
+t.eq(current_handle, stale_dock.active.handle, "a stale close must leave the default fallback enabled")
+t.eq(1, current_handle.shown)
