@@ -1,6 +1,8 @@
 #!/usr/bin/env bun
 // SessionStart hook: Worktree情報・Jira課題・GitHub PR情報を取得
 
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { readInput, run, runSafe } from "./lib.ts";
 
 const input = await readInput<{ cwd?: string }>();
@@ -14,6 +16,12 @@ const isGitRepo =
   "true";
 
 if (isGitRepo) {
+  await runSafe([
+    join(homedir(), ".local", "bin", "worktree-activity"),
+    "record",
+    "codex",
+    cwd,
+  ]);
   const gitDir = await runSafe(["git", "-C", cwd, "rev-parse", "--git-dir"]);
   const branch =
     (await runSafe([

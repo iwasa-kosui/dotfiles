@@ -9,6 +9,9 @@ for _, lhs in ipairs({ "<C-S-f>", "<leader>s" }) do
   map("n", lhs, workspace.search, { desc = "Search text" })
 end
 map("n", "<leader>r", workspace.replace, { desc = "Replace across files" })
+map("n", "<leader>w", function()
+  require("user.worktrees").open()
+end, { desc = "Switch worktree" })
 for _, lhs in ipairs({ "<C-Tab>", "<leader>bn" }) do
   map("n", lhs, workspace.next_file, { desc = "Next file" })
 end
