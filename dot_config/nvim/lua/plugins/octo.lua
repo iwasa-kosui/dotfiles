@@ -7,6 +7,20 @@ return {
   },
   cmd = "Octo",
   keys = {
+    {
+      "<leader>pp",
+      function()
+        require("user.pr_review").list()
+      end,
+      desc = "List PRs for review",
+    },
+    {
+      "<leader>po",
+      function()
+        require("user.pr_review").open()
+      end,
+      desc = "Open branch PR for review",
+    },
     { "<leader>opl", "<cmd>Octo pr list<cr>", desc = "List PRs" },
     { "<leader>opc", "<cmd>Octo pr create<cr>", desc = "Create PR" },
     { "<leader>opC", "<cmd>Octo pr checkout<cr>", desc = "Checkout PR" },
@@ -36,11 +50,27 @@ return {
     require("octo").setup(opts)
     vim.treesitter.language.register("markdown", "octo")
 
-    local group = vim.api.nvim_create_augroup("OctoReviewExplorer", { clear = true })
+    local group = vim.api.nvim_create_augroup("OctoReviewWorkflow", { clear = true })
     vim.api.nvim_create_autocmd("FileType", {
       group = group,
-      pattern = "octo_panel",
-      callback = require("user.pr_review").ensure_review_explorer,
+      pattern = { "octo", "octo_panel" },
+      callback = function(args)
+        local review = require("user.pr_review")
+        review.attach(args.buf)
+        review.ensure_review_explorer()
+      end,
+    })
+    vim.api.nvim_create_autocmd("BufEnter", {
+      group = group,
+      callback = function(args)
+        require("user.pr_review").attach_if_review(args.buf)
+      end,
+    })
+    vim.api.nvim_create_autocmd("TabClosed", {
+      group = group,
+      callback = function(args)
+        require("user.pr_review").on_tab_closed(args.match)
+      end,
     })
   end,
 }
