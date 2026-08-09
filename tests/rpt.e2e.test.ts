@@ -678,6 +678,10 @@ title: Rich components
     expect(html).toMatch(
       /@media\s*print\s*\{[\s\S]*?\.rpt-tab-panel\s*\{\s*display:\s*block/,
     );
+    expect(html).not.toContain("--w-color-secondary");
+    expect(html).not.toContain("--w-color-on-info");
+    expect(html).toContain("var(--w-color-primary)");
+    expect(html).toContain("var(--w-color-info-fg)");
     expect(collectElements(document).filter((element) => element.tagName === "script")).toHaveLength(0);
   } finally {
     await testCase.cleanup();

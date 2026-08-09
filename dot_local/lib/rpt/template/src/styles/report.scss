@@ -110,7 +110,7 @@
   inline-size: 0.625rem;
   block-size: 0.625rem;
   border-radius: 50%;
-  background-color: var(--w-color-secondary);
+  background-color: var(--w-color-primary-50);
 }
 
 .rpt-status[data-tone="info"] .rpt-status-dot {
@@ -151,7 +151,7 @@
 .rpt-tab-label {
   order: 1;
   padding: 0.5rem 0.75rem;
-  border: 1px solid var(--w-color-secondary);
+  border: 1px solid var(--w-color-primary-50);
   border-radius: 0.25rem 0.25rem 0 0;
   cursor: pointer;
 }
@@ -159,7 +159,7 @@
 .rpt-tab-control:checked + .rpt-tab-label {
   border-color: var(--w-color-info);
   background-color: var(--w-color-info);
-  color: var(--w-color-on-info, white);
+  color: var(--w-color-info-fg);
 }
 
 .rpt-tab-control:focus-visible + .rpt-tab-label {
@@ -172,7 +172,7 @@
   order: 2;
   width: 100%;
   padding: 1rem;
-  border: 1px solid var(--w-color-secondary);
+  border: 1px solid var(--w-color-primary-50);
 }
 
 .rpt-tab-control:checked + .rpt-tab-label + .rpt-tab-panel {
