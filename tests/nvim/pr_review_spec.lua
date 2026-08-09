@@ -12,7 +12,7 @@ t.eq(nil, review.parse_pr('[{"number":1},{"number":2}]'))
 
 local calls = {}
 local restored = 0
-local commands = {}
+local loaded_prs = {}
 local notifications = {}
 local branch = "feat/$(touch hacked);quote'and\"double"
 local adapter = {
@@ -47,10 +47,33 @@ local adapter = {
   defer = function(callback)
     callback()
   end,
-  observe_surface = function() end,
-  command = function(command)
-    commands[#commands + 1] = command
+  load_pr = function(target, cwd, callback)
+    t.eq("/canonical/repo/.wt/feature", cwd)
+    loaded_prs[#loaded_prs + 1] = target
+    callback({
+      code = 0,
+      stdout = vim.json.encode({
+        data = {
+          repository = {
+            pullRequest = {
+              id = "PR_" .. target.number,
+              number = target.number,
+              url = target.url,
+              timelineItems = { nodes = {} },
+            },
+          },
+        },
+      }),
+      stderr = "",
+    })
   end,
+  create_pr = function()
+    return 801
+  end,
+  buffer_valid = function(target)
+    return target == 801
+  end,
+  register_cleanup = function() end,
   notify = function(message)
     notifications[#notifications + 1] = message
   end,
@@ -58,16 +81,15 @@ local adapter = {
 
 review.open({ cwd = "/repo path/.wt/feature", branch = branch }, adapter)
 t.eq({ "prepare:pr", "activate:pr" }, calls)
-t.eq({ { cmd = "Octo", args = { "https://github.com/selected/repo/pull/133" } } }, commands)
+t.eq("https://github.com/selected/repo/pull/133", loaded_prs[1].url)
 
-commands = {}
 adapter.system = function(argv, _, callback)
   t.eq({ "gh", "pr", "view", branch, "--json", "number,url" }, argv)
   callback({ code = 1, stdout = "", stderr = "no pull requests found" })
 end
 review.open({ cwd = "/repo path/.wt/feature", branch = branch }, adapter)
 t.eq(1, restored, "missing PR must restore LazyGit")
-t.eq({}, commands, "failed gh output must never reach Octo")
+t.eq(1, #loaded_prs, "failed gh output must never reach Octo")
 t.truthy(notifications[#notifications]:find(branch, 1, true), "the failure must identify the selected branch")
 t.truthy(notifications[#notifications]:find("no pull requests found", 1, true), "the failure must explain gh stderr")
 
@@ -85,7 +107,7 @@ for _, stdout in ipairs(invalid_outputs) do
   review.open({ cwd = "/repo path/.wt/feature", branch = branch }, adapter)
 end
 t.eq(6, restored, "every ambiguous or invalid PR result must restore LazyGit")
-t.eq({}, commands, "invalid PR numbers must never be interpolated into an Octo command")
+t.eq(1, #loaded_prs, "invalid PR numbers must never reach the Octo data loader")
 
 local current_branch_argv
 adapter.system = function(argv, _, callback)
@@ -94,7 +116,7 @@ adapter.system = function(argv, _, callback)
 end
 review.open({ cwd = "/repo path/.wt/feature", branch = "" }, adapter)
 t.eq({ "gh", "pr", "view", "--json", "number,url" }, current_branch_argv)
-t.eq({ { cmd = "Octo", args = { "https://github.com/selected/repo/pull/7" } } }, commands)
+t.eq("https://github.com/selected/repo/pull/7", loaded_prs[2].url)
 
 local invalid_root_called = false
 local invalid_root_adapter = {
@@ -133,6 +155,25 @@ review.receive({ cwd = "", branch = "feat/review" }, {
   end,
 })
 t.eq(true, invalid_payload_notified)
+
+local function complete_pr_load(target, _, callback)
+  callback({
+    code = 0,
+    stdout = vim.json.encode({
+      data = {
+        repository = {
+          pullRequest = {
+            id = "PR_" .. target.number,
+            number = target.number,
+            url = target.url,
+            timelineItems = { nodes = {} },
+          },
+        },
+      },
+    }),
+    stderr = "",
+  })
+end
 
 local buffer = vim.api.nvim_create_buf(false, true)
 local aliases = {}
@@ -199,6 +240,11 @@ vim.api.nvim_buf_delete(buffer, { force = true })
 local live = { [901] = true, [902] = true }
 local filetypes = { [901] = "octo", [902] = "octo" }
 local cleanups = {}
+local function run_cleanups(target)
+  for _, callback in ipairs(cleanups[target] or {}) do
+    callback()
+  end
+end
 local deferred = {}
 local current_buffer = 901
 local lifecycle_restores = 0
@@ -226,14 +272,17 @@ local lifecycle_adapter = {
   defer = function(callback)
     deferred[#deferred + 1] = callback
   end,
-  observe_surface = function() end,
-  command = function() end,
+  load_pr = complete_pr_load,
+  create_pr = function()
+    return current_buffer
+  end,
   notify = function(message)
     error(message)
   end,
   set_keymap = function() end,
   register_cleanup = function(target, callback)
-    cleanups[target] = callback
+    cleanups[target] = cleanups[target] or {}
+    cleanups[target][#cleanups[target] + 1] = callback
   end,
   buffer_valid = function(target)
     return live[target] == true
@@ -265,21 +314,21 @@ local lifecycle_adapter = {
 review.open({ cwd = "/repo", branch = "first" }, lifecycle_adapter)
 review.attach(901, lifecycle_adapter)
 live[901] = false
-cleanups[901]()
+run_cleanups(901)
 
 current_buffer = 902
 review.open({ cwd = "/repo", branch = "second" }, lifecycle_adapter)
 review.attach(902, lifecycle_adapter)
 live[902] = false
-cleanups[902]()
+run_cleanups(902)
 
-cleanups[901]()
+run_cleanups(901)
 for _, callback in ipairs(deferred) do
   callback()
 end
 t.eq(1, lifecycle_restores, "a stale cleanup must not cancel restoration for the current PR session")
 
-cleanups[902]()
+run_cleanups(902)
 for _, callback in ipairs(deferred) do
   callback()
 end
@@ -317,10 +366,10 @@ review.close(lifecycle_adapter)
 t.eq(11, closed_review_tab)
 t.eq(2, lifecycle_restores, "leader-pq must restore LazyGit even when the source PR buffer remains valid")
 
-local repo_commands = {}
 local repo_system_calls = {}
+local repo_picker_calls = {}
+local repo_loaded_prs = {}
 local repo_restores = 0
-local list_context_cwd
 local repo_adapter = {
   root = function(path)
     if path ~= nil then
@@ -337,26 +386,36 @@ local repo_adapter = {
   },
   system = function(argv, opts, callback)
     repo_system_calls[#repo_system_calls + 1] = { argv = argv, cwd = opts.cwd }
-    if argv[2] == "pr" then
+    if argv[2] == "pr" and argv[3] == "view" then
       callback({
         code = 0,
         stdout = '{"number":42,"url":"https://github.com/selected/repo/pull/42"}',
         stderr = "",
       })
-    else
+    elseif argv[2] == "repo" then
       callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+    else
+      callback({
+        code = 0,
+        stdout = '[{"number":42,"title":"Selected PR","url":"https://github.com/selected/repo/pull/42","state":"OPEN","isDraft":false,"headRefName":"feature"}]',
+        stderr = "",
+      })
     end
   end,
   schedule = function(callback)
     callback()
   end,
   defer = function() end,
-  command = function(command)
-    repo_commands[#repo_commands + 1] = command
+  load_pr = function(target, cwd, callback)
+    repo_loaded_prs[#repo_loaded_prs + 1] = target
+    complete_pr_load(target, cwd, callback)
   end,
-  with_cwd = function(cwd, callback)
-    list_context_cwd = cwd
-    callback()
+  create_pr = function()
+    return 1001
+  end,
+  pick_prs = function(repo, pull_requests)
+    repo_picker_calls[#repo_picker_calls + 1] = { repo = repo, pull_requests = pull_requests }
+    return 1001
   end,
   notify = function(message)
     error(message)
@@ -364,9 +423,10 @@ local repo_adapter = {
   current_buffer = function()
     return 1001
   end,
-  buffer_valid = function()
-    return false
+  buffer_valid = function(target)
+    return target == 1001
   end,
+  register_cleanup = function() end,
 }
 
 review.open({ cwd = "/selected/repo", branch = "feature" }, repo_adapter)
@@ -374,17 +434,32 @@ t.eq({
   argv = { "gh", "pr", "view", "feature", "--json", "number,url" },
   cwd = "/canonical/selected/repo",
 }, repo_system_calls[1], "the selected canonical repository must own the PR lookup")
-t.eq({ cmd = "Octo", args = { "https://github.com/selected/repo/pull/42" } }, repo_commands[1])
+t.eq("https://github.com/selected/repo/pull/42", repo_loaded_prs[1].url)
 
-repo_commands = {}
 repo_system_calls = {}
 review.list(repo_adapter)
 t.eq({
   argv = { "gh", "repo", "view", "--json", "nameWithOwner" },
   cwd = "/canonical/selected/repo",
 }, repo_system_calls[1], "the PR list repository must be resolved from the canonical cwd")
-t.eq("/canonical/selected/repo", list_context_cwd, "Octo must resolve the selected repository host from canonical cwd")
-t.eq({ cmd = "Octo", args = { "pr", "list", "selected/repo" } }, repo_commands[1])
+t.eq({
+  argv = {
+    "gh",
+    "pr",
+    "list",
+    "--repo",
+    "selected/repo",
+    "--state",
+    "open",
+    "--limit",
+    "100",
+    "--json",
+    "number,title,url,state,isDraft,headRefName",
+  },
+  cwd = "/canonical/selected/repo",
+}, repo_system_calls[2], "the PR list request must preserve argv boundaries in the canonical repository")
+t.eq("selected/repo", repo_picker_calls[1].repo)
+t.eq(42, repo_picker_calls[1].pull_requests[1].number)
 t.eq(0, repo_restores)
 
 local repo_notifications = {}
@@ -411,9 +486,18 @@ review.list(repo_adapter)
 t.eq(3, repo_restores, "an unsafe repository identity must restore LazyGit")
 
 repo_adapter.system = function(_, _, callback)
-  callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+  if not repo_adapter._repo_resolved then
+    repo_adapter._repo_resolved = true
+    callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+  else
+    callback({
+      code = 0,
+      stdout = '[{"number":42,"title":"Selected PR","url":"https://github.com/selected/repo/pull/42","state":"OPEN","isDraft":false,"headRefName":"feature"}]',
+      stderr = "",
+    })
+  end
 end
-repo_adapter.command = function()
+repo_adapter.pick_prs = function()
   error("Octo failed")
 end
 review.list(repo_adapter)
@@ -447,6 +531,10 @@ local multi_tab_adapter = {
   end,
   defer = function() end,
   command = function() end,
+  load_pr = complete_pr_load,
+  create_pr = function()
+    return tab == 21 and 921 or 922
+  end,
   notify = function(message)
     error(message)
   end,
@@ -460,6 +548,7 @@ local multi_tab_adapter = {
   buffer_filetype = function()
     return "diff"
   end,
+  delete_buffer = function() end,
   current_buffer = function()
     return tab == 21 and 921 or 922
   end,
@@ -572,6 +661,10 @@ local reused_adapter = {
   end,
   defer = function() end,
   command = function() end,
+  load_pr = complete_pr_load,
+  create_pr = function()
+    return 930
+  end,
   notify = function(message)
     error(message)
   end,
@@ -616,6 +709,10 @@ local retry_adapter = {
   schedule = reused_adapter.schedule,
   defer = reused_adapter.defer,
   command = reused_adapter.command,
+  load_pr = complete_pr_load,
+  create_pr = function()
+    return 940
+  end,
   notify = function() end,
   set_keymap = function(mode, lhs, rhs)
     if mode == "n" and lhs == "<leader>pq" then
@@ -654,6 +751,9 @@ t.eq(2, delete_attempts, "leader-pq must retry a PR surface that failed to close
 t.eq(1, retry_restores)
 
 local async_mode
+local async_late_list_callback
+local async_picker_callbacks
+local async_selected_pr_callback
 local async_next_buffer = 1100
 local async_buffers = {}
 local async_cleanups = {}
@@ -662,7 +762,12 @@ local async_restores = 0
 local function create_async_buffer(name, filetype, ready)
   async_next_buffer = async_next_buffer + 1
   local buffer = async_next_buffer
-  async_buffers[buffer] = { live = true, name = name, filetype = filetype, ready = ready == true }
+  async_buffers[buffer] = {
+    live = true,
+    name = name,
+    filetype = filetype,
+    ready = ready == true,
+  }
   return buffer
 end
 local function run_async_deferred(limit)
@@ -692,15 +797,26 @@ local async_adapter = {
     end,
   },
   system = function(argv, _, callback)
-    if argv[2] == "pr" then
+    if argv[2] == "pr" and argv[3] == "view" then
       callback({
         code = 0,
         stdout = '{"number":71,"url":"https://github.com/selected/repo/pull/71"}',
         stderr = "",
       })
-    else
+    elseif argv[2] == "repo" then
       callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+    elseif async_mode == "stale-old" then
+      async_late_list_callback = callback
+    elseif async_mode == "list-empty" then
+      callback({ code = 0, stdout = "[]", stderr = "" })
+    else
+      callback({
+        code = 0,
+        stdout = '[{"number":71,"title":"Async PR","url":"https://github.com/selected/repo/pull/71","state":"OPEN","isDraft":false,"headRefName":"async"}]',
+        stderr = "",
+      })
     end
+    return { kill = function() end }
   end,
   schedule = function(callback)
     callback()
@@ -708,15 +824,31 @@ local async_adapter = {
   defer = function(callback)
     async_deferred[#async_deferred + 1] = callback
   end,
-  command = function(command)
-    if command.args[1]:match("^https://") then
-      if async_mode == "open-failure" or async_mode == "open-success" or async_mode == "stale-new" then
-        create_async_buffer("octo://selected/repo/pull/71", "", false)
-      end
+  load_pr = function(target, _, callback)
+    if async_mode == "open-failure" or async_mode == "list-transition" then
+      async_selected_pr_callback = callback
+    else
+      callback({
+        code = 0,
+        stdout = vim.json.encode({
+          data = {
+            repository = {
+              pullRequest = {
+                id = "PR_" .. target.number,
+                number = target.number,
+                url = target.url,
+                timelineItems = { nodes = {} },
+              },
+            },
+          },
+        }),
+        stderr = "",
+      })
     end
+    return { kill = function() end }
   end,
-  with_cwd = function(_, callback)
-    callback()
+  create_pr = function(target)
+    return create_async_buffer("octo://" .. target.repo .. "/pull/" .. target.number, "octo", true)
   end,
   notify = function() end,
   current_buffer = function()
@@ -732,35 +864,13 @@ local async_adapter = {
     async_cleanups[buffer] = async_cleanups[buffer] or {}
     async_cleanups[buffer][#async_cleanups[buffer] + 1] = callback
   end,
+  pick_prs = function(_, _, callbacks)
+    async_picker_callbacks = callbacks
+    return create_async_buffer("TelescopePrompt", "TelescopePrompt", true)
+  end,
   delete_buffer = function(buffer)
     wipe_async_buffer(buffer)
   end,
-  capture_buffers = function()
-    local captured = {}
-    for buffer, state in pairs(async_buffers) do
-      if state.live then
-        captured[buffer] = true
-      end
-    end
-    return captured
-  end,
-  find_surfaces = function(kind, baseline)
-    local surfaces = {}
-    for buffer, state in pairs(async_buffers) do
-      if state.live and not baseline[buffer] then
-        local is_open = kind == "open" and state.name:match("^octo://")
-        local is_list = kind == "list" and state.filetype == "TelescopePrompt"
-        if is_open or is_list then
-          surfaces[#surfaces + 1] = buffer
-        end
-      end
-    end
-    return surfaces
-  end,
-  surface_ready = function(buffer)
-    return async_buffers[buffer] and async_buffers[buffer].ready == true
-  end,
-  max_surface_checks = 3,
 }
 
 async_mode = "open-failure"
@@ -771,8 +881,6 @@ t.eq(1, async_restores, "an Octo URL load that never creates a ready surface mus
 async_mode = "open-success"
 review.open({ cwd = "/repo", branch = "async-success" }, async_adapter)
 local open_surface = async_next_buffer
-async_buffers[open_surface].ready = true
-run_async_deferred(1)
 t.eq(1, async_restores, "a ready Octo PR surface must keep LazyGit hidden")
 wipe_async_buffer(open_surface)
 run_async_deferred(10)
@@ -785,7 +893,7 @@ t.eq(3, async_restores, "an empty or failed async PR list must restore LazyGit")
 
 async_mode = "list-picker"
 review.list(async_adapter)
-local picker_surface = create_async_buffer("TelescopePrompt", "TelescopePrompt", true)
+local picker_surface = async_next_buffer
 run_async_deferred(1)
 t.eq(3, async_restores, "a live PR picker must keep LazyGit hidden")
 wipe_async_buffer(picker_surface)
@@ -798,8 +906,183 @@ async_mode = "stale-new"
 review.open({ cwd = "/repo", branch = "new-session" }, async_adapter)
 local new_surface = async_next_buffer
 async_buffers[new_surface].ready = true
+async_late_list_callback({
+  code = 0,
+  stdout = '[{"number":71,"title":"Stale PR","url":"https://github.com/selected/repo/pull/71","state":"OPEN","isDraft":false,"headRefName":"stale"}]',
+  stderr = "",
+})
 run_async_deferred(10)
 t.eq(4, async_restores, "an old async callback must not restore over a new PR surface")
 wipe_async_buffer(new_surface)
 run_async_deferred(10)
 t.eq(5, async_restores)
+
+async_mode = "list-unrelated"
+review.list(async_adapter)
+local unrelated_picker = create_async_buffer("TelescopePrompt", "TelescopePrompt", true)
+run_async_deferred(1)
+review.close(async_adapter)
+t.eq(true, async_buffers[unrelated_picker].live, "a non-Octo picker must not be owned or deleted by the PR session")
+
+async_mode = "list-transition"
+local transition_restores = async_restores
+review.list(async_adapter)
+local transition_picker = async_next_buffer
+async_picker_callbacks.transition()
+wipe_async_buffer(transition_picker)
+async_picker_callbacks.select({
+  __typename = "PullRequest",
+  number = 71,
+  title = "Async PR",
+  url = "https://github.com/selected/repo/pull/71",
+  state = "OPEN",
+  isDraft = false,
+  headRefName = "async",
+  repository = { nameWithOwner = "selected/repo" },
+})
+run_async_deferred(1)
+t.eq(transition_restores, async_restores, "picker selection must keep the PR session pending after prompt wipe")
+async_selected_pr_callback({
+  code = 0,
+  stdout = '{"data":{"repository":{"pullRequest":{"id":"PR_71","number":71,"url":"https://github.com/selected/repo/pull/71","timelineItems":{"nodes":[]}}}}}',
+  stderr = "",
+})
+local transition_surface = async_next_buffer
+t.eq(transition_restores, async_restores, "a delayed provisional PR surface must replace the picker session")
+wipe_async_buffer(transition_surface)
+run_async_deferred(10)
+t.eq(transition_restores + 1, async_restores, "the selected PR session must restore only after its surface closes")
+
+local late_request_callback
+local late_request_cancelled = false
+local late_picker_calls = 0
+local late_request_deferred = {}
+local late_request_restores = 0
+local late_request_adapter = {
+  root = function()
+    return "/canonical/selected/repo"
+  end,
+  dock = {
+    prepare = function() end,
+    activate = function() end,
+    deactivate = function()
+      late_request_restores = late_request_restores + 1
+    end,
+  },
+  system = function(argv, opts, callback)
+    t.eq("/canonical/selected/repo", opts.cwd)
+    if argv[2] == "repo" then
+      callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+      return
+    end
+    t.eq({
+      "gh",
+      "pr",
+      "list",
+      "--repo",
+      "selected/repo",
+      "--state",
+      "open",
+      "--limit",
+      "100",
+      "--json",
+      "number,title,url,state,isDraft,headRefName",
+    }, argv)
+    late_request_callback = callback
+    return {
+      kill = function()
+        late_request_cancelled = true
+      end,
+    }
+  end,
+  schedule = function(callback)
+    callback()
+  end,
+  defer = function(callback)
+    late_request_deferred[#late_request_deferred + 1] = callback
+  end,
+  request_timeout_ms = 1,
+  pick_prs = function()
+    late_picker_calls = late_picker_calls + 1
+  end,
+  notify = function() end,
+}
+
+review.list(late_request_adapter)
+t.truthy(late_request_callback, "the PR list request must expose its completion callback")
+for _, callback in ipairs(late_request_deferred) do
+  callback()
+end
+t.eq(true, late_request_cancelled, "a timed-out PR list request must be cancelled")
+t.eq(1, late_request_restores)
+late_request_callback({
+  code = 0,
+  stdout = '[{"number":72,"title":"Late PR","url":"https://github.com/selected/repo/pull/72","state":"OPEN","isDraft":false,"headRefName":"late"}]',
+  stderr = "",
+})
+t.eq(0, late_picker_calls, "a late request callback must not create a picker after LazyGit is restored")
+
+local late_pr_callback
+local late_pr_cancelled = false
+local late_pr_created = 0
+local late_pr_deferred = {}
+local late_pr_restores = 0
+local late_pr_adapter = {
+  root = function()
+    return "/canonical/selected/repo"
+  end,
+  dock = {
+    prepare = function() end,
+    activate = function() end,
+    deactivate = function()
+      late_pr_restores = late_pr_restores + 1
+    end,
+  },
+  system = function(_, _, callback)
+    callback({
+      code = 0,
+      stdout = '{"number":73,"url":"https://github.com/selected/repo/pull/73"}',
+      stderr = "",
+    })
+  end,
+  schedule = function(callback)
+    callback()
+  end,
+  defer = function(callback)
+    late_pr_deferred[#late_pr_deferred + 1] = callback
+  end,
+  request_timeout_ms = 1,
+  load_pr = function(target, cwd, callback)
+    t.eq(73, target.number)
+    t.eq("selected/repo", target.repo)
+    t.eq("/canonical/selected/repo", cwd)
+    late_pr_callback = callback
+    return {
+      kill = function()
+        late_pr_cancelled = true
+      end,
+    }
+  end,
+  create_pr = function()
+    late_pr_created = late_pr_created + 1
+    return 1201
+  end,
+  cancel_request = function(request)
+    request:kill()
+  end,
+  notify = function() end,
+}
+
+review.open({ cwd = "/repo", branch = "late-pr" }, late_pr_adapter)
+t.truthy(late_pr_callback, "the Octo PR data load must expose its completion callback")
+for _, callback in ipairs(late_pr_deferred) do
+  callback()
+end
+t.eq(true, late_pr_cancelled, "a timed-out Octo PR data load must be cancelled")
+t.eq(1, late_pr_restores)
+late_pr_callback({
+  code = 0,
+  stdout = '{"data":{"repository":{"pullRequest":{"id":"PR_73","number":73,"url":"https://github.com/selected/repo/pull/73","timelineItems":{"nodes":[]}}}}}',
+  stderr = "",
+})
+t.eq(0, late_pr_created, "a late PR load must not create an Octo surface after LazyGit is restored")

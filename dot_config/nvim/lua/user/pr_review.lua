@@ -37,15 +37,6 @@ local function defaults(adapter)
       schedule = vim.schedule,
       defer = vim.defer_fn,
       command = vim.cmd,
-      with_cwd = function(cwd, callback)
-        local previous = vim.fn.getcwd()
-        vim.api.nvim_set_current_dir(cwd)
-        local ok, result = xpcall(callback, debug.traceback)
-        vim.api.nvim_set_current_dir(previous)
-        if not ok then
-          error(result)
-        end
-      end,
       notify = function(message)
         vim.notify(message, vim.log.levels.ERROR)
       end,
@@ -66,47 +57,101 @@ local function defaults(adapter)
       buffer_filetype = function(buffer)
         return vim.bo[buffer].filetype
       end,
-      capture_buffers = function()
-        local captured = {}
-        for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
-          if vim.api.nvim_buf_is_valid(buffer) then
-            captured[buffer] = {
-              name = vim.api.nvim_buf_get_name(buffer),
-              filetype = vim.bo[buffer].filetype,
-            }
+      request_timeout_ms = 10000,
+      cancel_request = function(request)
+        if request and type(request.kill) == "function" then
+          request:kill(15)
+        end
+      end,
+      load_pr = function(target, cwd, callback)
+        require("lazy").load({ plugins = { "octo.nvim" } })
+        local graphql = require("octo.gh.graphql")
+        local query = graphql("pull_request_query", target.owner, target.name, target.number, _G.octo_pv2_fragment)
+        local args = { "gh", "api", "graphql", "--paginate", "--jq", ".", "--raw-field", "query=" .. query }
+        if target.host ~= "github.com" then
+          vim.list_extend(args, { "--hostname", target.host })
+        end
+        return vim.system(args, { cwd = cwd, text = true }, callback)
+      end,
+      decode_pr = function(output)
+        if type(output) ~= "string" or output == "" then
+          return nil
+        end
+        local pages = {}
+        for line in (output .. "\n"):gmatch("([^\n]+)\n") do
+          local ok, page = pcall(vim.json.decode, line)
+          if not ok or type(page) ~= "table" then
+            return nil
           end
+          pages[#pages + 1] = page
         end
-        return captured
-      end,
-      find_surfaces = function(kind, baseline)
-        local surfaces = {}
-        for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
-          if vim.api.nvim_buf_is_valid(buffer) then
-            local name = vim.api.nvim_buf_get_name(buffer)
-            local filetype = vim.bo[buffer].filetype
-            local previous = baseline[buffer]
-            local changed = not previous or previous.name ~= name or previous.filetype ~= filetype
-            local is_open = kind == "open" and name:match("^octo://")
-            local is_list = kind == "list"
-              and (
-                filetype == "TelescopePrompt"
-                or filetype == "snacks_picker_input"
-                or filetype == "snacks_picker_list"
-              )
-            if changed and (is_open or is_list) then
-              surfaces[#surfaces + 1] = buffer
-            end
+        local first = pages[1]
+        local pull = first and first.data and first.data.repository and first.data.repository.pullRequest
+        if type(pull) ~= "table" then
+          return nil
+        end
+        pull.timelineItems = pull.timelineItems or { nodes = {} }
+        pull.timelineItems.nodes = pull.timelineItems.nodes or {}
+        for index = 2, #pages do
+          local page_pull = pages[index].data
+            and pages[index].data.repository
+            and pages[index].data.repository.pullRequest
+          local nodes = page_pull and page_pull.timelineItems and page_pull.timelineItems.nodes
+          if type(nodes) ~= "table" then
+            return nil
           end
+          vim.list_extend(pull.timelineItems.nodes, nodes)
         end
-        return surfaces
+        return pull
       end,
-      surface_ready = function(buffer, kind)
-        if kind == "list" then
-          return true
+      create_pr = function(target, pull)
+        require("octo").create_buffer(
+          "pull",
+          pull,
+          target.repo,
+          true,
+          target.host ~= "github.com" and target.host or nil
+        )
+        return vim.api.nvim_get_current_buf()
+      end,
+      pick_prs = function(repo, pull_requests, callbacks)
+        local actions = require("telescope.actions")
+        local action_set = require("telescope.actions.set")
+        local action_state = require("telescope.actions.state")
+        local conf = require("telescope.config").values
+        local entry_maker = require("octo.pickers.telescope.entry_maker")
+        local finders = require("telescope.finders")
+        local pickers = require("telescope.pickers")
+        local previewers = require("octo.pickers.telescope.previewers")
+        local max_number = 1
+        for _, pull in ipairs(pull_requests) do
+          max_number = math.max(max_number, #tostring(pull.number))
         end
-        return (_G.octo_buffers and _G.octo_buffers[buffer] ~= nil) or vim.bo[buffer].filetype == "octo"
+        local opts = {
+          prompt_title = "Pull requests · " .. repo,
+          results_title = "",
+          preview_title = "",
+        }
+        local picker = pickers.new(opts, {
+          finder = finders.new_table({
+            results = pull_requests,
+            entry_maker = entry_maker.gen_from_issue(max_number),
+          }),
+          sorter = conf.generic_sorter(opts),
+          previewer = previewers.issue.new(opts),
+          attach_mappings = function()
+            action_set.select:replace(function(prompt_buffer)
+              local selected = action_state.get_selected_entry(prompt_buffer)
+              actions.close(prompt_buffer)
+              callbacks.transition()
+              callbacks.select(selected and selected.obj or nil)
+            end)
+            return true
+          end,
+        })
+        picker:find()
+        return picker.prompt_bufnr
       end,
-      max_surface_checks = 200,
       delete_buffer = function(buffer)
         vim.api.nvim_buf_delete(buffer, { force = true })
       end,
@@ -115,9 +160,13 @@ local function defaults(adapter)
 end
 
 local function enter(runtime)
+  if session and session.request and not session.request.completed then
+    session.request.completed = true
+    pcall(session.runtime.cancel_request, session.request.handle)
+  end
   next_generation = next_generation + 1
   local handle = { hide = function() end }
-  session = { generation = next_generation, handle = handle, runtime = runtime }
+  session = { generation = next_generation, handle = handle, runtime = runtime, pending = false }
   runtime.dock:prepare("pr")
   runtime.dock:activate("pr", handle)
   return session.generation
@@ -136,6 +185,10 @@ local function finish(runtime, generation)
   end
   local active = session
   session = nil
+  if active.request and not active.request.completed then
+    active.request.completed = true
+    pcall(active.runtime.cancel_request, active.request.handle)
+  end
   surface_check_tokens[active.generation] = nil
   active.runtime.dock:deactivate("pr", active.handle)
 end
@@ -190,7 +243,8 @@ local function schedule_surface_check(runtime, generation)
     local has_surface = has_live_buffer(picker_buffers, generation, runtime)
       or has_live_buffer(octo_buffers, generation, runtime)
       or has_live_tab(generation, runtime)
-    if not has_surface then
+    local pending = session and session.generation == generation and session.pending
+    if not has_surface and not pending then
       finish(runtime, generation)
     end
   end, 50)
@@ -210,60 +264,6 @@ local function track_buffer(buffer, entries, runtime, generation)
     end
     schedule_surface_check(runtime, generation)
   end)
-end
-
-local function observe_surface(runtime, generation, kind, baseline)
-  if runtime.observe_surface then
-    runtime.observe_surface(generation, kind, baseline)
-    return
-  end
-
-  local attempts = 0
-  local function check()
-    if not session or session.generation ~= generation then
-      return
-    end
-
-    local surfaces = runtime.find_surfaces(kind, baseline)
-    local found = false
-    local ready = false
-    local entries = kind == "open" and octo_buffers or picker_buffers
-    for _, buffer in ipairs(surfaces) do
-      if runtime.buffer_valid(buffer) then
-        found = true
-        track_buffer(buffer, entries, runtime, generation)
-        ready = ready or runtime.surface_ready(buffer, kind)
-      end
-    end
-    if found and (kind == "list" or ready) then
-      return
-    end
-
-    attempts = attempts + 1
-    if attempts < runtime.max_surface_checks then
-      runtime.defer(check, 50)
-      return
-    end
-
-    if kind == "open" and found then
-      runtime.notify("OctoのPR画面の読み込みが完了しませんでした")
-      for buffer, owner in pairs(octo_buffers) do
-        if owner == generation and runtime.buffer_valid(buffer) and not runtime.surface_ready(buffer, kind) then
-          local deleted, delete_error = pcall(runtime.delete_buffer, buffer)
-          if not deleted then
-            runtime.notify("PR画面を閉じられませんでした: " .. tostring(delete_error))
-            return
-          end
-          octo_buffers[buffer] = nil
-        end
-      end
-    elseif kind == "list" then
-      runtime.notify("OctoのPR一覧が開かれませんでした。PRが存在するか確認してください")
-    end
-    finish(runtime, generation)
-  end
-
-  check()
 end
 
 local function target_name(branch)
@@ -322,7 +322,14 @@ local function parse_pr_target(json)
   then
     return nil
   end
-  return { number = number, url = value.url, repo = owner .. "/" .. name }
+  return {
+    number = number,
+    url = value.url,
+    repo = owner .. "/" .. name,
+    owner = owner,
+    name = name,
+    host = host,
+  }
 end
 
 local function parse_repo(json)
@@ -337,6 +344,158 @@ local function parse_repo(json)
     return nil
   end
   return value.nameWithOwner
+end
+
+local function parse_pr_list(json, repo)
+  if type(json) ~= "string" then
+    return nil
+  end
+  local ok, values = pcall(vim.json.decode, json)
+  if not ok or type(values) ~= "table" or not vim.islist(values) then
+    return nil
+  end
+
+  local pull_requests = {}
+  for _, value in ipairs(values) do
+    if
+      type(value) ~= "table"
+      or type(value.number) ~= "number"
+      or value.number <= 0
+      or value.number % 1 ~= 0
+      or type(value.title) ~= "string"
+      or type(value.url) ~= "string"
+      or type(value.state) ~= "string"
+      or type(value.isDraft) ~= "boolean"
+      or type(value.headRefName) ~= "string"
+    then
+      return nil
+    end
+    local host, owner, name, url_number = value.url:match("^https://([^/]+)/([^/]+)/([^/]+)/pull/(%d+)$")
+    if
+      not host
+      or not host:match("^[%w.-]+$")
+      or owner .. "/" .. name ~= repo
+      or tonumber(url_number) ~= value.number
+    then
+      return nil
+    end
+    pull_requests[#pull_requests + 1] = {
+      __typename = "PullRequest",
+      number = value.number,
+      title = value.title,
+      url = value.url,
+      state = value.state,
+      isDraft = value.isDraft,
+      headRefName = value.headRefName,
+      repository = { nameWithOwner = repo },
+    }
+  end
+  return pull_requests
+end
+
+local function selected_pr_target(value, repo)
+  if
+    type(value) ~= "table"
+    or type(value.number) ~= "number"
+    or value.number <= 0
+    or value.number % 1 ~= 0
+    or type(value.url) ~= "string"
+    or type(value.repository) ~= "table"
+    or value.repository.nameWithOwner ~= repo
+  then
+    return nil
+  end
+  local host, owner, name, url_number = value.url:match("^https://([^/]+)/([^/]+)/([^/]+)/pull/(%d+)$")
+  if
+    not host
+    or not host:match("^[%w.-]+$")
+    or owner .. "/" .. name ~= repo
+    or tonumber(url_number) ~= value.number
+  then
+    return nil
+  end
+  return {
+    number = value.number,
+    url = value.url,
+    repo = repo,
+    owner = owner,
+    name = name,
+    host = host,
+  }
+end
+
+local function load_pr_surface(runtime, generation, target, cwd)
+  if not session or session.generation ~= generation then
+    return
+  end
+  session.pending = true
+  local request_state = { completed = false }
+  session.request = request_state
+  local request_ok, request_error = pcall(function()
+    request_state.handle = runtime.load_pr(target, cwd, function(result)
+      if request_state.completed then
+        return
+      end
+      request_state.completed = true
+      runtime.schedule(function()
+        if not session or session.generation ~= generation or session.request ~= request_state then
+          return
+        end
+        session.request = nil
+        result = result or {}
+        if result.code ~= 0 then
+          session.pending = false
+          runtime.notify("OctoのPRデータを取得できませんでした: " .. short_error(result.stderr))
+          finish(runtime, generation)
+          return
+        end
+        local pull = runtime.decode_pr(result.stdout)
+        if
+          type(pull) ~= "table"
+          or type(pull.id) ~= "string"
+          or pull.id == ""
+          or pull.number ~= target.number
+          or pull.url ~= target.url
+        then
+          session.pending = false
+          runtime.notify("OctoのPRデータが不正です")
+          finish(runtime, generation)
+          return
+        end
+        local created, buffer = pcall(runtime.create_pr, target, pull)
+        if not created or not runtime.buffer_valid(buffer) then
+          session.pending = false
+          runtime.notify("OctoのPR画面を作成できませんでした: " .. tostring(buffer))
+          finish(runtime, generation)
+          return
+        end
+        session.pending = false
+        track_buffer(buffer, octo_buffers, runtime, generation)
+      end)
+    end)
+  end)
+  if not request_ok then
+    session.request = nil
+    session.pending = false
+    runtime.notify("OctoのPRデータ取得を開始できませんでした: " .. tostring(request_error))
+    finish(runtime, generation)
+    return
+  end
+  if not request_state.completed then
+    runtime.defer(function()
+      if request_state.completed then
+        return
+      end
+      request_state.completed = true
+      pcall(runtime.cancel_request, request_state.handle)
+      if session and session.generation == generation and session.request == request_state then
+        session.request = nil
+        session.pending = false
+        runtime.notify("OctoのPRデータ取得がtimeoutしました")
+        finish(runtime, generation)
+      end
+    end, runtime.request_timeout_ms)
+  end
 end
 
 function M.open(target, adapter)
@@ -380,14 +539,7 @@ function M.open(target, adapter)
         return
       end
 
-      local baseline = runtime.capture_buffers()
-      local command_ok, command_error = pcall(runtime.command, { cmd = "Octo", args = { pr.url } })
-      if not command_ok then
-        runtime.notify("OctoでPRを開けませんでした: " .. tostring(command_error))
-        finish(runtime, generation)
-        return
-      end
-      observe_surface(runtime, generation, "open", baseline)
+      load_pr_surface(runtime, generation, pr, cwd)
     end)
   end)
   if not ok then
@@ -444,16 +596,98 @@ function M.list(adapter)
           return
         end
 
-        local baseline = runtime.capture_buffers()
-        local command_ok, command_error = pcall(runtime.with_cwd, cwd, function()
-          runtime.command({ cmd = "Octo", args = { "pr", "list", repo } })
+        local request_state = { completed = false }
+        session.request = request_state
+        local request_ok, request_error = pcall(function()
+          request_state.handle = runtime.system({
+            "gh",
+            "pr",
+            "list",
+            "--repo",
+            repo,
+            "--state",
+            "open",
+            "--limit",
+            "100",
+            "--json",
+            "number,title,url,state,isDraft,headRefName",
+          }, { cwd = cwd, text = true }, function(list_result)
+            if request_state.completed then
+              return
+            end
+            request_state.completed = true
+            runtime.schedule(function()
+              if not session or session.generation ~= generation or session.request ~= request_state then
+                return
+              end
+              session.request = nil
+              list_result = list_result or {}
+              if list_result.code ~= 0 then
+                runtime.notify("PR一覧を取得できませんでした: " .. short_error(list_result.stderr))
+                finish(runtime, generation)
+                return
+              end
+              local pull_requests = parse_pr_list(list_result.stdout, repo)
+              if not pull_requests then
+                runtime.notify("PR一覧の応答が不正です")
+                finish(runtime, generation)
+                return
+              end
+              if #pull_requests == 0 then
+                runtime.notify("表示できるopen PRがありません")
+                finish(runtime, generation)
+                return
+              end
+
+              local picker_ok, picker = pcall(runtime.pick_prs, repo, pull_requests, {
+                transition = function()
+                  if session and session.generation == generation then
+                    session.pending = true
+                  end
+                end,
+                select = function(selected)
+                  if not session or session.generation ~= generation then
+                    return
+                  end
+                  local target = selected_pr_target(selected, repo)
+                  if not target then
+                    runtime.notify("選択されたPR情報が不正です")
+                    session.pending = false
+                    finish(runtime, generation)
+                    return
+                  end
+                  load_pr_surface(runtime, generation, target, cwd)
+                end,
+              })
+              if not picker_ok or not runtime.buffer_valid(picker) then
+                runtime.notify("OctoのPR一覧を開けませんでした: " .. tostring(picker))
+                finish(runtime, generation)
+                return
+              end
+              track_buffer(picker, picker_buffers, runtime, generation)
+            end)
+          end)
         end)
-        if not command_ok then
-          runtime.notify("OctoのPR一覧を開けませんでした: " .. tostring(command_error))
+        if not request_ok then
+          session.request = nil
+          runtime.notify("PR一覧の取得を開始できませんでした: " .. tostring(request_error))
           finish(runtime, generation)
           return
         end
-        observe_surface(runtime, generation, "list", baseline)
+        if not request_state.completed then
+          runtime.defer(function()
+            if request_state.completed then
+              return
+            end
+            request_state.completed = true
+            pcall(runtime.cancel_request, request_state.handle)
+            if session and session.generation == generation and session.request == request_state then
+              session.request = nil
+              runtime.notify("PR一覧の取得がtimeoutしました")
+              finish(runtime, generation)
+            end
+          end, runtime.request_timeout_ms)
+        end
       end)
     end
   )
