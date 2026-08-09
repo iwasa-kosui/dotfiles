@@ -16,6 +16,7 @@ import {
 import { randomBytes } from "node:crypto";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
+import { createAstroBuildCommand } from "./astro-command.ts";
 import { readBounded } from "./bounded-read.ts";
 import { detectImageMimeType } from "./image.ts";
 import {
@@ -80,10 +81,11 @@ export async function buildReport(
       ),
     ]);
 
-    const process = Bun.spawn(
-      ["bun", "run", "--cwd", temporaryRoot, "astro", "build"],
-      { stdout: "pipe", stderr: "pipe" },
-    );
+    const process = Bun.spawn([...createAstroBuildCommand(packageRoot)], {
+      cwd: temporaryRoot,
+      stdout: "pipe",
+      stderr: "pipe",
+    });
     const [exitCode, stdout, stderr] = await Promise.all([
       process.exited,
       new Response(process.stdout).text(),

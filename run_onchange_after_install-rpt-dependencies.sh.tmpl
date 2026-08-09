@@ -6,6 +6,6 @@ set -euo pipefail
 
 if command -v bun &> /dev/null; then
   cd "{{ .chezmoi.homeDir }}/.local/lib/rpt"
-  bun install --frozen-lockfile
+  bun install --frozen-lockfile --force
 fi
 {{ end -}}

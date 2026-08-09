@@ -1,0 +1,4 @@
+interface:
+  display_name: "rpt Reports"
+  short_description: "安全な単一HTMLレポートを作成してモバイルプレビュー"
+  default_prompt: "$rptを使って、この内容から安全な単一HTMLレポートを作成してください。"
