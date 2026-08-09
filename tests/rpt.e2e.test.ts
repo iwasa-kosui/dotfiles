@@ -2,11 +2,50 @@ import { expect, test } from "bun:test";
 import { mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import {
+  parse,
+  type DefaultTreeAdapterTypes,
+} from "../dot_local/lib/rpt/node_modules/parse5/dist/index.js";
 import { inlineAssets } from "../dot_local/lib/rpt/src/inline-assets.ts";
 import { writeOutput } from "../dot_local/lib/rpt/src/output.ts";
 
+type Element = DefaultTreeAdapterTypes.Element;
+type ParentNode = DefaultTreeAdapterTypes.ParentNode;
+
 const repositoryRoot = join(import.meta.dir, "..");
 const cliPath = join(repositoryRoot, "dot_local/bin/executable_rpt");
+
+function findElement(
+  parent: ParentNode,
+  predicate: (element: Element) => boolean,
+): Element | undefined {
+  for (const child of parent.childNodes) {
+    if (!("tagName" in child)) {
+      continue;
+    }
+    if (predicate(child)) {
+      return child;
+    }
+    const descendant = findElement(child, predicate);
+    if (descendant !== undefined) {
+      return descendant;
+    }
+  }
+  return undefined;
+}
+
+function hasAttribute(element: Element, name: string, value: string): boolean {
+  return element.attrs.some(
+    (attribute) =>
+      attribute.name.toLowerCase() === name && attribute.value === value,
+  );
+}
+
+function hasClass(element: Element, className: string): boolean {
+  return (element.attrs.find((attribute) => attribute.name === "class")?.value ?? "")
+    .split(/\s+/)
+    .includes(className);
+}
 
 async function runRpt(
   args: readonly string[],
@@ -752,8 +791,25 @@ test("build includes responsive print CSS and accessible report landmarks", asyn
     expect(html).toMatch(/@media\s*\(\s*max-width\s*:\s*48rem\s*\)/);
     expect(html).toContain("@media print");
     expect(html).toContain("@page");
-    expect(html).toContain('aria-label="目次"');
-    expect(html).toContain('class="rpt-skip-link"');
+    const document = parse(html);
+    expect(
+      findElement(
+        document,
+        (element) =>
+          element.tagName === "nav" &&
+          hasClass(element, "rpt-toc") &&
+          hasAttribute(element, "aria-label", "目次"),
+      ),
+    ).toBeDefined();
+    expect(
+      findElement(
+        document,
+        (element) =>
+          element.tagName === "a" &&
+          hasClass(element, "rpt-skip-link") &&
+          hasAttribute(element, "href", "#report-content"),
+      ),
+    ).toBeDefined();
     expect(html).toContain('<main id="report-content">');
     expect(html).toContain('<article class="rpt-article">');
     expect(html).toMatch(/class="[^"]*_alert_[^"]*"/);
