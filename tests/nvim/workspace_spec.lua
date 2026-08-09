@@ -88,27 +88,17 @@ t.eq(0, focus_count)
 t.eq(1, restore_count, "opening a replacement picker must not restore the same root twice")
 t.eq(3, track_count)
 
-local dock_calls = {}
 local git_terminal = { hide = function() end }
-local git_result = workspace.git_dock({
-	root = function()
-		return "/repo"
-	end,
-	dock = {
-		prepare = function(_, name)
-			dock_calls[#dock_calls + 1] = "prepare:" .. name
-		end,
-		activate = function(_, name, terminal)
-			t.eq(git_terminal, terminal)
-			dock_calls[#dock_calls + 1] = "activate:" .. name
+local delegated
+local git_result = workspace.git_dock({ focus = true }, {
+	lazygit_dock = {
+		open = function(opts)
+			delegated = opts
+			return git_terminal
 		end,
 	},
-	lazygit = function(opts)
-		t.eq("/repo", opts.cwd)
-		return git_terminal
-	end,
 })
+t.eq({ focus = true }, delegated)
 t.eq(git_terminal, git_result)
-t.eq({ "prepare:git", "activate:git" }, dock_calls)
 
 vim.fn.delete(state_dir, "rf")
