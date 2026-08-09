@@ -1,6 +1,7 @@
 local M = {}
 
 local caches = {}
+local generations = {}
 local timers = {}
 
 local highlights = {
@@ -47,6 +48,7 @@ function M.parse_porcelain(lines)
       result[path] = "A"
     elseif path ~= "" then
       if code:find("R", 1, true) then
+        path = path:match("^.* %-%> (.+)$") or path
         result[path] = "R"
       elseif code:find("A", 1, true) then
         result[path] = "A"
@@ -95,48 +97,84 @@ end
 
 function M.refresh(cwd, callback)
   cwd = normalize(cwd)
+  local generation = (generations[cwd] or 0) + 1
+  generations[cwd] = generation
+
+  local function current()
+    return generations[cwd] == generation
+  end
+
+  local function finish(success)
+    if current() then
+      complete(callback, success)
+    end
+  end
 
   run({ "gh", "pr", "view", "--json", "baseRefName" }, cwd, function(pr_result)
+    if not current() then
+      return
+    end
+
     local pr_base
     if pr_result.code == 0 then
-      local ok, pr = pcall(vim.json.decode, pr_result.stdout)
+      local ok, pr = pcall(vim.json.decode, pr_result.stdout or "")
       if ok and type(pr) == "table" then
         pr_base = pr.baseRefName
       end
     end
 
     run({ "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD" }, cwd, function(head_result)
-      local origin_head = head_result.code == 0 and vim.trim(head_result.stdout) or nil
+      if not current() then
+        return
+      end
+
+      local origin_head = head_result.code == 0 and vim.trim(head_result.stdout or "") or nil
       local candidates = M.base_candidates(pr_base, origin_head)
 
       local function try_base(index)
+        if not current() then
+          return
+        end
+
         local base = candidates[index]
         if not base then
-          complete(callback, false)
+          finish(false)
           return
         end
 
         run({ "git", "merge-base", "HEAD", base }, cwd, function(merge_base_result)
+          if not current() then
+            return
+          end
+
           if merge_base_result.code ~= 0 then
             try_base(index + 1)
             return
           end
 
-          local merge_base = vim.trim(merge_base_result.stdout)
+          local merge_base = vim.trim(merge_base_result.stdout or "")
           if merge_base == "" then
             try_base(index + 1)
             return
           end
 
           run({ "git", "diff", "--name-status", "--find-renames", merge_base }, cwd, function(diff_result)
+            if not current() then
+              return
+            end
+
             if diff_result.code ~= 0 then
-              complete(callback, false)
+              finish(false)
               return
             end
 
             run({ "git", "status", "--porcelain=v1", "--untracked-files=all" }, cwd, function(status_result)
+              if not current() then
+                return
+              end
+
               if status_result.code ~= 0 then
-                complete(callback, false)
+                finish(false)
                 return
               end
 
@@ -152,7 +190,7 @@ function M.refresh(cwd, callback)
                 cache[normalize(cwd .. "/" .. path)] = status
               end
               caches[cwd] = cache
-              complete(callback, true)
+              finish(true)
             end)
           end)
         end)
@@ -160,6 +198,24 @@ function M.refresh(cwd, callback)
 
       try_base(1)
     end)
+  end)
+end
+
+function M.refresh_explorers(cwd)
+  cwd = normalize(cwd)
+  local actions = require("snacks.explorer.actions")
+  for _, picker in ipairs(Snacks.picker.get({ source = "explorer" })) do
+    if normalize(picker:cwd()) == cwd then
+      actions.update(picker, { refresh = true })
+    end
+  end
+end
+
+function M.refresh_and_render(cwd)
+  M.refresh(cwd, function(success)
+    if success then
+      M.refresh_explorers(cwd)
+    end
   end)
 end
 
@@ -199,7 +255,7 @@ function M.debounce(cwd)
     200,
     0,
     vim.schedule_wrap(function()
-      M.refresh(cwd)
+      M.refresh_and_render(cwd)
     end)
   )
 end
