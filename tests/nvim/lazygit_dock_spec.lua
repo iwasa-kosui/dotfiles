@@ -88,6 +88,48 @@ end
 t.eq(nil, lazygit_dock.ensure({ focus = false }, adapter))
 t.eq(1, created, "non-git roots must not create a terminal")
 
+local function assert_open_skips(label, configure)
+	lazygit_dock.reset_for_tests()
+	configure()
+	local before = created
+	t.eq(nil, lazygit_dock.open({ focus = false }, adapter))
+	t.eq(before, created, label)
+end
+
+assert_open_skips("manual open must not create a terminal without a UI", function()
+	adapter.has_ui = function()
+		return false
+	end
+	adapter.executable = function()
+		return true
+	end
+	adapter.is_git_repo = function()
+		return true
+	end
+end)
+assert_open_skips("manual open must not create a terminal without LazyGit", function()
+	adapter.has_ui = function()
+		return true
+	end
+	adapter.executable = function()
+		return false
+	end
+	adapter.is_git_repo = function()
+		return true
+	end
+end)
+assert_open_skips("manual open must not create a terminal outside Git", function()
+	adapter.has_ui = function()
+		return true
+	end
+	adapter.executable = function()
+		return true
+	end
+	adapter.is_git_repo = function()
+		return false
+	end
+end)
+
 lazygit_dock.reset_for_tests()
 adapter.is_git_repo = function()
 	return true

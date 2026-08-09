@@ -94,6 +94,10 @@ local function notify_failure(root, message, runtime)
   runtime.notify(message)
 end
 
+local function available(root, runtime)
+  return runtime.has_ui() and runtime.executable() and runtime.is_git_repo(root)
+end
+
 local function attach_cleanup(root, terminal, runtime)
   runtime.register_cleanup(terminal.buf, function()
     if terminals[root] ~= terminal then
@@ -135,6 +139,9 @@ function M.open(opts, adapter)
   opts = opts or { focus = true }
   local runtime = defaults(adapter)
   local root = runtime.root()
+  if not available(root, runtime) then
+    return nil
+  end
   runtime.ensure_explorer()
 
   local terminal = terminals[root]
@@ -166,14 +173,8 @@ end
 function M.ensure(opts, adapter)
   opts = opts or { focus = false }
   local runtime = defaults(adapter)
-  if not runtime.has_ui() then
-    return nil
-  end
-  if not runtime.executable() then
-    return nil
-  end
   local root = runtime.root()
-  if not runtime.is_git_repo(root) then
+  if not available(root, runtime) then
     return nil
   end
   local terminal = terminals[root]
