@@ -34,6 +34,22 @@ const allowedElementAttributes: Readonly<Record<string, ReadonlySet<string>>> = 
   colgroup: new Set(["span"]),
 };
 
+export const ariaIdReferenceAttributes = new Map<string, "single" | "multiple">([
+  ["aria-labelledby", "multiple"],
+  ["aria-describedby", "multiple"],
+  ["aria-details", "single"],
+  ["aria-controls", "multiple"],
+  ["aria-owns", "multiple"],
+  ["aria-flowto", "multiple"],
+  ["aria-activedescendant", "single"],
+  ["aria-errormessage", "single"],
+]);
+
+export type AriaIdReference = Readonly<{
+  target: string;
+  node: Attribute;
+}>;
+
 export function validateSafeHtmlElement(
   node: TreeNode,
   parent: TreeNode | undefined,
@@ -114,6 +130,16 @@ function validateAttribute(
       return issue(violation, attribute);
     }
   }
+  const referenceKind = ariaIdReferenceAttributes.get(name);
+  if (referenceKind !== undefined) {
+    const targets = value.trim().split(/\s+/).filter(Boolean);
+    if (targets.length === 0) {
+      return issue("ARIA reference " + name + " must not be empty", attribute);
+    }
+    if (referenceKind === "single" && targets.length !== 1) {
+      return issue("ARIA reference " + name + " must name exactly one id", attribute);
+    }
+  }
   if ((name === "href" || name === "cite") && !isAllowedNavigationUrl(value)) {
     return issue(name + " URL is not allowed", attribute);
   }
@@ -186,6 +212,8 @@ function validateChildren(name: string, node: TreeNode): ValidationIssue | undef
   const allowedChildren =
     name === "ul" || name === "ol"
       ? new Set(["li"])
+      : name === "dl"
+        ? new Set(["dt", "dd"])
       : name === "table"
         ? new Set(["caption", "colgroup", "thead", "tbody", "tfoot"])
         : name === "colgroup"
@@ -199,6 +227,9 @@ function validateChildren(name: string, node: TreeNode): ValidationIssue | undef
     if (name === "ul" || name === "ol") {
       return issue(name + " may only contain li elements", node);
     }
+    if (name === "dl") {
+      return issue("dl may only contain dt and dd elements", node);
+    }
     if (name === "table") {
       return issue(
         "table may only contain caption, colgroup, thead, tbody, and tfoot elements",
@@ -209,6 +240,9 @@ function validateChildren(name: string, node: TreeNode): ValidationIssue | undef
   }
   if (name === "table" && !hasValidTableOrder(node)) {
     return issue("table elements are in an invalid order", node);
+  }
+  if (name === "dl" && !hasValidDescriptionListOrder(node)) {
+    return issue("dl elements are in an invalid order", node);
   }
   return undefined;
 }
@@ -244,6 +278,26 @@ function hasValidTableOrder(node: TreeNode): boolean {
   return firstSection === -1 || names.slice(firstSection).every((name) => name !== "colgroup");
 }
 
+function hasValidDescriptionListOrder(node: TreeNode): boolean {
+  let hasTerm = false;
+  let hasDefinition = false;
+  for (const child of flattenedChildren(node)) {
+    if (child.name === "dt") {
+      if (hasDefinition) {
+        hasTerm = false;
+        hasDefinition = false;
+      }
+      hasTerm = true;
+    } else if (child.name === "dd") {
+      if (!hasTerm) {
+        return false;
+      }
+      hasDefinition = true;
+    }
+  }
+  return hasTerm && hasDefinition;
+}
+
 function flattenedChildren(node: TreeNode): readonly TreeNode[] {
   return (node.children ?? []).flatMap((child) =>
     child.type === "paragraph" ? flattenedChildren(child) : [child],
@@ -254,15 +308,40 @@ function issue(message: string, node: Attribute | TreeNode): ValidationIssue {
   return { message, node };
 }
 
+export function safeHtmlAriaReferences(node: TreeNode): readonly AriaIdReference[] {
+  return (node.attributes ?? []).flatMap((attribute) => {
+    if (
+      attribute.type !== "mdxJsxAttribute" ||
+      attribute.name === undefined ||
+      typeof attribute.value !== "string" ||
+      !ariaIdReferenceAttributes.has(attribute.name)
+    ) {
+      return [];
+    }
+    return attribute.value.trim().split(/\s+/).filter(Boolean).map((target) => ({
+      target,
+      node: attribute,
+    }));
+  });
+}
+
 function firstHtmlChild(parent: TreeNode | undefined): TreeNode | undefined {
   for (const child of parent?.children ?? []) {
+    if (child.type === "text" && (child.value ?? "").trim() !== "") {
+      return child;
+    }
     if (child.name !== null && child.name !== undefined) {
       return child;
     }
     if (child.type === "paragraph") {
-      const element = firstHtmlChild(child);
-      if (element !== undefined) {
-        return element;
+      for (const paragraphChild of child.children ?? []) {
+        if (paragraphChild.type === "text" && (paragraphChild.value ?? "").trim() === "") {
+          continue;
+        }
+        if (paragraphChild.name !== null && paragraphChild.name !== undefined) {
+          return paragraphChild;
+        }
+        return child;
       }
     }
   }

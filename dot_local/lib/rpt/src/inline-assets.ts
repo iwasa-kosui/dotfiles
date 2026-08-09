@@ -13,6 +13,7 @@ import {
   type DefaultTreeAdapterTypes,
 } from "parse5";
 import { detectImageMimeType } from "./image.ts";
+import { ariaIdReferenceAttributes } from "./safe-html.ts";
 import { safeStyleViolation } from "./safe-style.ts";
 import { isAllowedNavigationUrl } from "./safe-url.ts";
 import type { Result } from "./result.ts";
@@ -622,12 +623,18 @@ function validateFinalDomInto(
       if (name === "srcdoc" || name.startsWith("on")) {
         return unsafeHtml("report HTML contains an executable attribute");
       }
-      if (
-        name === "aria-labelledby" ||
-        name === "aria-describedby" ||
-        name === "aria-details"
-      ) {
-        state.ariaTargets.push(...candidate.value.trim().split(/\s+/).filter(Boolean));
+      const ariaReferenceKind = ariaIdReferenceAttributes.get(name);
+      if (ariaReferenceKind !== undefined) {
+        const targets = candidate.value.trim().split(/\s+/).filter(Boolean);
+        if (targets.length === 0) {
+          return unsafeHtml("report HTML ARIA reference must not be empty: " + name);
+        }
+        if (ariaReferenceKind === "single" && targets.length !== 1) {
+          return unsafeHtml(
+            "report HTML ARIA reference must name exactly one id: " + name,
+          );
+        }
+        state.ariaTargets.push(...targets);
       }
       if (cssUrlAttributeNames.has(name)) {
         const cssValidation = validateCssValue(candidate.value);

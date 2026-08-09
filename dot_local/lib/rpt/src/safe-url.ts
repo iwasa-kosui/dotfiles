@@ -1,11 +1,18 @@
 export function isAllowedNavigationUrl(value: string): boolean {
-  const trimmed = value.trim();
-  if (trimmed.startsWith("#") || trimmed.toLowerCase().startsWith("mailto:")) {
-    return true;
+  if (/[\u0000-\u001F\u007F]/.test(value)) {
+    return false;
   }
+  const trimmed = value.trim();
   if (trimmed.startsWith("//")) {
     return false;
   }
-  const scheme = /^[a-zA-Z][a-zA-Z\d+.-]*:/.exec(trimmed)?.[0];
-  return scheme === undefined || scheme.toLowerCase() === "https:";
+  try {
+    const url = new URL(trimmed, "https://rpt.invalid/");
+    return (
+      url.protocol === "mailto:" ||
+      (url.protocol === "https:" && url.origin !== "null")
+    );
+  } catch {
+    return false;
+  }
 }

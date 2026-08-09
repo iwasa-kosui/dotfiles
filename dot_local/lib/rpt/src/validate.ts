@@ -8,7 +8,11 @@ import remarkParse from "remark-parse";
 import { parseDocument } from "yaml";
 import { decodeRasterDataUrl } from "./image.ts";
 import { maximumTotalImageBytes } from "./limits.ts";
-import { validateSafeHtmlElement } from "./safe-html.ts";
+import {
+  safeHtmlAriaReferences,
+  validateSafeHtmlElement,
+  type AriaIdReference,
+} from "./safe-html.ts";
 import { isAllowedNavigationUrl } from "./safe-url.ts";
 import type { ReportInput } from "./input.ts";
 import type { Result } from "./result.ts";
@@ -62,6 +66,7 @@ type ValidationState = {
   readonly assets: AssetReference[];
   readonly assetPaths: Set<string>;
   readonly imageReferenceIdentifiers: Set<string>;
+  readonly ariaReferences: AriaIdReference[];
   readonly anchorInsertions: Array<Readonly<{ offset: number; anchor: string }>>;
   decodedDataImageBytes: number;
 };
@@ -132,12 +137,17 @@ export function validateReport(input: ReportInput): Result<ValidatedReport> {
     assets: [],
     assetPaths: new Set(),
     imageReferenceIdentifiers: collectImageReferenceIdentifiers(tree),
+    ariaReferences: [],
     anchorInsertions: [],
     decodedDataImageBytes: 0,
   };
   const validation = validateNode(tree, undefined, undefined, 0, input, state);
   if (!validation.ok) {
     return validation;
+  }
+  const ariaValidation = validateAriaReferences(state);
+  if (!ariaValidation.ok) {
+    return ariaValidation;
   }
   const mainContentId = allocateHtmlId("report-content", state.htmlIds);
 
@@ -344,6 +354,7 @@ function validateNode(
       if (htmlIssue !== undefined) {
         return inputFailure(htmlIssue.message, htmlIssue.node);
       }
+      state.ariaReferences.push(...safeHtmlAriaReferences(node));
     } else {
       const componentValidation = validateComponent(
         node,
@@ -497,6 +508,18 @@ function validateLink(node: TreeNode): Result<void> {
     return { ok: true, value: undefined };
   }
   return inputFailure("link URL is not allowed", node);
+}
+
+function validateAriaReferences(state: ValidationState): Result<void> {
+  for (const reference of state.ariaReferences) {
+    if (!state.htmlIds.has(reference.target)) {
+      return inputFailure(
+        "ARIA reference must resolve to exactly one id: " + reference.target,
+        reference.node,
+      );
+    }
+  }
+  return { ok: true, value: undefined };
 }
 
 function validateImage(

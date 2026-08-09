@@ -362,7 +362,11 @@ const rejectedSafeHtml = [
   ["reserved id", '<div id="rpt-user">x</div>', "id prefix rpt- is reserved"],
   ["duplicate id", '<div id="same">a</div><span id="same">b</span>', "id may only be specified once"],
   ["invalid child", "<ul><div>x</div></ul>", "ul may only contain li elements"],
+  ["invalid description child", "<dl><div>x</div></dl>", "dl may only contain dt and dd elements"],
+  ["invalid description order", "<dl><dd>x</dd><dt>term</dt></dl>", "dl elements are in an invalid order"],
+  ["details body before summary", "<details>body<summary>Summary</summary></details>", "summary must be the first element in details"],
   ["unsafe style", '<div style="position: fixed">x</div>', "style property position is not allowed"],
+  ["unsafe HTML URL with a tab", '<a href="java\tscript:alert(1)">x</a>', "href URL is not allowed"],
 ] as const;
 
 for (const [name, html, message] of rejectedSafeHtml) {
@@ -381,6 +385,51 @@ for (const [name, html, message] of rejectedSafeHtml) {
     }
   });
 }
+
+const rejectedAriaReferences = [
+  ["aria-labelledby", '<div aria-labelledby="missing-one missing-two">x</div>'],
+  ["aria-describedby", '<div aria-describedby="missing">x</div>'],
+  ["aria-details", '<div aria-details="missing">x</div>'],
+  ["aria-controls", '<div aria-controls="missing-one missing-two">x</div>'],
+  ["aria-owns", '<div aria-owns="missing">x</div>'],
+  ["aria-flowto", '<div aria-flowto="missing">x</div>'],
+  ["aria-activedescendant", '<div aria-activedescendant="missing">x</div>'],
+  ["aria-errormessage", '<div aria-errormessage="missing">x</div>'],
+  ["an empty aria ID reference", '<div aria-controls="">x</div>'],
+] as const;
+
+for (const [name, html] of rejectedAriaReferences) {
+  test("build rejects unresolved " + name + " as an input error", async () => {
+    const testCase = await createCase("---\ntitle: X\n---\n" + html);
+    try {
+      const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+      expect(result.exitCode).toBe(3);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toMatch(/^rpt: \d+:\d+:/);
+      expect(result.stderr).toContain("ARIA reference");
+      expect(await Bun.file(testCase.output).exists()).toBe(false);
+    } finally {
+      await testCase.cleanup();
+    }
+  });
+}
+
+test("build rejects Markdown links with C0 controls in the scheme", async () => {
+  const testCase = await createCase(
+    "---\ntitle: X\n---\n[unsafe](java&#x09;script:alert(1))",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stderr).toMatch(/^rpt: \d+:\d+:/);
+    expect(result.stderr).toContain("link URL is not allowed");
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
 
 for (const [name, source, message] of rejectedMdx) {
   test("build rejects " + name + " before creating an output file", async () => {
@@ -1060,6 +1109,38 @@ for (const [name, html] of rejectedFinalDom) {
     expect(result.ok).toBe(false);
   });
 }
+
+const rejectedFinalDomAriaReferences = [
+  ["aria-labelledby", '<div aria-labelledby="missing"></div>'],
+  ["aria-describedby", '<div aria-describedby="missing"></div>'],
+  ["aria-details", '<div aria-details="missing"></div>'],
+  ["aria-controls", '<div aria-controls="missing"></div>'],
+  ["aria-owns", '<div aria-owns="missing"></div>'],
+  ["aria-flowto", '<div aria-flowto="missing"></div>'],
+  ["aria-activedescendant", '<div aria-activedescendant="missing"></div>'],
+  ["aria-errormessage", '<div aria-errormessage="missing"></div>'],
+  ["an empty reference", '<div aria-controls=""></div>'],
+] as const;
+
+for (const [name, html] of rejectedFinalDomAriaReferences) {
+  test("final DOM rejects unresolved " + name + " ARIA references", async () => {
+    const result = await runInlineFixture(html);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain("ARIA reference");
+    }
+  });
+}
+
+test("final DOM rejects C0 controls in navigation URL schemes", async () => {
+  const result = await runInlineFixture('<a href="java\tscript:alert(1)">x</a>');
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain("unsafe navigation URL");
+  }
+});
 
 test("final DOM rejects duplicate ids", async () => {
   const result = await runInlineFixture(
