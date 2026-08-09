@@ -14,7 +14,9 @@ local refreshes = 0
 local focus_count = 0
 local restore_count = 0
 local track_count = 0
+local ensured_panels = {}
 local picker = {
+	list = { win = { win = 30 } },
 	focus = function(_, target)
 		focus_count = focus_count + 1
 		focused = target
@@ -42,6 +44,9 @@ local adapter = {
 		t.eq("/workspace-repo", cwd)
 		refreshes = refreshes + 1
 	end,
+	ensure_base_diff = function(opts)
+		ensured_panels[#ensured_panels + 1] = opts
+	end,
 	restore_explorer = function(cwd)
 		t.eq("/workspace-repo", cwd)
 		explorer_state.restore_once(cwd, {
@@ -59,6 +64,10 @@ local adapter = {
 workspace.ensure_explorer({ focus = false }, adapter)
 t.eq(0, opened, "an existing Explorer must not be toggled closed")
 t.eq(nil, focused, "background ensure must not move focus")
+t.eq(1, #ensured_panels)
+t.eq("/workspace-repo", ensured_panels[1].cwd)
+t.eq(30, ensured_panels[1].explorer_win)
+t.truthy(type(ensured_panels[1].editor_win) == "function")
 t.eq(1, refreshes)
 t.eq(1, restore_count, "an existing Explorer must restore persisted state")
 t.eq(1, track_count, "an existing Explorer must be tracked for persistence")
@@ -100,5 +109,28 @@ local git_result = workspace.git_dock({ focus = true }, {
 })
 t.eq({ focus = true }, delegated)
 t.eq(git_terminal, git_result)
+
+local windows = {
+	[40] = { valid = true, tab = 1, buftype = "", filetype = "lua", relative = "" },
+	[41] = { valid = true, tab = 1, buftype = "nofile", filetype = "BaseDiffTree", relative = "" },
+	[42] = { valid = true, tab = 1, buftype = "terminal", filetype = "", relative = "" },
+}
+local win_adapter = {
+	current_win = function()
+		return 40
+	end,
+	current_tab = function()
+		return 1
+	end,
+	window_info = function(win)
+		return windows[win]
+	end,
+	tab_windows = function()
+		return { 41, 42, 40 }
+	end,
+}
+t.eq(true, workspace.remember_editor(40, win_adapter))
+t.eq(false, workspace.remember_editor(41, win_adapter))
+t.eq(40, workspace.editor_win(win_adapter))
 
 vim.fn.delete(state_dir, "rf")
