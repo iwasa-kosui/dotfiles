@@ -10,6 +10,8 @@ return {
         jump = { close = false },
         follow_file = true,
         git_status = true,
+        git_status_hl = false,
+        format = require("user.base_diff").format,
         layout = {
           preset = "sidebar",
           preview = false,

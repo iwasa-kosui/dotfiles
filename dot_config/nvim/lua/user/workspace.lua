@@ -7,7 +7,9 @@ end
 function M.ensure_explorer(opts)
   opts = opts or {}
   local current = vim.api.nvim_get_current_win()
-  Snacks.explorer({ cwd = root() })
+  local cwd = root()
+  Snacks.explorer({ cwd = cwd })
+  require("user.base_diff").refresh(cwd)
   if opts.focus == false then
     vim.schedule(function()
       if vim.api.nvim_win_is_valid(current) then
