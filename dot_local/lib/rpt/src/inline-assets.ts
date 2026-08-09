@@ -1,6 +1,11 @@
 import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import { ident, parse as parseCss, walk as walkCss } from "css-tree";
+import {
+  ident,
+  parse as parseCss,
+  walk as walkCss,
+  type CssNode,
+} from "css-tree";
 import {
   parse,
   parseFragment,
@@ -396,6 +401,7 @@ function validateCssSyntax(
   context: "stylesheet" | "value",
 ): Result<void> {
   let violation: string | undefined;
+  let assetFunctionDepth = 0;
   try {
     const ast = parseCss(css, {
       context,
@@ -404,42 +410,63 @@ function validateCssSyntax(
         throw error;
       },
     });
-    walkCss(ast, function (node) {
-      if (
-        node.type === "Atrule" &&
-        ident.decode(node.name).toLowerCase() === "import"
-      ) {
-        violation = "report stylesheet contains @import";
-        return;
-      }
-      if (node.type === "Url" && !isDataUrl(node.value)) {
-        violation = "report stylesheet contains a non-data URL";
-        return;
-      }
-      if (node.type === "Function") {
-        const functionName = ident.decode(node.name).toLowerCase();
-        if (functionName === "url") {
-          const values = [...node.children].filter(
-            (child) => child.type !== "WhiteSpace",
-          );
+    walkCss(ast, {
+      enter(node: CssNode) {
+        if (
+          node.type === "Atrule" &&
+          ident.decode(node.name).toLowerCase() === "import"
+        ) {
+          violation = "report stylesheet contains @import";
+          return;
+        }
+        if (node.type === "Url" && !isDataUrl(node.value)) {
+          violation = "report stylesheet contains a non-data URL";
+          return;
+        }
+        if (node.type === "Function") {
+          const functionName = ident.decode(node.name).toLowerCase();
           if (
-            values.length !== 1 ||
-            values[0]?.type !== "String" ||
-            !isDataUrl(values[0].value)
+            assetFunctionDepth > 0 &&
+            dynamicCssFunctions.has(functionName)
           ) {
-            violation = "report stylesheet contains a non-data URL";
+            violation =
+              "report stylesheet contains a dynamic asset reference";
+          }
+          if (functionName === "url") {
+            const values = [...node.children].filter(
+              (child) => child.type !== "WhiteSpace",
+            );
+            if (
+              values.length !== 1 ||
+              values[0]?.type !== "String" ||
+              !isDataUrl(values[0].value)
+            ) {
+              violation = "report stylesheet contains a non-data URL";
+            }
+          }
+          if (assetCssFunctions.has(functionName)) {
+            assetFunctionDepth += 1;
           }
         }
-      }
-      if (node.type === "String" && this.function !== null) {
-        const functionName = ident.decode(this.function.name).toLowerCase();
+        if (node.type === "Raw" && assetFunctionDepth > 0) {
+          violation = "report stylesheet contains a dynamic asset reference";
+        }
         if (
-          assetCssFunctions.has(functionName) &&
+          node.type === "String" &&
+          assetFunctionDepth > 0 &&
           !isDataUrl(node.value)
         ) {
           violation = "report stylesheet contains a non-data URL";
         }
-      }
+      },
+      leave(node: CssNode) {
+        if (
+          node.type === "Function" &&
+          assetCssFunctions.has(ident.decode(node.name).toLowerCase())
+        ) {
+          assetFunctionDepth -= 1;
+        }
+      },
     });
   } catch (cause) {
     return unsafeHtml("report stylesheet contains invalid CSS", cause);
@@ -456,6 +483,8 @@ const assetCssFunctions = new Set([
   "image-set",
   "-webkit-image-set",
 ]);
+
+const dynamicCssFunctions = new Set(["attr", "env", "var"]);
 
 const urlAttributeNames = new Set([
   "action",
@@ -505,12 +534,48 @@ const cssUrlAttributeNames = new Set([
   "stroke",
 ]);
 
+const activeElementNames = new Set([
+  "applet",
+  "base",
+  "bgsound",
+  "command",
+  "embed",
+  "fencedframe",
+  "frame",
+  "frameset",
+  "iframe",
+  "menuitem",
+  "object",
+  "portal",
+  "script",
+]);
+
+const svgNamespace = "http://www.w3.org/2000/svg";
+const svgDynamicElementNames = new Set([
+  "animate",
+  "animatecolor",
+  "animatemotion",
+  "animatetransform",
+  "discard",
+  "mpath",
+  "set",
+]);
+
 function validateFinalDom(parent: ParentNode): Result<void> {
   for (const child of parent.childNodes) {
     if (!("tagName" in child)) {
       continue;
     }
     const tagName = child.tagName.toLowerCase();
+    if (
+      child.namespaceURI === svgNamespace &&
+      svgDynamicElementNames.has(tagName)
+    ) {
+      return unsafeHtml("report HTML contains dynamic SVG content");
+    }
+    if (activeElementNames.has(tagName)) {
+      return unsafeHtml("report HTML contains an active element");
+    }
     if (
       tagName === "meta" &&
       (attribute(child, "http-equiv")?.value ?? "").toLowerCase() === "refresh"

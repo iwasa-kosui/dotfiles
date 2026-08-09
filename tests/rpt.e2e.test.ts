@@ -627,6 +627,10 @@ const rejectedCss = [
     "an external image-set string",
     '<style>.x { background: image-set("https://example.com/x.png" 1x) }</style>',
   ],
+  [
+    "a variable reference inside an asset function",
+    '<style>:root { --asset: "https://example.com/x.png" } .x { background-image: image-set(var(--asset) 1x) }</style>',
+  ],
 ] as const;
 
 for (const [name, html] of rejectedCss) {
@@ -653,6 +657,14 @@ const rejectedFinalDom = [
   [
     "an external attribution source",
     '<img src="data:image/png;base64,AAAA" attributionsrc="https://example.com/register">',
+  ],
+  [
+    "an SVG SMIL URL mutation",
+    '<svg><image href="data:image/png;base64,AAAA"><set attributeName="href" to="https://example.com/x.png" begin="0s" dur="indefinite"></set></image></svg>',
+  ],
+  [
+    "a legacy applet code URL",
+    '<applet code="https://example.com/x.class"></applet>',
   ],
   ["an event handler", '<div onload="alert(1)">x</div>'],
   ["a JavaScript link", '<a href="javascript:alert(1)">x</a>'],
