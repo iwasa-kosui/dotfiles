@@ -1,4 +1,6 @@
 {{- $profile := promptStringOnce . "profile" "Profile (work/personal)" -}}
+{{- $meshnetNordName := promptStringOnce . "meshnetNordName" "Meshnet Nord name (*.nord)" -}}
 
 [data]
 profile = {{ $profile | quote }}
+meshnetNordName = {{ $meshnetNordName | quote }}

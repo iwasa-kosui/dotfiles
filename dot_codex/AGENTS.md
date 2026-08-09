@@ -29,6 +29,12 @@
 - `gh auth status` が token invalid などを返しても、まず目的のコマンド（例: `gh pr create`, `gh pr view`, `gh pr edit`, `gh pr checks`）を実行する。目的のコマンド自体が失敗した場合にのみ、認証状態の確認や代替手段を検討する。
 - GitHubコネクタやWeb APIへ迂回する前に、原則として該当する `gh` コマンドを試す。
 
+## Meshnet mobile preview
+
+- スマホ向けプレビューでは、開発サーバーを `0.0.0.0` で待ち受ける。
+- `mobile-preview-url <port>` を実行し、返されたURLをユーザーへ提示する。
+- 明示的な依頼がない限り、公開トンネルは使用しない。
+
 ## Superpowers の適用基準
 
 この基準は superpowers の各スキルより優先する。工程はタスクの規模ではなく、未解決の設計判断と変更リスクに比例させる。
