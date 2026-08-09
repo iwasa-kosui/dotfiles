@@ -1,7 +1,9 @@
 import { resolve } from "node:path";
 import { parseArgs, usage } from "./args.ts";
 import { buildReport } from "./build.ts";
+import { inlineAssets } from "./inline-assets.ts";
 import { readInput } from "./input.ts";
+import { checkOutput, writeOutput } from "./output.ts";
 import type { Failure } from "./result.ts";
 import { validateReport } from "./validate.ts";
 
@@ -22,6 +24,12 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       console.log(version);
       return 0;
     case "build": {
+      const outputPath = resolve(process.cwd(), command.value.output);
+      const outputCheck = await checkOutput(outputPath, command.value.force);
+      if (!outputCheck.ok) {
+        writeFailure(outputCheck.error, command.value.debug);
+        return outputCheck.error.exitCode;
+      }
       const input = await readInput(command.value.input, process.cwd());
       if (!input.ok) {
         writeFailure(input.error, command.value.debug);
@@ -38,20 +46,26 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         return build.error.exitCode;
       }
 
-      const outputPath = resolve(process.cwd(), command.value.output);
       try {
-        await Bun.write(outputPath, build.value.html);
-      } catch (cause) {
-        writeFailure(
-          {
-            kind: "io",
-            exitCode: 5,
-            message: "could not write output: " + command.value.output,
-            cause,
-          },
-          command.value.debug,
+        const inlined = await inlineAssets(
+          build.value.html,
+          build.value.distDirectory,
         );
-        return 5;
+        if (!inlined.ok) {
+          writeFailure(inlined.error, command.value.debug);
+          return inlined.error.exitCode;
+        }
+        const output = await writeOutput(
+          inlined.value,
+          outputCheck.value,
+          command.value.force,
+        );
+        if (!output.ok) {
+          writeFailure(output.error, command.value.debug);
+          return output.error.exitCode;
+        }
+        console.log(output.value);
+        return 0;
       } finally {
         try {
           await build.value.cleanup();
@@ -59,8 +73,6 @@ export async function runCli(argv: readonly string[]): Promise<number> {
           // A cleanup failure must not replace the result of the output write.
         }
       }
-      console.log(outputPath);
-      return 0;
     }
   }
 }

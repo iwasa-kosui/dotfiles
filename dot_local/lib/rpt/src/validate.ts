@@ -508,7 +508,7 @@ function validateImage(
 ): Result<void> {
   const url = node.url ?? "";
   if (url.startsWith("data:")) {
-    return { ok: true, value: undefined };
+    return inputFailure("data URL images are not allowed", node);
   }
   if (isAbsolute(url) || hasScheme(url) || url.startsWith("//")) {
     return inputFailure("remote images are not allowed", node);

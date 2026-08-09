@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -70,6 +70,7 @@ async function createCase(source: string) {
   await writeFile(input, source);
 
   return {
+    directory,
     input,
     output,
     cleanup: () => rm(directory, { recursive: true, force: true }),
@@ -175,6 +176,11 @@ const rejectedMdx = [
     "a remote image reference",
     "---\ntitle: X\n---\n![remote][pixel]\n\n[pixel]: https://example.com/pixel.png",
     "remote images are not allowed",
+  ],
+  [
+    "a data URL image whose bytes cannot be independently validated",
+    "---\ntitle: X\n---\n![svg](data:image/svg+xml,%3Csvg%3E%3C/svg%3E)",
+    "data URL images are not allowed",
   ],
   [
     "an image outside the input directory",
@@ -320,6 +326,196 @@ test("build gives every table-of-contents link one existing HTML id", async () =
     }
   } finally {
     await testCase.cleanup();
+  }
+});
+
+test("build embeds a local PNG and leaves no executable or external asset references", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Embedded image\n---\n\n![pixel](./pixel.png)\n\n<Evidence title=\"Source\" source=\"https://example.com/evidence\">Evidence body.</Evidence>",
+  );
+  const png = Uint8Array.from(
+    atob(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
+    ),
+    (character) => character.charCodeAt(0),
+  );
+  await writeFile(join(testCase.directory, "pixel.png"), png);
+
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    const html = await Bun.file(testCase.output).text();
+    expect(html).toContain("data:image/png;base64,");
+    expect(html).toContain('href="https://example.com/evidence"');
+    expect(html).not.toMatch(/<script\b/i);
+    expect(html).not.toMatch(/<link\b[^>]*\brel=["']stylesheet["']/i);
+    expect(html).not.toMatch(
+      /<(?:img|source|video|audio|iframe|embed|object)\b[^>]+(?:src|srcset|poster|data)=["'](?!data:)/i,
+    );
+    expect(html).not.toMatch(/\sstyle=/i);
+    expect(html).not.toMatch(/@import\b/i);
+    for (const match of html.matchAll(
+      /url\(\s*["']?([^"')\s]+)["']?\s*\)/gi,
+    )) {
+      expect(match[1]?.startsWith("data:")).toBe(true);
+    }
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build reads a report from stdin", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "rpt-e2e-"));
+  const output = join(directory, "stdin-report.html");
+  try {
+    const result = await runRpt(["build", "-", "-o", output], {
+      cwd: directory,
+      stdin: "---\ntitle: Standard input\n---\n\nReport body.",
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toBe(`${output}\n`);
+    expect(await Bun.file(output).text()).toContain(
+      "<title>Standard input</title>",
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("build without --force preserves an existing output file", async () => {
+  const testCase = await createCase("---\ntitle: Replacement\n---\n\nNew body.");
+  await writeFile(testCase.output, "original output");
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(5);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("output already exists");
+    expect(await Bun.file(testCase.output).text()).toBe("original output");
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build with --force atomically replaces an existing output file", async () => {
+  const testCase = await createCase("---\ntitle: Replacement\n---\n\nNew body.");
+  await writeFile(testCase.output, "original output");
+  try {
+    const result = await runRpt([
+      "build",
+      testCase.input,
+      "-o",
+      testCase.output,
+      "--force",
+    ]);
+
+    expect(result.exitCode).toBe(0);
+    const html = await Bun.file(testCase.output).text();
+    expect(html).toContain("<title>Replacement</title>");
+    expect(html).not.toContain("original output");
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("an invalid forced build preserves the complete existing output", async () => {
+  const testCase = await createCase("---\nsummary: Missing title\n---");
+  await writeFile(testCase.output, "complete original output");
+  try {
+    const result = await runRpt([
+      "build",
+      testCase.input,
+      "-o",
+      testCase.output,
+      "--force",
+    ]);
+
+    expect(result.exitCode).toBe(3);
+    expect(await Bun.file(testCase.output).text()).toBe("complete original output");
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("concurrent builds keep their report contents isolated", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "rpt-e2e-"));
+  const firstInput = join(directory, "first.mdx");
+  const secondInput = join(directory, "second.mdx");
+  const firstOutput = join(directory, "first.html");
+  const secondOutput = join(directory, "second.html");
+  await Promise.all([
+    writeFile(
+      firstInput,
+      "---\ntitle: First concurrent report\n---\n\nFirst body.",
+    ),
+    writeFile(
+      secondInput,
+      "---\ntitle: Second concurrent report\n---\n\nSecond body.",
+    ),
+  ]);
+  try {
+    const [firstResult, secondResult] = await Promise.all([
+      runRpt(["build", firstInput, "-o", firstOutput]),
+      runRpt(["build", secondInput, "-o", secondOutput]),
+    ]);
+
+    expect(firstResult.exitCode).toBe(0);
+    expect(secondResult.exitCode).toBe(0);
+    const [firstHtml, secondHtml] = await Promise.all([
+      Bun.file(firstOutput).text(),
+      Bun.file(secondOutput).text(),
+    ]);
+    expect(firstHtml).toContain("<title>First concurrent report</title>");
+    expect(firstHtml).not.toContain("Second concurrent report");
+    expect(secondHtml).toContain("<title>Second concurrent report</title>");
+    expect(secondHtml).not.toContain("First concurrent report");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("build rejects an image whose bytes do not match an allowed format", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Invalid image\n---\n\n![pixel](./pixel.png)",
+  );
+  await writeFile(join(testCase.directory, "pixel.png"), "not a PNG");
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stderr).toContain("image format is not allowed");
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build rejects an image symlink that escapes the input directory", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Escaping image\n---\n\n![pixel](./pixel.png)",
+  );
+  const outsideDirectory = await mkdtemp(join(tmpdir(), "rpt-outside-"));
+  const outsideImage = join(outsideDirectory, "pixel.png");
+  await writeFile(
+    outsideImage,
+    Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  );
+  await symlink(outsideImage, join(testCase.directory, "pixel.png"));
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stderr).toContain(
+      "image paths must stay within the input directory",
+    );
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await Promise.all([
+      testCase.cleanup(),
+      rm(outsideDirectory, { recursive: true, force: true }),
+    ]);
   }
 });
 

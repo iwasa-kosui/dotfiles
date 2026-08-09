@@ -1,14 +1,20 @@
 import {
+  constants,
   cp,
+  lstat,
+  mkdir,
   mkdtemp,
+  open,
   readFile,
   readdir,
+  realpath,
   rm,
   symlink,
   writeFile,
 } from "node:fs/promises";
-import { join } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
+import { detectImageMimeType } from "./inline-assets.ts";
 import type { Result } from "./result.ts";
 import type { ValidatedReport } from "./validate.ts";
 
@@ -32,6 +38,11 @@ export async function buildReport(
 
   try {
     await cp(join(packageRoot, "template"), temporaryRoot, { recursive: true });
+    const assets = await copyAssets(report, temporaryRoot);
+    if (!assets.ok) {
+      await cleanupAfterFailure(cleanup);
+      return assets;
+    }
     await Promise.all([
       writeFile(join(temporaryRoot, "src/content/report.mdx"), report.source),
       writeFile(
@@ -93,6 +104,81 @@ export async function buildReport(
   }
 }
 
+async function copyAssets(
+  report: ValidatedReport,
+  temporaryRoot: string,
+): Promise<Result<void>> {
+  let realBaseDirectory: string;
+  try {
+    realBaseDirectory = await realpath(report.baseDirectory);
+  } catch (cause) {
+    return inputFailure("could not resolve the input directory", cause);
+  }
+  const contentDirectory = join(temporaryRoot, "src/content");
+
+  for (const asset of report.assets) {
+    const destination = resolve(contentDirectory, asset.relativePath);
+    if (!isContained(contentDirectory, destination)) {
+      return inputFailure("image paths must stay within the input directory");
+    }
+    try {
+      if (await pathExists(destination)) {
+        return inputFailure("image path conflicts with generated report content");
+      }
+      await mkdir(dirname(destination), { recursive: true });
+
+      const realSourcePath = await realpath(asset.sourcePath);
+      if (!isContained(realBaseDirectory, realSourcePath)) {
+        return inputFailure("image paths must stay within the input directory");
+      }
+      const handle = await open(
+        realSourcePath,
+        constants.O_RDONLY | constants.O_NOFOLLOW,
+      );
+      let bytes: Uint8Array;
+      try {
+        bytes = await handle.readFile();
+      } finally {
+        await handle.close();
+      }
+      if (detectImageMimeType(bytes) === undefined) {
+        return inputFailure(
+          "image format is not allowed: " + asset.relativePath,
+        );
+      }
+      await writeFile(destination, bytes, { flag: "wx" });
+    } catch (cause) {
+      return inputFailure("could not copy image: " + asset.relativePath, cause);
+    }
+  }
+  return { ok: true, value: undefined };
+}
+
+async function pathExists(path: string): Promise<boolean> {
+  try {
+    await lstat(path);
+    return true;
+  } catch (cause) {
+    if (
+      typeof cause === "object" &&
+      cause !== null &&
+      "code" in cause &&
+      cause.code === "ENOENT"
+    ) {
+      return false;
+    }
+    throw cause;
+  }
+}
+
+function isContained(base: string, candidate: string): boolean {
+  const path = relative(base, candidate);
+  return (
+    path === "" ||
+    (!path.startsWith(".." + sep) && path !== ".." && !isAbsolute(path))
+  );
+}
+
 function createCleanup(directory: string): () => Promise<void> {
   let cleaned = false;
   return async () => {
@@ -133,6 +219,19 @@ function buildFailure(message: string, cause?: unknown): Result<never> {
       kind: "build",
       exitCode: 4,
       message,
+      ...(cause === undefined ? {} : { cause }),
+    },
+  };
+}
+
+function inputFailure(message: string, cause?: unknown): Result<never> {
+  return {
+    ok: false,
+    error: {
+      kind: "input",
+      exitCode: 3,
+      message,
+      location: { line: 1, column: 1 },
       ...(cause === undefined ? {} : { cause }),
     },
   };
