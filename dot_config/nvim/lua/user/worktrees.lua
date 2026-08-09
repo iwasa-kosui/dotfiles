@@ -75,122 +75,25 @@ function M.sort(items, activities, current)
   return sorted
 end
 
-local function cmux_path()
-  local executable = vim.fn.exepath("cmux")
-  if executable ~= "" then
-    return executable
-  end
-  local bundled = "/Applications/cmux.app/Contents/Resources/bin/cmux"
-  if vim.fn.executable(bundled) == 1 then
-    return bundled
-  end
-  return nil
-end
-
-local function add_workspace_refs(node, refs, seen)
-  if type(node) == "string" then
-    if node:match("^workspace:") and not seen[node] then
-      seen[node] = true
-      refs[#refs + 1] = node
-    end
-    return
-  end
-  if type(node) ~= "table" then
-    return
-  end
-  if type(node.ref) == "string" then
-    add_workspace_refs(node.ref, refs, seen)
-  end
-  if vim.islist(node) then
-    for _, child in ipairs(node) do
-      add_workspace_refs(child, refs, seen)
-    end
-    return
-  end
-  for _, key in ipairs({ "workspaces", "items", "data" }) do
-    if node[key] then
-      add_workspace_refs(node[key], refs, seen)
-    end
-  end
-end
-
-function M.workspace_refs(node)
-  local refs = {}
-  add_workspace_refs(node, refs, {})
-  return refs
-end
-
-local function sidebar_cwd(output)
-  for line in vim.gsplit(output or "", "\n", { plain = true }) do
-    if line:sub(1, 4) == "cwd=" then
-      return line:sub(5)
-    end
-  end
-end
-
-function M.switch_workspace(cmux, item, repo, adapter)
+function M.restart_in_place(item, adapter)
   adapter = adapter or {}
-  local execute = adapter.run or run
+  local getcwd = adapter.getcwd or vim.fn.getcwd
+  local set_current_dir = adapter.set_current_dir or vim.api.nvim_set_current_dir
+  local restart = adapter.restart or function()
+    vim.cmd.restart()
+  end
   local report = adapter.notify or notify
-  local target = normalize(item.path)
 
-  local function workspace_command(command)
-    execute(command, function(result)
-      if result.code ~= 0 then
-        report("Worktree switch: cmux workspace command failed")
-      end
-    end)
+  local previous = getcwd()
+  set_current_dir(item.path)
+  local ok, err = pcall(restart)
+  if ok then
+    return true
   end
 
-  execute({ cmux, "workspace", "list", "--json" }, function(list_result)
-    if list_result.code ~= 0 then
-      report("Worktree switch: cmux workspace list failed")
-      return
-    end
-    local listed = decode_json(list_result.stdout, "cmux workspace list", report)
-    if not listed then
-      return
-    end
-    local refs = M.workspace_refs(listed)
-
-    local function inspect(index)
-      local ref = refs[index]
-      if not ref then
-        workspace_command({
-          cmux,
-          "workspace",
-          "create",
-          "--name",
-          repo .. ":" .. item.branch,
-          "--cwd",
-          item.path,
-          "--command",
-          "nvim",
-          "--json",
-        })
-        return
-      end
-
-      execute({ cmux, "sidebar-state", "--workspace", ref }, function(state_result)
-        if state_result.code ~= 0 then
-          report("Worktree switch: cmux sidebar-state failed for " .. ref)
-          return
-        end
-        local cwd = sidebar_cwd(state_result.stdout)
-        if not cwd then
-          report("Worktree switch: cmux sidebar-state has no cwd for " .. ref)
-          return
-        end
-        if normalize(cwd) == target then
-          workspace_command({ cmux, "workspace", "select", ref })
-          return
-        end
-        inspect(index + 1)
-      end)
-    end
-
-    inspect(1)
-  end)
+  set_current_dir(previous)
+  report("Worktree switch: Neovim restart failed: " .. tostring(err))
+  return false
 end
 
 function M.open()
@@ -223,12 +126,7 @@ function M.open()
         if not item then
           return
         end
-        local cmux = cmux_path()
-        if not cmux then
-          notify("Worktree switch: cmux executable not found")
-          return
-        end
-        M.switch_workspace(cmux, item, vim.fn.fnamemodify(items[1].path, ":t"))
+        M.restart_in_place(item)
       end)
     end)
   end)
