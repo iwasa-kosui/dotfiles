@@ -180,7 +180,7 @@ function declarationViolation(
 }
 
 function functionViolation(node: FunctionNode): string | undefined {
-  const name = node.name.toLowerCase();
+  const name = decodeCssIdentifier(node.name).toLowerCase();
   if (name === "var") {
     return isAllowedVariable(node) ? undefined : "style variable is not allowed";
   }

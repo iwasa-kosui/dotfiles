@@ -57,9 +57,11 @@ const rejected = [
   ["\\2d\\2dx: red", "custom style properties are not allowed"],
   ["c\\0olor: red", "style property c\uFFFDolor is not allowed"],
   ["color: var(--user-color)", "style variable is not allowed"],
+  ["color: v\\61r(--user-color)", "style variable is not allowed"],
   ["color: red; color: blue", "style property color may only be specified once"],
   ["display: contents", "style display value contents is not allowed"],
   ["color: image(linear-gradient(red, blue))", "style function image is not allowed"],
+  ["color: im\\61ge(red)", "style function image is not allowed"],
   ["color: var(--w-color-success, red)", "style variable is not allowed"],
   ["color: {", "style is invalid CSS"],
 ] as const;
