@@ -8,10 +8,11 @@ const cliPath = join(repositoryRoot, "dot_local/bin/executable_rpt");
 
 async function runRpt(
   args: readonly string[],
-  options: { cwd?: string; stdin?: string } = {},
+  options: { cwd?: string; stdin?: string; env?: NodeJS.ProcessEnv } = {},
 ) {
   const process = Bun.spawn(["bun", cliPath, ...args], {
     cwd: options.cwd ?? repositoryRoot,
+    env: options.env,
     stdin: options.stdin === undefined ? "ignore" : "pipe",
     stdout: "pipe",
     stderr: "pipe",
@@ -295,6 +296,47 @@ test("build renders an allowed report as a readable static HTML document", async
     expect(html).toContain('aria-label="目次"');
     expect(html).toContain('class="rpt-skip-link"');
     expect(html).not.toContain("<script");
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build gives every table-of-contents link one existing HTML id", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Outline ids\n---\n\n# section-結論\n\n# 結論\n\n<Section title=\"結論\">\nSection body.\n</Section>\n\n## 結論\n\nHeading body.",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    const html = await Bun.file(testCase.output).text();
+    const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
+    const targets = [...html.matchAll(/href="#([^"]+)"/g)].map(
+      (match) => match[1],
+    );
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const target of targets) {
+      expect(ids.filter((id) => id === target)).toHaveLength(1);
+    }
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build reports a build failure when the temporary directory is unavailable", async () => {
+  const testCase = await createCase("---\ntitle: Temporary directory\n---");
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output], {
+      env: {
+        ...process.env,
+        TMPDIR: join(testCase.output, "missing-temporary-directory"),
+      },
+    });
+
+    expect(result.exitCode).toBe(4);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toBe("rpt: could not create temporary build directory\n");
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
   } finally {
     await testCase.cleanup();
   }

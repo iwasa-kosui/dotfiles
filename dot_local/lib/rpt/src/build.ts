@@ -22,7 +22,12 @@ export async function buildReport(
   report: ValidatedReport,
   packageRoot: string,
 ): Promise<Result<BuiltReport>> {
-  const temporaryRoot = await mkdtemp(join(tmpdir(), "rpt-build-"));
+  let temporaryRoot: string;
+  try {
+    temporaryRoot = await mkdtemp(join(tmpdir(), "rpt-build-"));
+  } catch (cause) {
+    return buildFailure("could not create temporary build directory", cause);
+  }
   const cleanup = createCleanup(temporaryRoot);
 
   try {
@@ -50,7 +55,7 @@ export async function buildReport(
       new Response(process.stderr).text(),
     ]);
     if (exitCode !== 0) {
-      await cleanup();
+      await cleanupAfterFailure(cleanup);
       return buildFailure("could not build report", new Error(stdout + stderr));
     }
 
@@ -60,14 +65,14 @@ export async function buildReport(
     try {
       htmlFiles = await findHtmlFiles(distDirectory);
     } catch (cause) {
-      await cleanup();
+      await cleanupAfterFailure(cleanup);
       return buildFailure(
         "report build must produce only dist/index.html",
         new Error(stdout + stderr + "\n" + String(cause)),
       );
     }
     if (!htmlFiles.includes(indexPath) || htmlFiles.length !== 1) {
-      await cleanup();
+      await cleanupAfterFailure(cleanup);
       return buildFailure(
         "report build must produce only dist/index.html",
         new Error(stdout + stderr),
@@ -83,7 +88,7 @@ export async function buildReport(
       },
     };
   } catch (cause) {
-    await cleanup();
+    await cleanupAfterFailure(cleanup);
     return buildFailure("could not build report", cause);
   }
 }
@@ -94,9 +99,17 @@ function createCleanup(directory: string): () => Promise<void> {
     if (cleaned) {
       return;
     }
-    cleaned = true;
     await rm(directory, { recursive: true, force: true });
+    cleaned = true;
   };
+}
+
+async function cleanupAfterFailure(cleanup: () => Promise<void>): Promise<void> {
+  try {
+    await cleanup();
+  } catch {
+    // The build failure remains authoritative when temporary cleanup also fails.
+  }
 }
 
 async function findHtmlFiles(directory: string): Promise<string[]> {

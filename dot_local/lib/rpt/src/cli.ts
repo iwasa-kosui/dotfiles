@@ -53,7 +53,11 @@ export async function runCli(argv: readonly string[]): Promise<number> {
         );
         return 5;
       } finally {
-        await build.value.cleanup();
+        try {
+          await build.value.cleanup();
+        } catch {
+          // A cleanup failure must not replace the result of the output write.
+        }
       }
       console.log(outputPath);
       return 0;

@@ -79,7 +79,8 @@ type ComponentRule = Readonly<{
 
 type ValidationState = {
   readonly source: string;
-  readonly slugger: GithubSlugger;
+  readonly headingSlugger: GithubSlugger;
+  readonly htmlIds: Set<string>;
   readonly outline: OutlineItem[];
   readonly assets: AssetReference[];
   readonly assetPaths: Set<string>;
@@ -147,7 +148,8 @@ export function validateReport(input: ReportInput): Result<ValidatedReport> {
 
   const state: ValidationState = {
     source: input.source,
-    slugger: new GithubSlugger(),
+    headingSlugger: new GithubSlugger(),
+    htmlIds: collectMarkdownHeadingIds(tree),
     outline: [],
     assets: [],
     assetPaths: new Set(),
@@ -315,13 +317,16 @@ function validateNode(
   if (node.type === "html") {
     return inputFailure("raw HTML is not allowed", node);
   }
-  if (node.type === "heading" && (node.depth === 2 || node.depth === 3)) {
+  if (node.type === "heading") {
     const text = textContent(node);
-    state.outline.push({
-      depth: node.depth,
-      text,
-      slug: state.slugger.slug(text),
-    });
+    const slug = state.headingSlugger.slug(text);
+    if (node.depth === 2 || node.depth === 3) {
+      state.outline.push({
+        depth: node.depth,
+        text,
+        slug,
+      });
+    }
   }
   if (node.type === "link") {
     const linkValidation = validateLink(node);
@@ -473,7 +478,10 @@ function validateComponent(
 
   if (name === "Section") {
     const title = values.get("title") ?? "";
-    const anchor = "section-" + state.slugger.slug(title);
+    const anchor = allocateHtmlId(
+      "section-" + new GithubSlugger().slug(title),
+      state.htmlIds,
+    );
     state.outline.push({ depth: 2, text: title, slug: anchor });
     const offset = openingTagEnd(node, state.source);
     if (offset === undefined) {
@@ -611,6 +619,37 @@ function isSelfClosing(node: TreeNode, source: string): boolean {
     .slice(position.start.offset, position.end.offset)
     .trimEnd()
     .endsWith("/>");
+}
+
+function collectMarkdownHeadingIds(node: TreeNode): Set<string> {
+  const ids = new Set<string>();
+  const slugger = new GithubSlugger();
+  collectMarkdownHeadingIdsInto(node, ids, slugger);
+  return ids;
+}
+
+function collectMarkdownHeadingIdsInto(
+  node: TreeNode,
+  ids: Set<string>,
+  slugger: GithubSlugger,
+): void {
+  if (node.type === "heading") {
+    ids.add(slugger.slug(textContent(node)));
+  }
+  for (const child of node.children ?? []) {
+    collectMarkdownHeadingIdsInto(child, ids, slugger);
+  }
+}
+
+function allocateHtmlId(base: string, ids: Set<string>): string {
+  let candidate = base;
+  let suffix = 1;
+  while (ids.has(candidate)) {
+    candidate = base + "-" + suffix;
+    suffix += 1;
+  }
+  ids.add(candidate);
+  return candidate;
 }
 
 function collectImageReferenceIdentifiers(node: TreeNode): Set<string> {
