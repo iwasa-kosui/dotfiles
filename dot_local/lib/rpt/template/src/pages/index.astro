@@ -8,6 +8,10 @@ import { Content } from "../content/report.mdx";
 import ReportLayout from "../layouts/ReportLayout.astro";
 ---
 
-<ReportLayout metadata={reportData.metadata} outline={reportData.outline}>
+<ReportLayout
+  metadata={reportData.metadata}
+  outline={reportData.outline}
+  mainContentId={reportData.mainContentId}
+>
   <Content components={{ Callout, Evidence, Metric, Section }} />
 </ReportLayout>

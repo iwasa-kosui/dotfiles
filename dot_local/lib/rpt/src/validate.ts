@@ -6,6 +6,8 @@ import remarkGfm from "remark-gfm";
 import remarkMdx from "remark-mdx";
 import remarkParse from "remark-parse";
 import { parseDocument } from "yaml";
+import { decodeRasterDataUrl } from "./image.ts";
+import { maximumTotalImageBytes } from "./limits.ts";
 import type { ReportInput } from "./input.ts";
 import type { Result } from "./result.ts";
 
@@ -35,6 +37,8 @@ export type ValidatedReport = Readonly<{
   metadata: ReportMetadata;
   outline: readonly OutlineItem[];
   assets: readonly AssetReference[];
+  decodedDataImageBytes: number;
+  mainContentId: string;
 }>;
 
 type Point = Readonly<{
@@ -86,6 +90,7 @@ type ValidationState = {
   readonly assetPaths: Set<string>;
   readonly imageReferenceIdentifiers: Set<string>;
   readonly anchorInsertions: Array<Readonly<{ offset: number; anchor: string }>>;
+  decodedDataImageBytes: number;
 };
 
 const componentRules: Readonly<Record<string, ComponentRule>> = {
@@ -155,11 +160,13 @@ export function validateReport(input: ReportInput): Result<ValidatedReport> {
     assetPaths: new Set(),
     imageReferenceIdentifiers: collectImageReferenceIdentifiers(tree),
     anchorInsertions: [],
+    decodedDataImageBytes: 0,
   };
   const validation = validateNode(tree, undefined, 0, input, state);
   if (!validation.ok) {
     return validation;
   }
+  const mainContentId = allocateHtmlId("report-content", state.htmlIds);
 
   return {
     ok: true,
@@ -169,6 +176,8 @@ export function validateReport(input: ReportInput): Result<ValidatedReport> {
       metadata: metadata.value,
       outline: state.outline,
       assets: state.assets,
+      decodedDataImageBytes: state.decodedDataImageBytes,
+      mainContentId,
     },
   };
 }
@@ -507,8 +516,16 @@ function validateImage(
   state: ValidationState,
 ): Result<void> {
   const url = node.url ?? "";
-  if (url.startsWith("data:")) {
-    return inputFailure("data URL images are not allowed", node);
+  if (url.slice(0, 5).toLowerCase() === "data:") {
+    const decoded = decodeRasterDataUrl(url);
+    if (!decoded.ok) {
+      return inputFailure(decoded.message, node);
+    }
+    state.decodedDataImageBytes += decoded.value.bytes.byteLength;
+    if (state.decodedDataImageBytes > maximumTotalImageBytes) {
+      return inputFailure("images exceed the 20 MiB total limit", node);
+    }
+    return { ok: true, value: undefined };
   }
   if (isAbsolute(url) || hasScheme(url) || url.startsWith("//")) {
     return inputFailure("remote images are not allowed", node);

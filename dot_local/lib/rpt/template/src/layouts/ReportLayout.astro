@@ -17,9 +17,10 @@ type OutlineItem = {
   slug: string;
 };
 
-const { metadata, outline } = Astro.props as {
+const { metadata, outline, mainContentId } = Astro.props as {
   metadata: Metadata;
   outline: OutlineItem[];
+  mainContentId: string;
 };
 
 const statusTheme = {
@@ -37,7 +38,7 @@ const statusTheme = {
     <title>{metadata.title}</title>
   </head>
   <body>
-    <a class="rpt-skip-link" href="#report-content">本文へ移動</a>
+    <a class="rpt-skip-link" href={`#${mainContentId}`}>本文へ移動</a>
     <div class="rpt-shell">
       <header class="rpt-header">
         <h1>{metadata.title}</h1>
@@ -66,7 +67,7 @@ const statusTheme = {
             </ol>
           </details>
         </nav>
-        <main id="report-content">
+        <main id={mainContentId}>
           <article class="rpt-article"><slot /></article>
         </main>
       </div>

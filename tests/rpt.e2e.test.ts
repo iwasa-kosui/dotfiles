@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, open, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
@@ -39,6 +39,26 @@ function hasAttribute(element: Element, name: string, value: string): boolean {
     (attribute) =>
       attribute.name.toLowerCase() === name && attribute.value === value,
   );
+}
+
+function attributeValue(element: Element, name: string): string | undefined {
+  return element.attrs.find(
+    (attribute) => attribute.name.toLowerCase() === name,
+  )?.value;
+}
+
+function collectElements(parent: ParentNode): Element[] {
+  const elements: Element[] = [];
+  for (const child of parent.childNodes) {
+    if (!("tagName" in child)) {
+      continue;
+    }
+    elements.push(child, ...collectElements(child));
+    if ("content" in child) {
+      elements.push(...collectElements(child.content));
+    }
+  }
+  return elements;
 }
 
 function hasClass(element: Element, className: string): boolean {
@@ -102,6 +122,48 @@ async function runRptWithOpenStdin(
     new Response(process.stderr).text(),
   ]);
   return { timedOut: outcome.timedOut, exitCode, stdout, stderr };
+}
+
+async function runRptWithTimeout(args: readonly string[]) {
+  const process = Bun.spawn(["bun", cliPath, ...args], {
+    cwd: repositoryRoot,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const outcome = await Promise.race([
+    process.exited.then((exitCode) => ({ timedOut: false, exitCode })),
+    new Promise<Readonly<{ timedOut: true }>>((resolve) => {
+      timeoutId = setTimeout(() => resolve({ timedOut: true }), 2_000);
+    }),
+  ]);
+  if (timeoutId !== undefined) {
+    clearTimeout(timeoutId);
+  }
+  if (outcome.timedOut) {
+    process.kill();
+  }
+
+  const [exitCode, stdout, stderr] = await Promise.all([
+    process.exited,
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+  ]);
+  return { timedOut: outcome.timedOut, exitCode, stdout, stderr };
+}
+
+async function writePngSized(path: string, byteLength: number): Promise<void> {
+  const handle = await open(path, "wx");
+  try {
+    await handle.write(
+      Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    await handle.truncate(byteLength);
+  } finally {
+    await handle.close();
+  }
 }
 
 async function createCase(source: string) {
@@ -228,11 +290,6 @@ const rejectedMdx = [
     "remote images are not allowed",
   ],
   [
-    "a data URL image whose bytes cannot be independently validated",
-    "---\ntitle: X\n---\n![svg](data:image/svg+xml,%3Csvg%3E%3C/svg%3E)",
-    "data URL images are not allowed",
-  ],
-  [
     "an image outside the input directory",
     "---\ntitle: X\n---\n![outside](../pixel.png)",
     "image paths must stay within the input directory",
@@ -271,6 +328,118 @@ for (const [name, source, message] of rejectedMdx) {
   });
 }
 
+const rejectedRasterDataUrls = [
+  [
+    "SVG",
+    "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=",
+    "data URL image MIME type is not allowed",
+  ],
+  [
+    "an unknown MIME type",
+    "data:image/bmp;base64,Qk0=",
+    "data URL image MIME type is not allowed",
+  ],
+  [
+    "a non-base64 payload",
+    "data:image/png,iVBORw0KGgo=",
+    "data URL images must use base64",
+  ],
+  [
+    "invalid base64",
+    "data:image/png;base64,!!!!",
+    "data URL image contains invalid base64",
+  ],
+  [
+    "non-canonical base64 padding bits",
+    "data:image/png;base64,iVBORw0KGgp=",
+    "data URL image contains invalid base64",
+  ],
+  [
+    "bytes that do not match the declared MIME type",
+    "data:image/jpeg;base64,iVBORw0KGgo=",
+    "data URL image MIME type does not match its bytes",
+  ],
+] as const;
+
+for (const [name, dataUrl, message] of rejectedRasterDataUrls) {
+  test("raster data URLs reject " + name + " before Astro build", async () => {
+    const testCase = await createCase(
+      `---\ntitle: Invalid data image\n---\n\n![image](${dataUrl})`,
+    );
+    try {
+      const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+      expect(result.exitCode).toBe(3);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain(message);
+      expect(await Bun.file(testCase.output).exists()).toBe(false);
+    } finally {
+      await testCase.cleanup();
+    }
+  });
+}
+
+test("raster data URLs preserve allowed base64 images in the single HTML", async () => {
+  const images = [
+    ["png", "data:image/png;base64,iVBORw0KGgo="],
+    ["jpeg", "data:image/jpeg;base64,/9j/"],
+    ["gif", "data:image/gif;base64,R0lGODdh"],
+    ["webp", "data:image/webp;base64,UklGRgAAAABXRUJQ"],
+    ["avif", "data:image/avif;base64,AAAADGZ0eXBhdmlm"],
+  ] as const;
+  const source =
+    "---\ntitle: Raster data images\n---\n\n" +
+    images.map(([name, dataUrl]) => `![${name}](${dataUrl})`).join("\n\n");
+  const testCase = await createCase(source);
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    const html = await Bun.file(testCase.output).text();
+    for (const [, dataUrl] of images) {
+      expect(html).toContain(`src="${dataUrl}"`);
+    }
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("raster data URL bytes count toward the 20 MiB image total", async () => {
+  const dataImageBytes = new Uint8Array(1024 * 1024 + 1);
+  dataImageBytes.set(
+    [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a],
+  );
+  const dataUrl =
+    "data:image/png;base64," + Buffer.from(dataImageBytes).toString("base64");
+  const localImageNames = ["one", "two", "three", "four"] as const;
+  const source =
+    "---\ntitle: Combined image total\n---\n\n" +
+    `![inline](${dataUrl})\n\n` +
+    localImageNames
+      .map((name) => `![${name}](./${name}.png)`)
+      .join("\n\n");
+  const testCase = await createCase(source);
+  await Promise.all(
+    localImageNames.map((name) =>
+      writePngSized(
+        join(testCase.directory, name + ".png"),
+        (19 * 1024 * 1024) / 4,
+      ),
+    ),
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("images exceed the 20 MiB total limit");
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
 test("build rejects input that exceeds 5 MiB before creating an output file", async () => {
   const source = "---\ntitle: X\n---\n" + "a".repeat(5 * 1024 * 1024);
   const testCase = await createCase(source);
@@ -281,6 +450,77 @@ test("build rejects input that exceeds 5 MiB before creating an output file", as
     expect(result.stdout).toBe("");
     expect(result.stderr).toMatch(/^rpt: \d+:\d+:/);
     expect(result.stderr).toContain("input exceeds the 5 MiB limit");
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("bounded descriptors reject non-regular file inputs without waiting for data", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "rpt-e2e-"));
+  const fifo = join(directory, "report.fifo");
+  const mkfifo = Bun.spawn(["mkfifo", fifo], { stdout: "pipe", stderr: "pipe" });
+  const [mkfifoExitCode, mkfifoStderr] = await Promise.all([
+    mkfifo.exited,
+    new Response(mkfifo.stderr).text(),
+  ]);
+  expect(mkfifoExitCode).toBe(0);
+  expect(mkfifoStderr).toBe("");
+
+  try {
+    for (const [name, input] of [
+      ["directory", directory],
+      ["device", "/dev/null"],
+      ["FIFO", fifo],
+    ] as const) {
+      const output = join(directory, name + ".html");
+      const result = await runRptWithTimeout(["build", input, "-o", output]);
+
+      expect(result.timedOut).toBe(false);
+      expect(result.exitCode).toBe(5);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toContain("input must be a regular file");
+      expect(await Bun.file(output).exists()).toBe(false);
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("bounded descriptors reject a local image over 5 MiB", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Oversized image\n---\n\n![large](./large.png)",
+  );
+  await writePngSized(join(testCase.directory, "large.png"), 5 * 1024 * 1024 + 1);
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("image exceeds the 5 MiB limit");
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("bounded descriptors reject more than 20 MiB of local images", async () => {
+  const imageNames = ["one", "two", "three", "four", "five"] as const;
+  const source =
+    "---\ntitle: Too many images\n---\n\n" +
+    imageNames.map((name) => `![${name}](./${name}.png)`).join("\n\n");
+  const testCase = await createCase(source);
+  await Promise.all(
+    imageNames.map((name) =>
+      writePngSized(join(testCase.directory, name + ".png"), 4 * 1024 * 1024 + 1),
+    ),
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toContain("images exceed the 20 MiB total limit");
     expect(await Bun.file(testCase.output).exists()).toBe(false);
   } finally {
     await testCase.cleanup();
@@ -357,23 +597,52 @@ test("build renders an allowed report as a readable static HTML document", async
   }
 });
 
-test("build gives every table-of-contents link one existing HTML id", async () => {
+test("final DOM resolves skip, outline, and footnote fragments to unique ids", async () => {
   const testCase = await createCase(
-    "---\ntitle: Outline ids\n---\n\n# section-結論\n\n# 結論\n\n<Section title=\"結論\">\nSection body.\n</Section>\n\n## 結論\n\nHeading body.",
+    "---\ntitle: Final DOM ids\n---\n\n## report-content\n\nHeading body.[^1]\n\n## section-findings\n\nHeading with a Section-shaped ID.\n\n<Section title=\"Findings\">\nSection body.\n</Section>\n\n<Evidence title=\"External\" source=\"https://example.com/evidence#result\">Evidence body.</Evidence>\n\n[^1]: Footnote text.",
   );
   try {
     const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
 
     expect(result.exitCode).toBe(0);
     const html = await Bun.file(testCase.output).text();
-    const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map((match) => match[1]);
-    const targets = [...html.matchAll(/href="#([^"]+)"/g)].map(
-      (match) => match[1],
+    const document = parse(html);
+    const elements = collectElements(document);
+    const ids = elements
+      .map((element) => attributeValue(element, "id"))
+      .filter((id): id is string => id !== undefined);
+    const fragmentHrefs = elements
+      .filter((element) => element.tagName === "a")
+      .map((element) => attributeValue(element, "href"))
+      .filter((href): href is string => href?.startsWith("#") === true);
+    const main = elements.find((element) => element.tagName === "main");
+    const skipLink = elements.find(
+      (element) =>
+        element.tagName === "a" && hasClass(element, "rpt-skip-link"),
     );
+
     expect(new Set(ids).size).toBe(ids.length);
-    for (const target of targets) {
+    for (const href of fragmentHrefs) {
+      const target = decodeURIComponent(href.slice(1));
       expect(ids.filter((id) => id === target)).toHaveLength(1);
     }
+    const mainId = main === undefined ? undefined : attributeValue(main, "id");
+    expect(mainId).toBeDefined();
+    expect(mainId).not.toBe("report-content");
+    expect(attributeValue(skipLink!, "href")).toBe("#" + mainId);
+    expect(fragmentHrefs).toContain("#report-content");
+    expect(fragmentHrefs).toContain("#section-findings-1");
+    expect(fragmentHrefs.some((href) => href.includes("user-content-fn"))).toBe(
+      true,
+    );
+    expect(
+      elements.some(
+        (element) =>
+          element.tagName === "a" &&
+          attributeValue(element, "href") ===
+            "https://example.com/evidence#result",
+      ),
+    ).toBe(true);
   } finally {
     await testCase.cleanup();
   }
@@ -720,6 +989,30 @@ for (const [name, html] of rejectedFinalDom) {
     expect(result.ok).toBe(false);
   });
 }
+
+test("final DOM rejects duplicate ids", async () => {
+  const result = await runInlineFixture(
+    '<h2 id="duplicate">Heading</h2><main id="duplicate">Body</main>',
+  );
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain("duplicate id");
+  }
+});
+
+test("final DOM rejects an internal fragment without one target", async () => {
+  const result = await runInlineFixture(
+    '<main id="present">Body</main><a href="#missing">Missing</a>',
+  );
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain(
+      "internal fragment must resolve to exactly one id",
+    );
+  }
+});
 
 test("build reports a build failure when the temporary directory is unavailable", async () => {
   const testCase = await createCase("---\ntitle: Temporary directory\n---");

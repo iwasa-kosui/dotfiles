@@ -1,8 +1,8 @@
-import { readFile, stat } from "node:fs/promises";
+import { constants, open } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { readBounded } from "./bounded-read.ts";
+import { maximumInputBytes } from "./limits.ts";
 import type { Result } from "./result.ts";
-
-const maximumInputBytes = 5 * 1024 * 1024;
 
 export type ReportInput = Readonly<{
   source: string;
@@ -26,27 +26,48 @@ export async function readInput(
 
   const inputPath = resolve(cwd, input);
   try {
-    const inputStat = await stat(inputPath);
-    if (inputStat.size > maximumInputBytes) {
-      return inputTooLarge();
+    const handle = await open(
+      inputPath,
+      constants.O_RDONLY | constants.O_NONBLOCK,
+    );
+    try {
+      const descriptorStat = await handle.stat();
+      if (!descriptorStat.isFile()) {
+        return inputReadFailure("input must be a regular file: " + input);
+      }
+      if (descriptorStat.size > maximumInputBytes) {
+        return inputTooLarge();
+      }
+      const bytes = await readBounded(handle, maximumInputBytes);
+      if (bytes.byteLength > maximumInputBytes) {
+        return inputTooLarge();
+      }
+      return {
+        ok: true,
+        value: {
+          source: new TextDecoder().decode(bytes),
+          baseDirectory: dirname(inputPath),
+        },
+      };
+    } finally {
+      await handle.close();
     }
-    const source = await readFile(inputPath, "utf8");
-    return {
-      ok: true,
-      value: { source, baseDirectory: dirname(inputPath) },
-    };
   } catch (cause) {
-    return {
-      ok: false,
-      error: {
-        kind: "io",
-        exitCode: 5,
-        message: "could not read input: " + input,
-        location: { line: 1, column: 1 },
-        cause,
-      },
-    };
+    return inputReadFailure("could not read input: " + input, cause);
   }
+}
+
+function inputReadFailure(message: string, cause?: unknown): Result<never> {
+  return {
+    ok: false,
+    error: {
+      kind: "io",
+      exitCode: 5,
+      message,
+      location: { line: 1, column: 1 },
+      ...(cause === undefined ? {} : { cause }),
+    },
+  };
 }
 
 async function readStandardInput(): Promise<Result<string>> {

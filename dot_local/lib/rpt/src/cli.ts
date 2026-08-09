@@ -87,6 +87,20 @@ function writeFailure(error: Failure, debug = false): void {
     console.error("hint: " + error.hint);
   }
   if (debug && error.cause instanceof Error) {
-    console.error(error.cause.stack ?? error.cause.message);
+    console.error(formatDebugCause(error.cause));
   }
+}
+
+function formatDebugCause(cause: Error): string {
+  const stack = cause.stack;
+  if (stack === undefined) {
+    return cause.message;
+  }
+  const firstLineEnd = stack.indexOf("\n");
+  const firstLine = firstLineEnd === -1 ? stack : stack.slice(0, firstLineEnd);
+  if (firstLine.includes(cause.message)) {
+    return stack;
+  }
+  const frames = firstLineEnd === -1 ? "" : stack.slice(firstLineEnd);
+  return cause.name + ": " + cause.message + frames;
 }

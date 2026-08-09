@@ -15,7 +15,12 @@ import {
 } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
-import { detectImageMimeType } from "./inline-assets.ts";
+import { readBounded } from "./bounded-read.ts";
+import { detectImageMimeType } from "./image.ts";
+import {
+  maximumImageBytes,
+  maximumTotalImageBytes,
+} from "./limits.ts";
 import type { Result } from "./result.ts";
 import type { ValidatedReport } from "./validate.ts";
 
@@ -48,7 +53,11 @@ export async function buildReport(
       writeFile(join(temporaryRoot, "src/content/report.mdx"), report.source),
       writeFile(
         join(temporaryRoot, "src/content/report-data.json"),
-        JSON.stringify({ metadata: report.metadata, outline: report.outline }),
+        JSON.stringify({
+          metadata: report.metadata,
+          outline: report.outline,
+          mainContentId: report.mainContentId,
+        }),
       ),
       symlink(
         join(packageRoot, "node_modules"),
@@ -116,6 +125,7 @@ async function copyAssets(
     return inputFailure("could not resolve the input directory", cause);
   }
   const contentDirectory = join(temporaryRoot, "src/content");
+  let totalImageBytes = report.decodedDataImageBytes;
 
   for (const asset of report.assets) {
     const destination = resolve(contentDirectory, asset.relativePath);
@@ -134,7 +144,7 @@ async function copyAssets(
       }
       const handle = await open(
         realSourcePath,
-        constants.O_RDONLY | constants.O_NOFOLLOW,
+        constants.O_RDONLY | constants.O_NONBLOCK | constants.O_NOFOLLOW,
       );
       let bytes: Uint8Array;
       try {
@@ -154,9 +164,23 @@ async function copyAssets(
         ) {
           return inputFailure("image changed while it was being copied");
         }
-        bytes = await handle.readFile();
+        if (descriptorStat.size > BigInt(maximumImageBytes)) {
+          return inputFailure(
+            "image exceeds the 5 MiB limit: " + asset.relativePath,
+          );
+        }
+        bytes = await readBounded(handle, maximumImageBytes);
       } finally {
         await handle.close();
+      }
+      if (bytes.byteLength > maximumImageBytes) {
+        return inputFailure(
+          "image exceeds the 5 MiB limit: " + asset.relativePath,
+        );
+      }
+      totalImageBytes += bytes.byteLength;
+      if (totalImageBytes > maximumTotalImageBytes) {
+        return inputFailure("images exceed the 20 MiB total limit");
       }
       if (detectImageMimeType(bytes) === undefined) {
         return inputFailure(

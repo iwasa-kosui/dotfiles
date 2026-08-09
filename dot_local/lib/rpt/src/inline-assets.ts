@@ -12,6 +12,7 @@ import {
   serialize,
   type DefaultTreeAdapterTypes,
 } from "parse5";
+import { detectImageMimeType } from "./image.ts";
 import type { Result } from "./result.ts";
 
 type Element = DefaultTreeAdapterTypes.Element;
@@ -39,31 +40,6 @@ export async function inlineAssets(
   } catch (cause) {
     return buildFailure("could not inline report assets", cause);
   }
-}
-
-export function detectImageMimeType(bytes: Uint8Array): string | undefined {
-  if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) {
-    return "image/png";
-  }
-  if (startsWith(bytes, [0xff, 0xd8, 0xff])) {
-    return "image/jpeg";
-  }
-  if (ascii(bytes, 0, 6) === "GIF87a" || ascii(bytes, 0, 6) === "GIF89a") {
-    return "image/gif";
-  }
-  if (ascii(bytes, 0, 4) === "RIFF" && ascii(bytes, 8, 4) === "WEBP") {
-    return "image/webp";
-  }
-  if (ascii(bytes, 4, 4) === "ftyp") {
-    const boxLength = Math.min(readBigEndianUint32(bytes, 0), bytes.byteLength);
-    for (let offset = 8; offset + 4 <= boxLength; offset += 4) {
-      const brand = ascii(bytes, offset, 4);
-      if (brand === "avif" || brand === "avis") {
-        return "image/avif";
-      }
-    }
-  }
-  return undefined;
 }
 
 async function processChildren(
@@ -566,7 +542,40 @@ const svgDynamicElementNames = new Set([
   "set",
 ]);
 
+type FinalDomState = {
+  readonly idCounts: Map<string, number>;
+  readonly fragmentTargets: string[];
+};
+
 function validateFinalDom(parent: ParentNode): Result<void> {
+  const state: FinalDomState = {
+    idCounts: new Map(),
+    fragmentTargets: [],
+  };
+  const validation = validateFinalDomInto(parent, state);
+  if (!validation.ok) {
+    return validation;
+  }
+  for (const [id, count] of state.idCounts) {
+    if (count !== 1) {
+      return unsafeHtml("report HTML contains duplicate id: " + id);
+    }
+  }
+  for (const target of state.fragmentTargets) {
+    if (state.idCounts.get(target) !== 1) {
+      return unsafeHtml(
+        "report HTML internal fragment must resolve to exactly one id: #" +
+          target,
+      );
+    }
+  }
+  return { ok: true, value: undefined };
+}
+
+function validateFinalDomInto(
+  parent: ParentNode,
+  state: FinalDomState,
+): Result<void> {
   for (const child of parent.childNodes) {
     if (!("tagName" in child)) {
       continue;
@@ -586,6 +595,10 @@ function validateFinalDom(parent: ParentNode): Result<void> {
       (attribute(child, "http-equiv")?.value ?? "").toLowerCase() === "refresh"
     ) {
       return unsafeHtml("report HTML contains a meta refresh");
+    }
+    const id = attribute(child, "id")?.value;
+    if (id !== undefined) {
+      state.idCounts.set(id, (state.idCounts.get(id) ?? 0) + 1);
     }
     for (const candidate of child.attrs) {
       const name = candidate.name.toLowerCase();
@@ -617,6 +630,17 @@ function validateFinalDom(parent: ParentNode): Result<void> {
         if (!isSafeNavigationUrl(candidate.value)) {
           return unsafeHtml("report HTML contains an unsafe navigation URL");
         }
+        const trimmed = candidate.value.trim();
+        if (trimmed.startsWith("#")) {
+          try {
+            state.fragmentTargets.push(decodeURIComponent(trimmed.slice(1)));
+          } catch (cause) {
+            return unsafeHtml(
+              "report HTML contains an invalid internal fragment",
+              cause,
+            );
+          }
+        }
       } else if (
         !allowedDataAssetAttributes.get(tagName)?.has(name) ||
         !isDataUrl(candidate.value)
@@ -624,12 +648,12 @@ function validateFinalDom(parent: ParentNode): Result<void> {
         return unsafeHtml("report HTML contains an external asset reference");
       }
     }
-    const childValidation = validateFinalDom(child);
+    const childValidation = validateFinalDomInto(child, state);
     if (!childValidation.ok) {
       return childValidation;
     }
     if (isTemplate(child)) {
-      const templateValidation = validateFinalDom(child.content);
+      const templateValidation = validateFinalDomInto(child.content, state);
       if (!templateValidation.ok) {
         return templateValidation;
       }
@@ -722,29 +746,6 @@ function isContained(base: string, candidate: string): boolean {
   return (
     path === "" ||
     (!path.startsWith(".." + sep) && path !== ".." && !isAbsolute(path))
-  );
-}
-
-function startsWith(bytes: Uint8Array, signature: readonly number[]): boolean {
-  return signature.every((byte, index) => bytes[index] === byte);
-}
-
-function ascii(bytes: Uint8Array, offset: number, length: number): string {
-  if (offset + length > bytes.byteLength) {
-    return "";
-  }
-  return String.fromCharCode(...bytes.subarray(offset, offset + length));
-}
-
-function readBigEndianUint32(bytes: Uint8Array, offset: number): number {
-  if (offset + 4 > bytes.byteLength) {
-    return 0;
-  }
-  return (
-    (bytes[offset]! * 0x1000000) +
-    (bytes[offset + 1]! << 16) +
-    (bytes[offset + 2]! << 8) +
-    bytes[offset + 3]!
   );
 }
 
