@@ -206,6 +206,90 @@ expect_claude_attach_failure(function()
 	}
 end, "missing active Claude buffer")
 
+local function expect_stale_claude_callback_is_ignored(preload, reason)
+	local previous_terminal = package.loaded["claudecode.terminal"]
+	local previous_preload = package.preload["claudecode.terminal"]
+	local callbacks = {}
+	local notifications = {}
+	local restored = 0
+	local shared_dock = require("user.dock").new()
+	local codex = {
+		buf = 202,
+		live = true,
+		show = function() end,
+		focus = function() end,
+		hide = function() end,
+	}
+	package.loaded["claudecode.terminal"] = nil
+	package.preload["claudecode.terminal"] = preload
+
+	local adapter = {
+		provider = function()
+			return "codex"
+		end,
+		root = function()
+			return "/repo"
+		end,
+		select_provider = function() end,
+		ensure_explorer = function() end,
+		prepare_dock = function(name)
+			shared_dock:prepare(name)
+		end,
+		activate_dock = function(name, handle)
+			shared_dock:activate(name, handle)
+		end,
+		deactivate_dock = function(name, handle)
+			shared_dock:deactivate(name, handle)
+		end,
+		restore_dock = function()
+			restored = restored + 1
+		end,
+		command = function() end,
+		schedule = function(callback)
+			callbacks[#callbacks + 1] = callback
+		end,
+		terminal_get = function(_, opts)
+			if opts.create == false then
+				return nil
+			end
+			return codex
+		end,
+		terminal_live = function()
+			return true
+		end,
+		terminal_visible = function()
+			return false
+		end,
+		attach_terminal = function() end,
+		notify = function(message)
+			notifications[#notifications + 1] = message
+		end,
+	}
+
+	ai.switch_provider(adapter)
+	t.eq(1, #callbacks, reason .. " must schedule Claude attach")
+	ai.toggle(adapter)
+	t.eq(codex, shared_dock.active.handle, reason .. " must activate Codex before old Claude callback")
+	callbacks[1]()
+
+	package.loaded["claudecode.terminal"] = previous_terminal
+	package.preload["claudecode.terminal"] = previous_preload
+	t.eq(codex, shared_dock.active.handle, reason .. " must not replace current Codex")
+	t.eq(0, restored, reason .. " must not restore LazyGit")
+	t.eq(0, #notifications, reason .. " must not notify")
+end
+
+expect_stale_claude_callback_is_ignored(function()
+	return {
+		get_active_terminal_bufnr = function()
+			return vim.api.nvim_create_buf(false, true)
+		end,
+	}
+end, "stale successful Claude callback")
+expect_stale_claude_callback_is_ignored(function()
+	error("terminal module failed")
+end, "stale failed Claude callback")
+
 local original_create_autocmd = vim.api.nvim_create_autocmd
 local registered_cleanup_events
 local cleanup_callbacks = {}

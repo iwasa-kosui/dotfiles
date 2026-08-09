@@ -4,6 +4,16 @@ local providers = { claude = true, codex = true }
 local default_provider = "claude"
 local codex_commands = {}
 local claude_handles = {}
+local claude_request_generation = 0
+
+local function invalidate_claude_request()
+  claude_request_generation = claude_request_generation + 1
+  return claude_request_generation
+end
+
+local function is_current_claude_request(generation)
+  return generation == claude_request_generation
+end
 
 ---@class AiContext
 ---@field path string
@@ -197,6 +207,7 @@ end
 
 function M.on_hidden(provider, target, adapter)
   local runtime = api(adapter)
+  invalidate_claude_request()
   local handle = provider == "claude" and claude_handles[target] or target
   if handle then
     runtime.deactivate_dock(provider, handle)
@@ -226,9 +237,15 @@ local function attach_claude(adapter)
   return true
 end
 
-local function attach_scheduled_claude(runtime)
+local function attach_scheduled_claude(runtime, generation)
   runtime.schedule(function()
+    if not is_current_claude_request(generation) then
+      return
+    end
     local attached, err = attach_claude(runtime)
+    if not is_current_claude_request(generation) then
+      return
+    end
     if not attached then
       runtime.notify(err)
       runtime.restore_dock()
@@ -242,6 +259,7 @@ end
 
 local function show_codex(cwd, adapter)
   local runtime = api(adapter)
+  invalidate_claude_request()
   runtime.ensure_explorer()
   runtime.prepare_dock("codex")
   local command = codex_command(cwd)
@@ -285,6 +303,7 @@ end
 
 local function show_claude(adapter)
   local runtime = api(adapter)
+  local generation = invalidate_claude_request()
   runtime.ensure_explorer()
   runtime.prepare_dock("claude")
   local ok, err = pcall(runtime.command, "ClaudeCodeFocus")
@@ -293,7 +312,7 @@ local function show_claude(adapter)
     runtime.restore_dock()
     return
   end
-  attach_scheduled_claude(runtime)
+  attach_scheduled_claude(runtime, generation)
 end
 
 local function show_provider(provider, adapter)
@@ -318,6 +337,7 @@ function M.toggle(adapter)
     end
     if runtime.terminal_visible(terminal) then
       terminal:hide()
+      invalidate_claude_request()
       runtime.deactivate_dock("codex", terminal)
       return
     end
@@ -343,6 +363,7 @@ function M.resume(adapter)
     return M.resume_codex(runtime)
   end
   runtime.ensure_explorer()
+  local generation = invalidate_claude_request()
   runtime.prepare_dock("claude")
   local ok, err = pcall(runtime.command, "ClaudeCode --resume")
   if not ok then
@@ -350,7 +371,7 @@ function M.resume(adapter)
     runtime.restore_dock()
     return
   end
-  attach_scheduled_claude(runtime)
+  attach_scheduled_claude(runtime, generation)
 end
 
 local function send_to_codex(context, adapter)
