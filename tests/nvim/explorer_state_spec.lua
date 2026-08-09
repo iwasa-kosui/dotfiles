@@ -23,11 +23,13 @@ t.eq({ "/repo/lua", "/repo/lua/nested" }, state.load("/repo", adapter))
 t.eq({}, state.load("/other", adapter), "expansion state must be keyed by worktree root")
 
 local opened = {}
-state.restore("/repo", {
+local tree = {
 	open = function(_, path)
 		opened[#opened + 1] = path
 	end,
-}, adapter)
+}
+state.restore_once("/repo-link", tree, adapter)
+state.restore_once("/repo", tree, adapter)
 t.eq({ "/repo/lua", "/repo/lua/nested" }, opened)
 
 vim.fn.delete(state_dir, "rf")

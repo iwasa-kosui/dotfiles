@@ -99,6 +99,62 @@ t.truthy(first ~= second, "a second resume after process exit must create a new 
 t.eq(2, created)
 t.eq(1, discarded)
 
+local transition_dock = require("user.dock").new()
+local transition_terminals = {}
+local transition_created = 0
+local transition_adapter = {
+	root = function()
+		return "/repo/.wt/live-transition"
+	end,
+	provider = function()
+		return "codex"
+	end,
+	select_provider = function() end,
+	ensure_explorer = function() end,
+	prepare_dock = function(name)
+		transition_dock:prepare(name)
+	end,
+	activate_dock = function(name, terminal)
+		transition_dock:activate(name, terminal)
+	end,
+	terminal_get = function(command, opts)
+		local key = table.concat(command, " ")
+		local terminal = transition_terminals[key]
+		if not terminal and opts.create ~= false then
+			transition_created = transition_created + 1
+			terminal = {
+				buf = transition_created,
+				live = true,
+				hidden = 0,
+				show = function() end,
+				focus = function() end,
+				hide = function(self)
+					self.hidden = self.hidden + 1
+				end,
+			}
+			transition_terminals[key] = terminal
+		end
+		return terminal
+	end,
+	terminal_live = function(terminal)
+		return terminal.live
+	end,
+	discard_terminal = function() end,
+	attach_terminal = function() end,
+	notify = function(message)
+		error(message)
+	end,
+}
+
+ai.toggle(transition_adapter)
+local normal = transition_terminals["codex -C /repo/.wt/live-transition"]
+t.truthy(normal and normal.live, "the live normal Codex terminal must be active before resume")
+local resumed = ai.resume_codex(transition_adapter)
+t.truthy(resumed and resumed ~= normal, "resume must create a distinct command terminal")
+t.eq(1, normal.hidden, "resume must hide the live normal Codex terminal")
+t.eq(0, resumed.hidden, "the resumed Codex terminal must remain visible")
+t.eq(resumed, transition_dock.active.handle, "only the resumed terminal may remain active")
+
 local commands = {}
 local sent_contexts = {}
 local send_adapter = {

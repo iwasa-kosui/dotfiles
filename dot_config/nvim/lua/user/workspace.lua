@@ -31,7 +31,10 @@ local function defaults(adapter)
       end,
       restore_explorer = function(cwd)
         local state = require("user.explorer_state")
-        state.restore(cwd, require("snacks.explorer.tree"))
+        state.restore_once(cwd, require("snacks.explorer.tree"))
+      end,
+      track_explorer = function(cwd)
+        local state = require("user.explorer_state")
         state.track(cwd)
       end,
     },
@@ -42,9 +45,10 @@ function M.ensure_explorer(opts, adapter)
   opts = opts or {}
   local api = defaults(adapter)
   local cwd = api.root()
+  api.track_explorer(cwd)
+  api.restore_explorer(cwd)
   local picker = api.explorers()[1]
   if not picker then
-    api.restore_explorer(cwd)
     picker = api.open_explorer({ cwd = cwd, focus = false, enter = false })
   end
   api.refresh_base_diff(cwd)

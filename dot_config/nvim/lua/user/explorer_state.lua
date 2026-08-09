@@ -1,6 +1,7 @@
 local M = {}
 
 local tracked = {}
+local restored = {}
 
 local function default_path()
   return vim.fn.stdpath("state") .. "/explorer-state.json"
@@ -91,8 +92,19 @@ function M.restore(root, tree, adapter)
   end
 end
 
-function M.track(root)
-  tracked[root] = true
+function M.restore_once(root, tree, adapter)
+  adapter = adapter or {}
+  root = normalize(root, adapter)
+  if restored[root] then
+    return false
+  end
+  M.restore(root, tree, adapter)
+  restored[root] = true
+  return true
+end
+
+function M.track(root, adapter)
+  tracked[normalize(root, adapter or {})] = true
 end
 
 vim.api.nvim_create_autocmd("VimLeavePre", {

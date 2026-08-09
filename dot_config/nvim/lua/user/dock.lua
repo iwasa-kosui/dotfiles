@@ -15,6 +15,10 @@ function Controller:prepare(name)
 end
 
 function Controller:activate(name, handle)
+  if self.active and self.active.handle ~= handle then
+    hide(self.active.handle)
+    self.active = nil
+  end
   self:prepare(name)
   self.active = { name = name, handle = handle }
   return handle
