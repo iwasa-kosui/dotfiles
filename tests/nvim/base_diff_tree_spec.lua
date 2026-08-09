@@ -53,3 +53,95 @@ local stale = tree.render(snapshot, {
 	open_dirs = {},
 }, "refresh failed")
 t.eq("⌄ BASE CHANGES · main · 4 !", stale.lines[1])
+
+local saved
+local created = 0
+local heights = {}
+local opened
+local fake_view = {
+	open = function(_, snapshot_value, change, target)
+		opened = { snapshot = snapshot_value, change = change, target = target }
+	end,
+}
+local adapter
+adapter = {
+	load_state = function()
+		return { collapsed = false, height = 10, open_dirs = { "lua", "lua/user" } }
+	end,
+	save_state = function(_, value)
+		saved = vim.deepcopy(value)
+	end,
+	create_panel = function(_, _, height)
+		created = created + 1
+		heights[#heights + 1] = height
+		return 31, 41
+	end,
+	valid_win = function(win)
+		return win == 31
+	end,
+	available_height = function()
+		return 24
+	end,
+	set_height = function(_, height)
+		heights[#heights + 1] = height
+	end,
+	render_buffer = function(_, value)
+		adapter.last_render = value
+	end,
+	set_keymaps = function() end,
+	close_win = function() end,
+	current_diff = function()
+		return nil, nil
+	end,
+	subscribe_diff = function()
+		return function() end
+	end,
+	refresh_diff = function() end,
+	open_file = function(path, target, callback)
+		adapter.opened_file = { path = path, target = target }
+		callback(true)
+	end,
+	notify = function(message)
+		adapter.notification = message
+	end,
+	view = fake_view,
+}
+
+local controller = tree.new(adapter)
+controller:ensure({
+	cwd = "/repo",
+	explorer_win = 30,
+	editor_win = function()
+		return 50
+	end,
+})
+controller:ensure({
+	cwd = "/repo",
+	explorer_win = 30,
+	editor_win = function()
+		return 50
+	end,
+})
+t.eq(1, created, "ensure must reuse the existing panel")
+
+controller:update(snapshot)
+controller:activate(1, "default")
+t.eq(true, saved.collapsed)
+t.eq(1, heights[#heights])
+controller:activate(1, "default")
+t.eq(false, saved.collapsed)
+t.eq(10, heights[#heights])
+
+controller:activate(5, "default")
+t.eq("lua/user/base_diff.lua", opened.change.path)
+t.eq(50, opened.target)
+
+controller:activate(5, "open")
+t.eq({ path = "/repo/lua/user/base_diff.lua", target = 50 }, adapter.opened_file)
+
+controller:activate(4, "default")
+t.eq({ "lua" }, saved.open_dirs)
+
+controller:activate(2, "default")
+controller:activate(3, "open")
+t.eq("Deleted file can only be opened as a diff", adapter.notification)
