@@ -58,6 +58,8 @@ local saved
 local created = 0
 local heights = {}
 local opened
+local subscriber
+local render_count = 0
 local fake_view = {
 	open = function(_, snapshot_value, change, target)
 		opened = { snapshot = snapshot_value, change = change, target = target }
@@ -86,6 +88,7 @@ adapter = {
 		heights[#heights + 1] = height
 	end,
 	render_buffer = function(_, value)
+		render_count = render_count + 1
 		adapter.last_render = value
 	end,
 	set_keymaps = function() end,
@@ -93,7 +96,8 @@ adapter = {
 	current_diff = function()
 		return nil, nil
 	end,
-	subscribe_diff = function()
+	subscribe_diff = function(_, callback)
+		subscriber = callback
 		return function() end
 	end,
 	refresh_diff = function() end,
@@ -124,6 +128,11 @@ controller:ensure({
 })
 t.eq(1, created, "ensure must reuse the existing panel")
 
+controller:activate(1, "default")
+t.eq({ "lua", "lua/user" }, saved.open_dirs, "collapse before the first snapshot must preserve open directories")
+controller:activate(1, "default")
+t.eq({ "lua", "lua/user" }, saved.open_dirs, "expand before the first snapshot must preserve open directories")
+
 controller:update(snapshot)
 controller:activate(1, "default")
 t.eq(true, saved.collapsed)
@@ -145,3 +154,8 @@ t.eq({ "lua" }, saved.open_dirs)
 controller:activate(2, "default")
 controller:activate(3, "open")
 t.eq("Deleted file can only be opened as a diff", adapter.notification)
+
+local render_count_before_close = render_count
+controller:close()
+subscriber(snapshot, nil)
+t.eq(render_count_before_close, render_count, "a queued subscriber callback after close must be a no-op")

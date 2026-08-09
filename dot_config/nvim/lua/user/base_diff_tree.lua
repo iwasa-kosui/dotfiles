@@ -393,7 +393,12 @@ function Controller:ensure(opts)
   self.expanded_height = self.state.height or math.max(4, math.floor(available_height / 2))
   local height = self.state.collapsed and 1 or self.expanded_height
   self.panel_win, self.buf = self.adapter.create_panel(self.explorer_win, self.cwd, height)
+  self._subscription_generation = (self._subscription_generation or 0) + 1
+  local subscription_generation = self._subscription_generation
   self.unsubscribe = self.adapter.subscribe_diff(self.cwd, function(snapshot, error)
+    if self._subscription_generation ~= subscription_generation then
+      return
+    end
     self:update(snapshot, error)
   end)
   local snapshot, error = self.adapter.current_diff(self.cwd)
@@ -459,13 +464,16 @@ function Controller:activate(line, action)
   if not state_changed then
     return
   end
-  self.state.open_dirs = filter_open_dirs(self.state.open_dirs, self.rendered.valid_open_dirs)
+  if self.snapshot then
+    self.state.open_dirs = filter_open_dirs(self.state.open_dirs, self.rendered.valid_open_dirs)
+  end
   self.adapter.save_state(self.cwd, self.state)
   self.adapter.set_height(self.panel_win, self.state.collapsed and 1 or self.state.height or self.expanded_height)
   self:update(self.snapshot, self.error)
 end
 
 function Controller:close()
+  self._subscription_generation = (self._subscription_generation or 0) + 1
   if self.unsubscribe then
     self.unsubscribe()
     self.unsubscribe = nil
