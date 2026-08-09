@@ -276,7 +276,7 @@ function validateTimeline(
   if (!["default", "fill", "stroke", "icons"].includes(theme)) {
     return issue("Timeline.theme must be default, fill, stroke, or icons", node);
   }
-  const children = nonWhitespaceChildren(node);
+  const children = containerChildren(node);
   if (
     children.length < 2 ||
     children.some((child) => !isNamedComponent(child, "TimelineItem"))
@@ -323,7 +323,7 @@ function validateTabs(
   if (context.tabsDepth > 0) {
     return issue("Tabs must not be nested", node);
   }
-  const children = nonWhitespaceChildren(node);
+  const children = containerChildren(node);
   if (
     children.length < 2 ||
     children.length > 10 ||
@@ -394,6 +394,12 @@ function validateTab(
 function nonWhitespaceChildren(node: TreeNode): readonly TreeNode[] {
   return (node.children ?? []).filter(
     (child) => child.type !== "text" || (child.value ?? "").trim() !== "",
+  );
+}
+
+function containerChildren(node: TreeNode): readonly TreeNode[] {
+  return nonWhitespaceChildren(node).flatMap((child) =>
+    child.type === "paragraph" ? nonWhitespaceChildren(child) : [child],
   );
 }
 

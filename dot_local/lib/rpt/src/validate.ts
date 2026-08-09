@@ -365,9 +365,14 @@ function validateNode(
         : undefined;
 
   for (const child of node.children ?? []) {
+    const childParent =
+      node.type === "paragraph" &&
+      (parent?.name === "Tabs" || parent?.name === "Timeline")
+        ? parent
+        : node;
     const childValidation = validateNode(
       child,
-      node,
+      childParent,
       childSafeHtmlParent,
       nextSectionDepth,
       nextTabsDepth,

@@ -1,8 +1,15 @@
 ---
+import Badge from "../components/Badge.astro";
 import Callout from "../components/Callout.astro";
 import Evidence from "../components/Evidence.astro";
+import Icon from "../components/Icon.astro";
 import Metric from "../components/Metric.astro";
 import Section from "../components/Section.astro";
+import Status from "../components/Status.astro";
+import Tab from "../components/Tab.astro";
+import Tabs from "../components/Tabs.astro";
+import Timeline from "../components/Timeline.astro";
+import TimelineItem from "../components/TimelineItem.astro";
 import reportData from "../content/report-data.json";
 import { Content } from "../content/report.mdx";
 import ReportLayout from "../layouts/ReportLayout.astro";
@@ -13,5 +20,19 @@ import ReportLayout from "../layouts/ReportLayout.astro";
   outline={reportData.outline}
   mainContentId={reportData.mainContentId}
 >
-  <Content components={{ Callout, Evidence, Metric, Section }} />
+  <Content
+    components={{
+      Badge,
+      Callout,
+      Evidence,
+      Icon,
+      Metric,
+      Section,
+      Status,
+      Tab,
+      Tabs,
+      Timeline,
+      TimelineItem,
+    }}
+  />
 </ReportLayout>

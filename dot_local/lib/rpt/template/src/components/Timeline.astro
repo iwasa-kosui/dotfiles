@@ -1,0 +1,15 @@
+---
+import WebcoreTimeline from "@webcoreui/components/Timeline/Timeline.astro";
+
+type Theme = "default" | "fill" | "stroke" | "icons";
+
+const { theme = "default" } = Astro.props as { theme?: Theme };
+---
+
+<div data-rpt-component="timeline" data-theme={theme}>
+  {theme === "default" ? (
+    <WebcoreTimeline className="rpt-timeline"><slot /></WebcoreTimeline>
+  ) : (
+    <WebcoreTimeline className="rpt-timeline" theme={theme}><slot /></WebcoreTimeline>
+  )}
+</div>

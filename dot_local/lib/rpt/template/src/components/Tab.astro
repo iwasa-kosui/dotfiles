@@ -1,0 +1,27 @@
+---
+const { label, group, controlId, labelId, panelId, checked } = Astro.props as {
+  label: string;
+  group: string;
+  controlId: string;
+  labelId: string;
+  panelId: string;
+  checked: string;
+};
+---
+
+<input
+  class="rpt-tab-control"
+  type="radio"
+  name={group}
+  id={controlId}
+  checked={checked === "true"}
+  aria-controls={panelId}
+/>
+<label class="rpt-tab-label" id={labelId} for={controlId}>{label}</label>
+<section
+  class="rpt-tab-panel"
+  data-rpt-component="tab"
+  data-label={label}
+  id={panelId}
+  aria-labelledby={labelId}
+><slot /></section>

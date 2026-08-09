@@ -1,0 +1,10 @@
+---
+type Tone = "neutral" | "info" | "success" | "warning" | "danger";
+
+const { tone } = Astro.props as { tone: Tone };
+---
+
+<span class="rpt-status" data-rpt-component="status" data-tone={tone}>
+  <span class="rpt-status-dot" aria-hidden="true"></span>
+  <slot />
+</span>

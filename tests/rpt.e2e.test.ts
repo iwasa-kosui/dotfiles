@@ -526,6 +526,164 @@ test("Tabs receive unique internal radio props in validated source", () => {
   );
 });
 
+test("Tabs and Timeline ignore whitespace-only direct children", () => {
+  const result = validateReport({
+    source: `---
+title: X
+---
+<Timeline theme="icons">
+  <TimelineItem title="調査" icon="search">要件を確認します。</TimelineItem>
+  <TimelineItem title="実装" icon="check">機能を追加します。</TimelineItem>
+</Timeline>
+<Tabs>
+  <Tab label="概要" active="true">概要本文</Tab>
+  <Tab label="詳細">詳細本文</Tab>
+</Tabs>`,
+    baseDirectory: repositoryRoot,
+  });
+
+  expect(result.ok).toBe(true);
+});
+
+test("rich components render static accessible markup without scripts", async () => {
+  const testCase = await createCase(`---
+title: Rich components
+---
+
+<Badge tone="success">承認済み</Badge>
+<Status tone="warning">確認待ち</Status>
+<Icon name="circle-check" label="完了" size="20" />
+<Icon name="info" />
+<Timeline theme="icons">
+  <TimelineItem title="調査" icon="search">要件を確認します。</TimelineItem>
+  <TimelineItem title="実装" icon="check">機能を追加します。</TimelineItem>
+</Timeline>
+<Tabs>
+  <Tab label="概要" active="true">概要本文</Tab>
+  <Tab label="詳細">詳細本文</Tab>
+</Tabs>`);
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    const html = await Bun.file(testCase.output).text();
+    const document = parse(html);
+    const components = collectElements(document).filter((element) =>
+      element.attrs.some((attribute) => attribute.name === "data-rpt-component"),
+    );
+    for (const component of [
+      "badge",
+      "status",
+      "icon",
+      "timeline",
+      "timeline-item",
+      "tabs",
+      "tab",
+    ]) {
+      expect(
+        components.some(
+          (element) => attributeValue(element, "data-rpt-component") === component,
+        ),
+      ).toBe(true);
+    }
+    expect(
+      components.some(
+        (element) =>
+          attributeValue(element, "data-rpt-component") === "badge" &&
+          attributeValue(element, "data-tone") === "success",
+      ),
+    ).toBe(true);
+    expect(
+      components.some(
+        (element) =>
+          attributeValue(element, "data-rpt-component") === "status" &&
+          attributeValue(element, "data-tone") === "warning",
+      ),
+    ).toBe(true);
+
+    expect(
+      components.some(
+        (element) =>
+          attributeValue(element, "data-rpt-component") === "icon" &&
+          hasAttribute(element, "role", "img") &&
+          hasAttribute(element, "aria-label", "完了"),
+      ),
+    ).toBe(true);
+    expect(
+      components.some(
+        (element) =>
+          attributeValue(element, "data-rpt-component") === "icon" &&
+          hasAttribute(element, "aria-hidden", "true"),
+      ),
+    ).toBe(true);
+
+    const timeline = components.find(
+      (element) => attributeValue(element, "data-rpt-component") === "timeline",
+    );
+    expect(timeline).toBeDefined();
+    if (timeline === undefined) {
+      return;
+    }
+    const timelineList = findElement(
+      timeline,
+      (element) => element.tagName === "ul",
+    );
+    expect(timelineList).toBeDefined();
+    expect(
+      collectElements(timelineList!).filter((element) => element.tagName === "li"),
+    ).toHaveLength(2);
+
+    const controls = collectElements(document).filter(
+      (element) =>
+        element.tagName === "input" &&
+        hasClass(element, "rpt-tab-control") &&
+        hasAttribute(element, "type", "radio"),
+    );
+    expect(controls).toHaveLength(2);
+    expect(attributeValue(controls[0]!, "name")).toBe(attributeValue(controls[1]!, "name"));
+    expect(controls.filter((control) => hasAttribute(control, "checked", ""))).toHaveLength(1);
+    for (const control of controls) {
+      const controlId = attributeValue(control, "id");
+      const panelId = attributeValue(control, "aria-controls");
+      expect(controlId).toBeDefined();
+      expect(panelId).toBeDefined();
+      const label = findElement(
+        document,
+        (element) =>
+          element.tagName === "label" &&
+          hasClass(element, "rpt-tab-label") &&
+          hasAttribute(element, "for", controlId!),
+      );
+      expect(label).toBeDefined();
+      expect(
+        findElement(
+          document,
+          (element) =>
+            element.tagName === "section" &&
+            hasClass(element, "rpt-tab-panel") &&
+            hasAttribute(element, "id", panelId!) &&
+            hasAttribute(element, "aria-labelledby", attributeValue(label!, "id")!),
+        ),
+      ).toBeDefined();
+    }
+    const panels = collectElements(document).filter(
+      (element) =>
+        element.tagName === "section" && hasClass(element, "rpt-tab-panel"),
+    );
+    expect(panels.map((panel) => attributeValue(panel, "data-label"))).toEqual([
+      "概要",
+      "詳細",
+    ]);
+    expect(html).toMatch(
+      /@media\s*print\s*\{[\s\S]*?\.rpt-tab-panel\s*\{\s*display:\s*block/,
+    );
+    expect(collectElements(document).filter((element) => element.tagName === "script")).toHaveLength(0);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
 const rejectedRasterDataUrls = [
   [
     "SVG",

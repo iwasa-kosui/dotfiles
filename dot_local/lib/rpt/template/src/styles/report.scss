@@ -100,6 +100,85 @@
   margin-inline: 0;
 }
 
+.rpt-status {
+  display: inline-flex;
+  gap: 0.375rem;
+  align-items: center;
+}
+
+.rpt-status-dot {
+  inline-size: 0.625rem;
+  block-size: 0.625rem;
+  border-radius: 50%;
+  background-color: var(--w-color-secondary);
+}
+
+.rpt-status[data-tone="info"] .rpt-status-dot {
+  background-color: var(--w-color-info);
+}
+
+.rpt-status[data-tone="success"] .rpt-status-dot {
+  background-color: var(--w-color-success);
+}
+
+.rpt-status[data-tone="warning"] .rpt-status-dot {
+  background-color: var(--w-color-warning);
+}
+
+.rpt-status[data-tone="danger"] .rpt-status-dot {
+  background-color: var(--w-color-alert);
+}
+
+.rpt-timeline {
+  margin-block: 0;
+}
+
+.rpt-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.rpt-tab-control {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+.rpt-tab-label {
+  order: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--w-color-secondary);
+  border-radius: 0.25rem 0.25rem 0 0;
+  cursor: pointer;
+}
+
+.rpt-tab-control:checked + .rpt-tab-label {
+  border-color: var(--w-color-info);
+  background-color: var(--w-color-info);
+  color: var(--w-color-on-info, white);
+}
+
+.rpt-tab-control:focus-visible + .rpt-tab-label {
+  outline: 0.1875rem solid var(--w-color-info);
+  outline-offset: 0.1875rem;
+}
+
+.rpt-tab-panel {
+  display: none;
+  order: 2;
+  width: 100%;
+  padding: 1rem;
+  border: 1px solid var(--w-color-secondary);
+}
+
+.rpt-tab-control:checked + .rpt-tab-label + .rpt-tab-panel {
+  display: block;
+}
+
 .rpt-skip-link:not(:focus) {
   position: absolute;
   inline-size: 1px;
@@ -131,5 +210,23 @@
 
   .rpt-grid {
     display: block;
+  }
+
+  .rpt-tab-control,
+  .rpt-tab-label {
+    display: none;
+  }
+
+  .rpt-tab-panel {
+    display: block;
+    padding: 0;
+    border: 0;
+  }
+
+  .rpt-tab-panel::before {
+    display: block;
+    margin-block: 1rem 0.5rem;
+    font-weight: 700;
+    content: attr(data-label);
   }
 }
