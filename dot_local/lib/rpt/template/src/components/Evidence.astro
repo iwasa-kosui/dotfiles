@@ -1,0 +1,15 @@
+---
+import Card from "@webcoreui/components/Card/Card.astro";
+
+const { title, source } = Astro.props as { title: string; source: string };
+---
+
+<div data-rpt-component="evidence">
+  <Card flat>
+    <figure class="rpt-evidence">
+      <figcaption>{title}</figcaption>
+      <blockquote><slot /></blockquote>
+      <a href={source} rel="noreferrer">出典を開く</a>
+    </figure>
+  </Card>
+</div>

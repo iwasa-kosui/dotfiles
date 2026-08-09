@@ -1,0 +1,9 @@
+{
+  "extends": "astro/tsconfigs/strict",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@webcoreui/*": ["../node_modules/webcoreui/*"]
+    }
+  }
+}

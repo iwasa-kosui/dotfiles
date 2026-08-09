@@ -1,0 +1,14 @@
+---
+import Card from "@webcoreui/components/Card/Card.astro";
+
+const { label, value } = Astro.props as { label: string; value: string };
+---
+
+<div data-rpt-component="metric">
+  <Card compact flat>
+    <dl class="rpt-metric">
+      <dt>{label}</dt>
+      <dd>{value}</dd>
+    </dl>
+  </Card>
+</div>

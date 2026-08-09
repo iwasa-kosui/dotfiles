@@ -1,0 +1,76 @@
+---
+import Badge from "@webcoreui/components/Badge/Badge.astro";
+import "../styles/report.scss";
+
+type Metadata = {
+  title: string;
+  summary?: string;
+  author?: string;
+  createdAt?: string;
+  status?: "draft" | "final" | "archived";
+  tags?: string[];
+};
+
+type OutlineItem = {
+  depth: 2 | 3;
+  text: string;
+  slug: string;
+};
+
+const { metadata, outline, mainContentId } = Astro.props as {
+  metadata: Metadata;
+  outline: OutlineItem[];
+  mainContentId: string;
+};
+
+const statusTheme = {
+  draft: "warning",
+  final: "success",
+  archived: "secondary",
+} as const;
+---
+
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{metadata.title}</title>
+  </head>
+  <body>
+    <a class="rpt-skip-link" href={`#${mainContentId}`}>本文へ移動</a>
+    <div class="rpt-shell">
+      <header class="rpt-header">
+        <h1>{metadata.title}</h1>
+        {metadata.summary !== undefined && <p>{metadata.summary}</p>}
+        <div class="rpt-metadata">
+          {metadata.author !== undefined && <span>{metadata.author}</span>}
+          {metadata.createdAt !== undefined && <time datetime={metadata.createdAt}>{metadata.createdAt}</time>}
+          {metadata.status !== undefined && <Badge theme={statusTheme[metadata.status]}>{metadata.status}</Badge>}
+        </div>
+        {metadata.tags !== undefined && (
+          <ul class="rpt-tags" aria-label="タグ">
+            {metadata.tags.map((tag) => <li>{tag}</li>)}
+          </ul>
+        )}
+      </header>
+      <div class="rpt-grid">
+        <nav class="rpt-toc" aria-label="目次">
+          <details class="rpt-toc-details" open>
+            <summary>目次</summary>
+            <ol>
+              {outline.map((item) => (
+                <li class:list={{ "rpt-toc-subitem": item.depth === 3 }}>
+                  <a href={`#${item.slug}`}>{item.text}</a>
+                </li>
+              ))}
+            </ol>
+          </details>
+        </nav>
+        <main id={mainContentId}>
+          <article class="rpt-article"><slot /></article>
+        </main>
+      </div>
+    </div>
+  </body>
+</html>
