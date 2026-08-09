@@ -1,0 +1,28 @@
+#!/usr/bin/env bun
+
+import { realpath } from "node:fs/promises";
+import {
+  buildRemoteCommand,
+  parseBridgeArgs,
+} from "../lib/nvim-pr-review-bridge";
+
+const usage = "usage: nvim-pr-review open <branch>\n";
+const parsed = parseBridgeArgs(process.argv.slice(2));
+if (!parsed) {
+  process.stderr.write(usage);
+  process.exit(2);
+}
+
+const server = process.env.NVIM;
+if (!server) {
+  process.stderr.write("nvim-pr-review: NVIM server is not available\n");
+  process.exit(1);
+}
+
+const cwd = await realpath(process.cwd()).catch(() => process.cwd());
+const child = Bun.spawn(buildRemoteCommand(server, cwd, parsed.branch), {
+  stdin: "ignore",
+  stdout: "ignore",
+  stderr: "inherit",
+});
+process.exitCode = await child.exited;

@@ -1,0 +1,24 @@
+gui:
+  sidePanels:
+    - [status]
+    - [files, submodules]
+    - [worktrees, branches, remotes, tags]
+    - [commits, reflog]
+    - [stash]
+
+customCommands:
+  - key: <f12>
+    context: worktrees
+    description: Open selected worktree PR in Neovim
+    command: "nvim-pr-review open {{.SelectedWorktree.Branch | quote}}"
+    output: none
+  - key: <f12>
+    context: localBranches
+    description: Open selected branch PR in Neovim
+    command: "nvim-pr-review open {{.SelectedLocalBranch.Name | quote}}"
+    output: none
+  - key: <f12>
+    context: "status, files, submodules, remotes, remoteBranches, tags, commits, reflogCommits, subCommits, commitFiles, stash"
+    description: Open checked out branch PR in Neovim
+    command: "nvim-pr-review open {{.CheckedOutBranch.Name | quote}}"
+    output: none
