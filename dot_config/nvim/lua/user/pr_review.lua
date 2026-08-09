@@ -60,9 +60,53 @@ local function defaults(adapter)
       current_tab = vim.api.nvim_get_current_tabpage,
       buffer_valid = vim.api.nvim_buf_is_valid,
       tab_valid = vim.api.nvim_tabpage_is_valid,
+      close_tab = function(tab)
+        vim.cmd.tabclose(vim.api.nvim_tabpage_get_number(tab))
+      end,
       buffer_filetype = function(buffer)
         return vim.bo[buffer].filetype
       end,
+      capture_buffers = function()
+        local captured = {}
+        for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
+          if vim.api.nvim_buf_is_valid(buffer) then
+            captured[buffer] = {
+              name = vim.api.nvim_buf_get_name(buffer),
+              filetype = vim.bo[buffer].filetype,
+            }
+          end
+        end
+        return captured
+      end,
+      find_surfaces = function(kind, baseline)
+        local surfaces = {}
+        for _, buffer in ipairs(vim.api.nvim_list_bufs()) do
+          if vim.api.nvim_buf_is_valid(buffer) then
+            local name = vim.api.nvim_buf_get_name(buffer)
+            local filetype = vim.bo[buffer].filetype
+            local previous = baseline[buffer]
+            local changed = not previous or previous.name ~= name or previous.filetype ~= filetype
+            local is_open = kind == "open" and name:match("^octo://")
+            local is_list = kind == "list"
+              and (
+                filetype == "TelescopePrompt"
+                or filetype == "snacks_picker_input"
+                or filetype == "snacks_picker_list"
+              )
+            if changed and (is_open or is_list) then
+              surfaces[#surfaces + 1] = buffer
+            end
+          end
+        end
+        return surfaces
+      end,
+      surface_ready = function(buffer, kind)
+        if kind == "list" then
+          return true
+        end
+        return (_G.octo_buffers and _G.octo_buffers[buffer] ~= nil) or vim.bo[buffer].filetype == "octo"
+      end,
+      max_surface_checks = 200,
       delete_buffer = function(buffer)
         vim.api.nvim_buf_delete(buffer, { force = true })
       end,
@@ -166,6 +210,60 @@ local function track_buffer(buffer, entries, runtime, generation)
     end
     schedule_surface_check(runtime, generation)
   end)
+end
+
+local function observe_surface(runtime, generation, kind, baseline)
+  if runtime.observe_surface then
+    runtime.observe_surface(generation, kind, baseline)
+    return
+  end
+
+  local attempts = 0
+  local function check()
+    if not session or session.generation ~= generation then
+      return
+    end
+
+    local surfaces = runtime.find_surfaces(kind, baseline)
+    local found = false
+    local ready = false
+    local entries = kind == "open" and octo_buffers or picker_buffers
+    for _, buffer in ipairs(surfaces) do
+      if runtime.buffer_valid(buffer) then
+        found = true
+        track_buffer(buffer, entries, runtime, generation)
+        ready = ready or runtime.surface_ready(buffer, kind)
+      end
+    end
+    if found and (kind == "list" or ready) then
+      return
+    end
+
+    attempts = attempts + 1
+    if attempts < runtime.max_surface_checks then
+      runtime.defer(check, 50)
+      return
+    end
+
+    if kind == "open" and found then
+      runtime.notify("OctoのPR画面の読み込みが完了しませんでした")
+      for buffer, owner in pairs(octo_buffers) do
+        if owner == generation and runtime.buffer_valid(buffer) and not runtime.surface_ready(buffer, kind) then
+          local deleted, delete_error = pcall(runtime.delete_buffer, buffer)
+          if not deleted then
+            runtime.notify("PR画面を閉じられませんでした: " .. tostring(delete_error))
+            return
+          end
+          octo_buffers[buffer] = nil
+        end
+      end
+    elseif kind == "list" then
+      runtime.notify("OctoのPR一覧が開かれませんでした。PRが存在するか確認してください")
+    end
+    finish(runtime, generation)
+  end
+
+  check()
 end
 
 local function target_name(branch)
@@ -282,11 +380,14 @@ function M.open(target, adapter)
         return
       end
 
+      local baseline = runtime.capture_buffers()
       local command_ok, command_error = pcall(runtime.command, { cmd = "Octo", args = { pr.url } })
       if not command_ok then
         runtime.notify("OctoでPRを開けませんでした: " .. tostring(command_error))
         finish(runtime, generation)
+        return
       end
+      observe_surface(runtime, generation, "open", baseline)
     end)
   end)
   if not ok then
@@ -343,7 +444,7 @@ function M.list(adapter)
           return
         end
 
-        local previous_buffer = runtime.current_buffer()
+        local baseline = runtime.capture_buffers()
         local command_ok, command_error = pcall(runtime.with_cwd, cwd, function()
           runtime.command({ cmd = "Octo", args = { "pr", "list", repo } })
         end)
@@ -352,15 +453,7 @@ function M.list(adapter)
           finish(runtime, generation)
           return
         end
-        runtime.schedule(function()
-          if not session or session.generation ~= generation then
-            return
-          end
-          local buffer = runtime.current_buffer()
-          if buffer ~= previous_buffer and runtime.buffer_valid(buffer) then
-            track_buffer(buffer, picker_buffers, runtime, generation)
-          end
-        end)
+        observe_surface(runtime, generation, "list", baseline)
       end)
     end
   )
@@ -460,14 +553,23 @@ function M.close(adapter, requested_generation)
   local ok, reviews = pcall(runtime.reviews)
   local closed_all = ok
   local closed_review = false
+  local tracked_review = false
   if ok then
     for key, tracked in pairs(review_tabs) do
       if tracked.generation == generation then
+        tracked_review = true
         if runtime.tab_valid(tracked.handle) then
-          local closed, close_error = pcall(reviews.close, tracked.handle)
+          local close = tracked.octo_detached and runtime.close_tab or reviews.close
+          local closed, close_error = pcall(close, tracked.handle)
           if not closed then
             closed_all = false
             runtime.notify("review tabを閉じられませんでした: " .. tostring(close_error))
+          elseif runtime.tab_valid(tracked.handle) then
+            tracked.octo_detached = true
+            closed_all = false
+            runtime.notify(
+              "review tabが閉じられていません。もう一度<leader>pqを実行してください"
+            )
           else
             closed_review = true
             review_tabs[key] = nil
@@ -477,12 +579,16 @@ function M.close(adapter, requested_generation)
         end
       end
     end
-    if not closed_review and reviews.get_current_review() then
+    if not tracked_review and not closed_review and reviews.get_current_review() then
       local tab = runtime.current_tab()
       local closed, close_error = pcall(reviews.close, tab)
       if not closed then
         closed_all = false
         runtime.notify("review tabを閉じられませんでした: " .. tostring(close_error))
+      elseif runtime.tab_valid(tab) then
+        review_tabs[tostring(tab)] = { handle = tab, generation = generation, octo_detached = true }
+        closed_all = false
+        runtime.notify("review tabが閉じられていません。もう一度<leader>pqを実行してください")
       end
     end
   end

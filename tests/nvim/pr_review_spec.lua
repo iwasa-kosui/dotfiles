@@ -47,6 +47,7 @@ local adapter = {
   defer = function(callback)
     callback()
   end,
+  observe_surface = function() end,
   command = function(command)
     commands[#commands + 1] = command
   end,
@@ -225,6 +226,7 @@ local lifecycle_adapter = {
   defer = function(callback)
     deferred[#deferred + 1] = callback
   end,
+  observe_surface = function() end,
   command = function() end,
   notify = function(message)
     error(message)
@@ -290,6 +292,10 @@ filetypes[904] = "diff"
 current_buffer = 903
 local current_review = {}
 local closed_review_tab
+local lifecycle_review_tab_live = true
+lifecycle_adapter.tab_valid = function(target)
+  return target == 11 and lifecycle_review_tab_live
+end
 lifecycle_adapter.reviews = function()
   return {
     get_current_review = function()
@@ -298,6 +304,7 @@ lifecycle_adapter.reviews = function()
     close = function(tab)
       closed_review_tab = tab
       current_review = nil
+      lifecycle_review_tab_live = false
     end,
   }
 end
@@ -413,6 +420,7 @@ review.list(repo_adapter)
 t.eq(4, repo_restores, "an Octo list failure must restore LazyGit")
 
 local tab = 21
+local live_tabs = { [21] = true, [22] = true }
 local closed_tabs = {}
 local multi_tab_restores = 0
 local multi_tab_maps = {}
@@ -459,7 +467,7 @@ local multi_tab_adapter = {
     return tab
   end,
   tab_valid = function(target)
-    return target == 21 or target == 22
+    return live_tabs[target] == true
   end,
   reviews = function()
     return {
@@ -468,6 +476,7 @@ local multi_tab_adapter = {
       end,
       close = function(target)
         closed_tabs[#closed_tabs + 1] = target
+        live_tabs[target] = false
       end,
     }
   end,
@@ -482,6 +491,64 @@ multi_tab_maps["n<leader>pq"]()
 table.sort(closed_tabs)
 t.eq({ 21, 22 }, closed_tabs, "leader-pq must close every review tab in its PR session")
 t.eq(1, multi_tab_restores, "LazyGit must be restored only after the whole PR session closes")
+
+local silent_tab_live = true
+local silent_close_succeeds = false
+local silent_close_attempts = 0
+local silent_direct_close_attempts = 0
+local silent_restores = 0
+local silent_map
+local silent_adapter = vim.tbl_extend("force", multi_tab_adapter, {
+  dock = {
+    prepare = function() end,
+    activate = function() end,
+    deactivate = function()
+      silent_restores = silent_restores + 1
+    end,
+  },
+  notify = function() end,
+  set_keymap = function(mode, lhs, rhs)
+    if mode == "n" and lhs == "<leader>pq" then
+      silent_map = rhs
+    end
+  end,
+  current_buffer = function()
+    return 931
+  end,
+  current_tab = function()
+    return 31
+  end,
+  tab_valid = function(target)
+    return target == 31 and silent_tab_live
+  end,
+  close_tab = function(target)
+    t.eq(31, target)
+    silent_direct_close_attempts = silent_direct_close_attempts + 1
+    if silent_close_succeeds then
+      silent_tab_live = false
+    end
+  end,
+  reviews = function()
+    return {
+      get_current_review = function()
+        return {}
+      end,
+      close = function()
+        silent_close_attempts = silent_close_attempts + 1
+      end,
+    }
+  end,
+})
+
+review.open({ cwd = "/repo", branch = "silent-close" }, silent_adapter)
+review.attach_if_review(931, silent_adapter)
+silent_map()
+t.eq(0, silent_restores, "a live review tab must remain tracked when Octo silently fails to close it")
+silent_close_succeeds = true
+silent_map()
+t.eq(1, silent_close_attempts, "Octo must not be retried after it discarded the review state")
+t.eq(1, silent_direct_close_attempts, "leader-pq must directly retry the tab that stayed live")
+t.eq(1, silent_restores)
 
 local reused_cleanups = {}
 local reused_adapter = {
@@ -585,3 +652,154 @@ delete_fails = false
 retry_map()
 t.eq(2, delete_attempts, "leader-pq must retry a PR surface that failed to close")
 t.eq(1, retry_restores)
+
+local async_mode
+local async_next_buffer = 1100
+local async_buffers = {}
+local async_cleanups = {}
+local async_deferred = {}
+local async_restores = 0
+local function create_async_buffer(name, filetype, ready)
+  async_next_buffer = async_next_buffer + 1
+  local buffer = async_next_buffer
+  async_buffers[buffer] = { live = true, name = name, filetype = filetype, ready = ready == true }
+  return buffer
+end
+local function run_async_deferred(limit)
+  for _ = 1, limit do
+    local callback = table.remove(async_deferred, 1)
+    if not callback then
+      return
+    end
+    callback()
+  end
+end
+local function wipe_async_buffer(buffer)
+  async_buffers[buffer].live = false
+  for _, callback in ipairs(async_cleanups[buffer] or {}) do
+    callback()
+  end
+end
+local async_adapter = {
+  root = function()
+    return "/canonical/selected/repo"
+  end,
+  dock = {
+    prepare = function() end,
+    activate = function() end,
+    deactivate = function()
+      async_restores = async_restores + 1
+    end,
+  },
+  system = function(argv, _, callback)
+    if argv[2] == "pr" then
+      callback({
+        code = 0,
+        stdout = '{"number":71,"url":"https://github.com/selected/repo/pull/71"}',
+        stderr = "",
+      })
+    else
+      callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+    end
+  end,
+  schedule = function(callback)
+    callback()
+  end,
+  defer = function(callback)
+    async_deferred[#async_deferred + 1] = callback
+  end,
+  command = function(command)
+    if command.args[1]:match("^https://") then
+      if async_mode == "open-failure" or async_mode == "open-success" or async_mode == "stale-new" then
+        create_async_buffer("octo://selected/repo/pull/71", "", false)
+      end
+    end
+  end,
+  with_cwd = function(_, callback)
+    callback()
+  end,
+  notify = function() end,
+  current_buffer = function()
+    return 1
+  end,
+  buffer_valid = function(buffer)
+    return async_buffers[buffer] and async_buffers[buffer].live == true
+  end,
+  buffer_filetype = function(buffer)
+    return async_buffers[buffer] and async_buffers[buffer].filetype or ""
+  end,
+  register_cleanup = function(buffer, callback)
+    async_cleanups[buffer] = async_cleanups[buffer] or {}
+    async_cleanups[buffer][#async_cleanups[buffer] + 1] = callback
+  end,
+  delete_buffer = function(buffer)
+    wipe_async_buffer(buffer)
+  end,
+  capture_buffers = function()
+    local captured = {}
+    for buffer, state in pairs(async_buffers) do
+      if state.live then
+        captured[buffer] = true
+      end
+    end
+    return captured
+  end,
+  find_surfaces = function(kind, baseline)
+    local surfaces = {}
+    for buffer, state in pairs(async_buffers) do
+      if state.live and not baseline[buffer] then
+        local is_open = kind == "open" and state.name:match("^octo://")
+        local is_list = kind == "list" and state.filetype == "TelescopePrompt"
+        if is_open or is_list then
+          surfaces[#surfaces + 1] = buffer
+        end
+      end
+    end
+    return surfaces
+  end,
+  surface_ready = function(buffer)
+    return async_buffers[buffer] and async_buffers[buffer].ready == true
+  end,
+  max_surface_checks = 3,
+}
+
+async_mode = "open-failure"
+review.open({ cwd = "/repo", branch = "async-failure" }, async_adapter)
+run_async_deferred(10)
+t.eq(1, async_restores, "an Octo URL load that never creates a ready surface must restore LazyGit")
+
+async_mode = "open-success"
+review.open({ cwd = "/repo", branch = "async-success" }, async_adapter)
+local open_surface = async_next_buffer
+async_buffers[open_surface].ready = true
+run_async_deferred(1)
+t.eq(1, async_restores, "a ready Octo PR surface must keep LazyGit hidden")
+wipe_async_buffer(open_surface)
+run_async_deferred(10)
+t.eq(2, async_restores, "closing the ready Octo PR surface must restore LazyGit")
+
+async_mode = "list-empty"
+review.list(async_adapter)
+run_async_deferred(10)
+t.eq(3, async_restores, "an empty or failed async PR list must restore LazyGit")
+
+async_mode = "list-picker"
+review.list(async_adapter)
+local picker_surface = create_async_buffer("TelescopePrompt", "TelescopePrompt", true)
+run_async_deferred(1)
+t.eq(3, async_restores, "a live PR picker must keep LazyGit hidden")
+wipe_async_buffer(picker_surface)
+run_async_deferred(10)
+t.eq(4, async_restores, "canceling the PR picker must restore LazyGit")
+
+async_mode = "stale-old"
+review.list(async_adapter)
+async_mode = "stale-new"
+review.open({ cwd = "/repo", branch = "new-session" }, async_adapter)
+local new_surface = async_next_buffer
+async_buffers[new_surface].ready = true
+run_async_deferred(10)
+t.eq(4, async_restores, "an old async callback must not restore over a new PR surface")
+wipe_async_buffer(new_surface)
+run_async_deferred(10)
+t.eq(5, async_restores)
