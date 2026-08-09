@@ -32,19 +32,39 @@ t.eq(
 t.eq("/repo/.wt/feat-a", items[2].path)
 
 local commands = {}
+local function sidebar_state(cwd, focused_cwd)
+	return table.concat({
+		"tab=00000000-0000-0000-0000-000000000000",
+		"color=none",
+		"cwd=" .. cwd,
+		"focused_cwd=" .. focused_cwd,
+		"focused_panel=11111111-1111-1111-1111-111111111111",
+		"git_branch=main clean",
+		"pr=none",
+		"pr_label=none",
+		"ports=none",
+		"progress=none",
+		"status_count=0",
+		"meta_block_count=0",
+		"log_count=0",
+	}, "\n")
+end
+
+local other_state = {
+	code = 0,
+	stdout = sidebar_state("/repo/other", "/repo/other/apps/api"),
+}
+local target_state = {
+	code = 0,
+	stdout = sidebar_state("/repo/.wt/feat-a/./", "/repo/.wt/feat-a/apps/web"),
+}
 local responses = {
 	["cmux workspace list --json"] = {
 		code = 0,
 		stdout = '{"workspaces":[{"ref":"workspace:1"},{"ref":"workspace:2"}]}',
 	},
-	["cmux sidebar-state --workspace workspace:1 --json"] = {
-		code = 0,
-		stdout = '{"workspace":{"ref":"workspace:1"},"cwd":"/repo/other"}',
-	},
-	["cmux sidebar-state --workspace workspace:2 --json"] = {
-		code = 0,
-		stdout = '{"workspace":{"ref":"workspace:2"},"cwd":"/repo/.wt/feat-a/./"}',
-	},
+	["cmux sidebar-state --workspace workspace:1"] = other_state,
+	["cmux sidebar-state --workspace workspace:2"] = target_state,
 	["cmux workspace select workspace:2"] = { code = 0, stdout = "" },
 }
 local notifications = {}
@@ -61,10 +81,10 @@ worktrees.switch_workspace("cmux", { path = "/repo/.wt/feat-a", branch = "feat/a
 })
 t.eq({
 	"cmux workspace list --json",
-	"cmux sidebar-state --workspace workspace:1 --json",
-	"cmux sidebar-state --workspace workspace:2 --json",
+	"cmux sidebar-state --workspace workspace:1",
+	"cmux sidebar-state --workspace workspace:2",
 	"cmux workspace select workspace:2",
-}, commands)
+}, commands, "sidebar text state must be parsed using the workspace cwd")
 t.eq({}, notifications)
 t.eq(cwd_before, vim.uv.cwd(), "worktree switching must not change Neovim cwd")
 
@@ -86,7 +106,7 @@ worktrees.switch_workspace("cmux", { path = "/repo/.wt/missing", branch = "missi
 })
 t.eq({
 	"cmux workspace list --json",
-	"cmux sidebar-state --workspace workspace:1 --json",
+	"cmux sidebar-state --workspace workspace:1",
 }, commands, "sidebar failure must not create a duplicate workspace")
 t.eq(1, #notifications)
 
