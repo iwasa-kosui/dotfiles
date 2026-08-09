@@ -1,5 +1,6 @@
 local M = {}
 local last_editor_by_tab = {}
+local pending_panel_by_picker = setmetatable({}, { __mode = "k" })
 
 local function default_root()
   local candidate = vim.uv.cwd() or vim.fn.getcwd()
@@ -36,6 +37,18 @@ local function defaults(adapter)
       editor_win = function()
         return M.editor_win()
       end,
+      valid_win = function(win)
+        return type(win) == "number" and vim.api.nvim_win_is_valid(win)
+      end,
+      on_picker_show = function(picker, callback)
+        local on_show = picker.opts.on_show
+        picker.opts.on_show = function(shown_picker)
+          if on_show then
+            on_show(shown_picker)
+          end
+          callback(shown_picker)
+        end
+      end,
       current_win = function()
         return vim.api.nvim_get_current_win()
       end,
@@ -70,6 +83,44 @@ local function defaults(adapter)
   })
 end
 
+local function picker_explorer_win(picker, api)
+  if not picker or picker.closed or not (picker.list and picker.list.win) then
+    return
+  end
+  local win = picker.list.win.win
+  return api.valid_win(win) and win or nil
+end
+
+local function ensure_base_diff(picker, cwd, api)
+  local explorer_win = picker_explorer_win(picker, api)
+  if not explorer_win then
+    return false
+  end
+  api.ensure_base_diff({
+    cwd = cwd,
+    explorer_win = explorer_win,
+    editor_win = api.editor_win,
+  })
+  api.refresh_base_diff(cwd)
+  return true
+end
+
+local function ensure_base_diff_when_ready(picker, cwd, api)
+  if ensure_base_diff(picker, cwd, api) or not picker or picker.closed or pending_panel_by_picker[picker] then
+    return
+  end
+  pending_panel_by_picker[picker] = true
+  local handled = false
+  api.on_picker_show(picker, function(shown_picker)
+    if handled then
+      return
+    end
+    handled = true
+    pending_panel_by_picker[picker] = nil
+    ensure_base_diff(shown_picker, cwd, api)
+  end)
+end
+
 function M.ensure_explorer(opts, adapter)
   opts = opts or {}
   local api = defaults(adapter)
@@ -80,14 +131,7 @@ function M.ensure_explorer(opts, adapter)
   if not picker then
     picker = api.open_explorer({ cwd = cwd, focus = false, enter = false })
   end
-  if picker and picker.list and picker.list.win then
-    api.ensure_base_diff({
-      cwd = cwd,
-      explorer_win = picker.list.win.win,
-      editor_win = api.editor_win,
-    })
-  end
-  api.refresh_base_diff(cwd)
+  ensure_base_diff_when_ready(picker, cwd, api)
   if opts.focus ~= false and picker then
     picker:focus("list")
   end
