@@ -8,6 +8,7 @@ import {
 } from "../dot_local/lib/rpt/node_modules/parse5/dist/index.js";
 import { inlineAssets } from "../dot_local/lib/rpt/src/inline-assets.ts";
 import { writeOutput } from "../dot_local/lib/rpt/src/output.ts";
+import { validateReport } from "../dot_local/lib/rpt/src/validate.ts";
 
 type Element = DefaultTreeAdapterTypes.Element;
 type ParentNode = DefaultTreeAdapterTypes.ParentNode;
@@ -329,6 +330,56 @@ const rejectedMdx = [
     "---\ntitle: X\n---\n<Section title=\"X\" anchor=\"user-value\">\nx\n</Section>",
     "attribute anchor is not allowed on Section",
   ],
+  [
+    "a Badge with an invalid tone",
+    "---\ntitle: X\n---\n<Badge tone=\"other\">x</Badge>",
+    "Badge.tone must be neutral, info, success, warning, or danger",
+  ],
+  [
+    "a Status with a block child",
+    "---\ntitle: X\n---\n<Status tone=\"success\">\n\nparagraph\n\n</Status>",
+    "Status must contain inline content",
+  ],
+  [
+    "an Icon with an unknown name",
+    "---\ntitle: X\n---\n<Icon name=\"custom\" />",
+    "Icon.name must be one of:",
+  ],
+  [
+    "an Icon with children",
+    "---\ntitle: X\n---\n<Icon name=\"check\">x</Icon>",
+    "Icon must not have children",
+  ],
+  [
+    "a Timeline with a non-TimelineItem child",
+    "---\ntitle: X\n---\n<Timeline><div>x</div><TimelineItem>x</TimelineItem></Timeline>",
+    "Timeline may only contain TimelineItem children",
+  ],
+  [
+    "an icons Timeline without item icons",
+    "---\ntitle: X\n---\n<Timeline theme=\"icons\"><TimelineItem>x</TimelineItem><TimelineItem>y</TimelineItem></Timeline>",
+    "Timeline theme icons requires every TimelineItem.icon",
+  ],
+  [
+    "Tabs with one Tab",
+    "---\ntitle: X\n---\n<Tabs><Tab label=\"A\">a</Tab></Tabs>",
+    "Tabs must contain between 2 and 10 Tab children",
+  ],
+  [
+    "Tabs with two active Tabs",
+    "---\ntitle: X\n---\n<Tabs><Tab label=\"A\" active=\"true\">a</Tab><Tab label=\"B\" active=\"true\">b</Tab></Tabs>",
+    "Tabs may only contain one active Tab",
+  ],
+  [
+    "nested Tabs",
+    "---\ntitle: X\n---\n<Tabs><Tab label=\"A\"><Tabs><Tab label=\"B\">b</Tab><Tab label=\"C\">c</Tab></Tabs></Tab><Tab label=\"D\">d</Tab></Tabs>",
+    "Tabs must not be nested",
+  ],
+  [
+    "a Tab with an internal prop",
+    "---\ntitle: X\n---\n<Tabs><Tab label=\"A\" group=\"user\">a</Tab><Tab label=\"B\">b</Tab></Tabs>",
+    "attribute group is not allowed on Tab",
+  ],
 ] as const;
 
 test("build renders safe semantic HTML without executable content", async () => {
@@ -447,6 +498,28 @@ for (const [name, source, message] of rejectedMdx) {
     }
   });
 }
+
+test("Tabs receive unique internal radio props in validated source", () => {
+  const result = validateReport({
+    source:
+      "---\ntitle: X\n---\n<Tabs><Tab label=\"A\" active=\"true\">a</Tab><Tab label=\"B\">b</Tab></Tabs>\n\n<Tabs><Tab label=\"C\">c</Tab><Tab label=\"D\">d</Tab></Tabs>",
+    baseDirectory: repositoryRoot,
+  });
+
+  expect(result.ok).toBe(true);
+  if (!result.ok) {
+    return;
+  }
+  expect(result.value.source).toContain(
+    '<Tab label="A" active="true" group="rpt-tabs-1" controlId="rpt-tab-control-1-1" labelId="rpt-tab-label-1-1" panelId="rpt-tab-panel-1-1" checked="true">',
+  );
+  expect(result.value.source).toContain(
+    '<Tab label="B" group="rpt-tabs-1" controlId="rpt-tab-control-1-2" labelId="rpt-tab-label-1-2" panelId="rpt-tab-panel-1-2" checked="false">',
+  );
+  expect(result.value.source).toContain(
+    '<Tab label="C" group="rpt-tabs-2" controlId="rpt-tab-control-2-1" labelId="rpt-tab-label-2-1" panelId="rpt-tab-panel-2-1" checked="true">',
+  );
+});
 
 const rejectedRasterDataUrls = [
   [
