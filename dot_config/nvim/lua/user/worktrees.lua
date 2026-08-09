@@ -19,7 +19,7 @@ local function decode_json(output, description, report)
 end
 
 local function run(command, callback)
-  vim.system(command, { text = true }, callback)
+  vim.system(command, { text = true }, vim.schedule_wrap(callback))
 end
 
 function M.parse_porcelain(lines)
@@ -120,17 +120,10 @@ function M.workspace_refs(node)
   return refs
 end
 
-local function sidebar_cwd(node)
-  if type(node) ~= "table" then
-    return nil
-  end
-  if type(node.cwd) == "string" then
-    return node.cwd
-  end
-  for _, child in pairs(node) do
-    local cwd = sidebar_cwd(child)
-    if cwd then
-      return cwd
+local function sidebar_cwd(output)
+  for line in vim.gsplit(output or "", "\n", { plain = true }) do
+    if line:sub(1, 4) == "cwd=" then
+      return line:sub(5)
     end
   end
 end
@@ -178,16 +171,12 @@ function M.switch_workspace(cmux, item, repo, adapter)
         return
       end
 
-      execute({ cmux, "sidebar-state", "--workspace", ref, "--json" }, function(state_result)
+      execute({ cmux, "sidebar-state", "--workspace", ref }, function(state_result)
         if state_result.code ~= 0 then
           report("Worktree switch: cmux sidebar-state failed for " .. ref)
           return
         end
-        local state = decode_json(state_result.stdout, "cmux sidebar-state for " .. ref, report)
-        if not state then
-          return
-        end
-        local cwd = sidebar_cwd(state)
+        local cwd = sidebar_cwd(state_result.stdout)
         if not cwd then
           report("Worktree switch: cmux sidebar-state has no cwd for " .. ref)
           return
