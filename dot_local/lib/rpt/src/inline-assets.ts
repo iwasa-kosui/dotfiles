@@ -1,5 +1,6 @@
 import { readFile, realpath } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
+import { ident, parse as parseCss, walk as walkCss } from "css-tree";
 import {
   parse,
   parseFragment,
@@ -24,6 +25,10 @@ export async function inlineAssets(
     const processing = await processChildren(document, realDistDirectory);
     if (!processing.ok) {
       return processing;
+    }
+    const validation = validateFinalDom(document);
+    if (!validation.ok) {
+      return validation;
     }
     return { ok: true, value: serialize(document) };
   } catch (cause) {
@@ -234,39 +239,109 @@ function parseSrcset(
   const candidates: Array<Readonly<{ url: string; descriptor: string }>> = [];
   let offset = 0;
   while (offset < value.length) {
-    while (offset < value.length && /[\s,]/.test(value[offset] ?? "")) {
+    while (
+      offset < value.length &&
+      (isAsciiWhitespace(value[offset] ?? "") || value[offset] === ",")
+    ) {
       offset += 1;
     }
     if (offset >= value.length) {
       break;
     }
     const start = offset;
-    if (value.slice(offset).toLowerCase().startsWith("data:")) {
-      while (offset < value.length && !/\s/.test(value[offset] ?? "")) {
-        offset += 1;
-      }
-    } else {
-      while (offset < value.length && !/[\s,]/.test(value[offset] ?? "")) {
-        offset += 1;
-      }
-    }
-    const url = value.slice(start, offset);
-    const descriptorStart = offset;
-    while (offset < value.length && value[offset] !== ",") {
+    while (
+      offset < value.length &&
+      !isAsciiWhitespace(value[offset] ?? "")
+    ) {
       offset += 1;
     }
-    const descriptor = value.slice(descriptorStart, offset).trimEnd();
+    let url = value.slice(start, offset);
+    let trailingCommas = 0;
+    while (url.endsWith(",")) {
+      trailingCommas += 1;
+      url = url.slice(0, -1);
+    }
     if (url === "") {
       return unsafeHtml("report HTML contains an invalid srcset");
     }
-    candidates.push({ url, descriptor });
-    if (value[offset] === ",") {
-      offset += 1;
+    if (trailingCommas > 0) {
+      candidates.push({ url, descriptor: "" });
+      continue;
     }
+
+    const descriptors: string[] = [];
+    while (offset < value.length) {
+      while (
+        offset < value.length &&
+        isAsciiWhitespace(value[offset] ?? "")
+      ) {
+        offset += 1;
+      }
+      if (offset >= value.length || value[offset] === ",") {
+        offset += value[offset] === "," ? 1 : 0;
+        break;
+      }
+      const descriptorStart = offset;
+      let parentheses = 0;
+      while (offset < value.length) {
+        const character = value[offset] ?? "";
+        if (character === "(") {
+          parentheses += 1;
+        } else if (character === ")" && parentheses > 0) {
+          parentheses -= 1;
+        } else if (
+          parentheses === 0 &&
+          (isAsciiWhitespace(character) || character === ",")
+        ) {
+          break;
+        }
+        offset += 1;
+      }
+      descriptors.push(value.slice(descriptorStart, offset));
+    }
+    if (!validSrcsetDescriptors(descriptors)) {
+      return unsafeHtml("report HTML contains an invalid srcset");
+    }
+    const descriptor = descriptors.length === 0 ? "" : " " + descriptors.join(" ");
+    candidates.push({ url, descriptor });
   }
   return candidates.length === 0
     ? unsafeHtml("report HTML contains an invalid srcset")
     : { ok: true, value: candidates };
+}
+
+function validSrcsetDescriptors(descriptors: readonly string[]): boolean {
+  let width = false;
+  let density = false;
+  let height = false;
+  for (const descriptor of descriptors) {
+    if (/^[1-9]\d*w$/.test(descriptor) && !width && !density) {
+      width = true;
+    } else if (
+      /^(?:\d+(?:\.\d*)?|\.\d+)x$/.test(descriptor) &&
+      Number.parseFloat(descriptor) > 0 &&
+      !width &&
+      !density &&
+      !height
+    ) {
+      density = true;
+    } else if (/^[1-9]\d*h$/.test(descriptor) && !height && !density) {
+      height = true;
+    } else {
+      return false;
+    }
+  }
+  return !height || width;
+}
+
+function isAsciiWhitespace(value: string): boolean {
+  return (
+    value === "\t" ||
+    value === "\n" ||
+    value === "\f" ||
+    value === "\r" ||
+    value === " "
+  );
 }
 
 async function readLocalAsset(
@@ -309,22 +384,205 @@ async function readLocalAsset(
 }
 
 function validateCss(css: string): Result<void> {
-  const withoutComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
-  if (/@import\b/i.test(withoutComments)) {
-    return unsafeHtml("report stylesheet contains @import");
+  return validateCssSyntax(css, "stylesheet");
+}
+
+function validateCssValue(css: string): Result<void> {
+  return validateCssSyntax(css, "value");
+}
+
+function validateCssSyntax(
+  css: string,
+  context: "stylesheet" | "value",
+): Result<void> {
+  let violation: string | undefined;
+  try {
+    const ast = parseCss(css, {
+      context,
+      parseCustomProperty: true,
+      onParseError(error) {
+        throw error;
+      },
+    });
+    walkCss(ast, function (node) {
+      if (
+        node.type === "Atrule" &&
+        ident.decode(node.name).toLowerCase() === "import"
+      ) {
+        violation = "report stylesheet contains @import";
+        return;
+      }
+      if (node.type === "Url" && !isDataUrl(node.value)) {
+        violation = "report stylesheet contains a non-data URL";
+        return;
+      }
+      if (node.type === "Function") {
+        const functionName = ident.decode(node.name).toLowerCase();
+        if (functionName === "url") {
+          const values = [...node.children].filter(
+            (child) => child.type !== "WhiteSpace",
+          );
+          if (
+            values.length !== 1 ||
+            values[0]?.type !== "String" ||
+            !isDataUrl(values[0].value)
+          ) {
+            violation = "report stylesheet contains a non-data URL";
+          }
+        }
+      }
+      if (node.type === "String" && this.function !== null) {
+        const functionName = ident.decode(this.function.name).toLowerCase();
+        if (
+          assetCssFunctions.has(functionName) &&
+          !isDataUrl(node.value)
+        ) {
+          violation = "report stylesheet contains a non-data URL";
+        }
+      }
+    });
+  } catch (cause) {
+    return unsafeHtml("report stylesheet contains invalid CSS", cause);
   }
-  for (const match of withoutComments.matchAll(/url\s*\(\s*([^)]*?)\s*\)/gi)) {
-    const rawValue = match[1]?.trim() ?? "";
-    const value =
-      (rawValue.startsWith('"') && rawValue.endsWith('"')) ||
-      (rawValue.startsWith("'") && rawValue.endsWith("'"))
-        ? rawValue.slice(1, -1).trim()
-        : rawValue;
-    if (!isDataUrl(value)) {
-      return unsafeHtml("report stylesheet contains a non-data URL");
+  return violation === undefined
+    ? { ok: true, value: undefined }
+    : unsafeHtml(violation);
+}
+
+const assetCssFunctions = new Set([
+  "url",
+  "src",
+  "image",
+  "image-set",
+  "-webkit-image-set",
+]);
+
+const urlAttributeNames = new Set([
+  "action",
+  "archive",
+  "attributionsrc",
+  "background",
+  "cite",
+  "classid",
+  "codebase",
+  "data",
+  "dynsrc",
+  "formaction",
+  "href",
+  "imagesrcset",
+  "longdesc",
+  "lowsrc",
+  "manifest",
+  "ping",
+  "poster",
+  "profile",
+  "src",
+  "srcset",
+  "usemap",
+]);
+
+const allowedDataAssetAttributes = new Map<string, ReadonlySet<string>>([
+  ["audio", new Set(["src"])],
+  ["feimage", new Set(["href"])],
+  ["image", new Set(["href"])],
+  ["img", new Set(["src"])],
+  ["source", new Set(["src"])],
+  ["track", new Set(["src"])],
+  ["video", new Set(["poster", "src"])],
+]);
+
+const cssUrlAttributeNames = new Set([
+  "clip-path",
+  "color-profile",
+  "cursor",
+  "fill",
+  "filter",
+  "marker",
+  "marker-end",
+  "marker-mid",
+  "marker-start",
+  "mask",
+  "stroke",
+]);
+
+function validateFinalDom(parent: ParentNode): Result<void> {
+  for (const child of parent.childNodes) {
+    if (!("tagName" in child)) {
+      continue;
+    }
+    const tagName = child.tagName.toLowerCase();
+    if (
+      tagName === "meta" &&
+      (attribute(child, "http-equiv")?.value ?? "").toLowerCase() === "refresh"
+    ) {
+      return unsafeHtml("report HTML contains a meta refresh");
+    }
+    for (const candidate of child.attrs) {
+      const name = candidate.name.toLowerCase();
+      if (name === "style" || name === "srcdoc" || name.startsWith("on")) {
+        return unsafeHtml("report HTML contains an executable attribute");
+      }
+      if (cssUrlAttributeNames.has(name)) {
+        const cssValidation = validateCssValue(candidate.value);
+        if (!cssValidation.ok) {
+          return cssValidation;
+        }
+      }
+      if (!urlAttributeNames.has(name)) {
+        continue;
+      }
+      if (name === "srcset" || name === "imagesrcset") {
+        const candidates = parseSrcset(candidate.value);
+        if (
+          (tagName !== "img" && tagName !== "source") ||
+          !candidates.ok ||
+          candidates.value.some((item) => !isDataUrl(item.url))
+        ) {
+          return unsafeHtml("report HTML contains an external asset reference");
+        }
+      } else if (
+        name === "href" &&
+        (tagName === "a" || tagName === "area")
+      ) {
+        if (!isSafeNavigationUrl(candidate.value)) {
+          return unsafeHtml("report HTML contains an unsafe navigation URL");
+        }
+      } else if (
+        !allowedDataAssetAttributes.get(tagName)?.has(name) ||
+        !isDataUrl(candidate.value)
+      ) {
+        return unsafeHtml("report HTML contains an external asset reference");
+      }
+    }
+    const childValidation = validateFinalDom(child);
+    if (!childValidation.ok) {
+      return childValidation;
+    }
+    if (isTemplate(child)) {
+      const templateValidation = validateFinalDom(child.content);
+      if (!templateValidation.ok) {
+        return templateValidation;
+      }
     }
   }
   return { ok: true, value: undefined };
+}
+
+function isSafeNavigationUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed.startsWith("#")) {
+    return true;
+  }
+  try {
+    const url = new URL(trimmed, "https://rpt.invalid/");
+    return (
+      url.origin === "https://rpt.invalid" ||
+      url.protocol === "https:" ||
+      url.protocol === "mailto:"
+    );
+  } catch {
+    return false;
+  }
 }
 
 function attribute(element: Element, name: string) {
@@ -413,8 +671,8 @@ function readBigEndianUint32(bytes: Uint8Array, offset: number): number {
   );
 }
 
-function unsafeHtml(message: string): Result<never> {
-  return buildFailure(message);
+function unsafeHtml(message: string, cause?: unknown): Result<never> {
+  return buildFailure(message, cause);
 }
 
 function buildFailure(message: string, cause?: unknown): Result<never> {

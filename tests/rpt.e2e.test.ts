@@ -2,6 +2,8 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { inlineAssets } from "../dot_local/lib/rpt/src/inline-assets.ts";
+import { writeOutput } from "../dot_local/lib/rpt/src/output.ts";
 
 const repositoryRoot = join(import.meta.dir, "..");
 const cliPath = join(repositoryRoot, "dot_local/bin/executable_rpt");
@@ -75,6 +77,15 @@ async function createCase(source: string) {
     output,
     cleanup: () => rm(directory, { recursive: true, force: true }),
   };
+}
+
+async function runInlineFixture(html: string) {
+  const directory = await mkdtemp(join(tmpdir(), "rpt-inline-e2e-"));
+  try {
+    return await inlineAssets(html, directory);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
 }
 
 test("--help displays the rpt build usage", async () => {
@@ -420,6 +431,29 @@ test("build with --force atomically replaces an existing output file", async () 
   }
 });
 
+test("concurrent no-force output publication lets exactly one writer win", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "rpt-output-e2e-"));
+  const output = join(directory, "report.html");
+  const firstHtml = "<!doctype html><title>First</title><p>First body</p>";
+  const secondHtml = "<!doctype html><title>Second</title><p>Second body</p>";
+  try {
+    const results = await Promise.all([
+      writeOutput(firstHtml, output, false),
+      writeOutput(secondHtml, output, false),
+    ]);
+
+    expect(results.filter((result) => result.ok)).toHaveLength(1);
+    const failure = results.find((result) => !result.ok);
+    expect(failure?.ok).toBe(false);
+    if (failure !== undefined && !failure.ok) {
+      expect(failure.error.exitCode).toBe(5);
+    }
+    expect([firstHtml, secondHtml]).toContain(await Bun.file(output).text());
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("an invalid forced build preserves the complete existing output", async () => {
   const testCase = await createCase("---\nsummary: Missing title\n---");
   await writeFile(testCase.output, "complete original output");
@@ -476,6 +510,33 @@ test("concurrent builds keep their report contents isolated", async () => {
   }
 });
 
+test("concurrent builds to one output publish one complete report", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "rpt-e2e-"));
+  const firstInput = join(directory, "first.mdx");
+  const secondInput = join(directory, "second.mdx");
+  const output = join(directory, "report.html");
+  await Promise.all([
+    writeFile(firstInput, "---\ntitle: First winner\n---\n\nFirst body."),
+    writeFile(secondInput, "---\ntitle: Second winner\n---\n\nSecond body."),
+  ]);
+  try {
+    const results = await Promise.all([
+      runRpt(["build", firstInput, "-o", output]),
+      runRpt(["build", secondInput, "-o", output]),
+    ]);
+
+    expect(results.map((result) => result.exitCode).sort()).toEqual([0, 5]);
+    const html = await Bun.file(output).text();
+    const firstWon = html.includes("<title>First winner</title>");
+    const secondWon = html.includes("<title>Second winner</title>");
+    expect(firstWon === secondWon).toBe(false);
+    expect(html.includes("First body.")).toBe(firstWon);
+    expect(html.includes("Second body.")).toBe(secondWon);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("build rejects an image whose bytes do not match an allowed format", async () => {
   const testCase = await createCase(
     "---\ntitle: Invalid image\n---\n\n![pixel](./pixel.png)",
@@ -518,6 +579,96 @@ test("build rejects an image symlink that escapes the input directory", async ()
     ]);
   }
 });
+
+test("build rejects an image through a parent symlink outside the input directory", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Escaping image directory\n---\n\n![pixel](./assets/pixel.png)",
+  );
+  const outsideDirectory = await mkdtemp(join(tmpdir(), "rpt-outside-"));
+  await writeFile(
+    join(outsideDirectory, "pixel.png"),
+    Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  );
+  await symlink(outsideDirectory, join(testCase.directory, "assets"));
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stderr).toContain(
+      "image paths must stay within the input directory",
+    );
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await Promise.all([
+      testCase.cleanup(),
+      rm(outsideDirectory, { recursive: true, force: true }),
+    ]);
+  }
+});
+
+test("asset inlining rejects an external candidate after a data URL srcset", async () => {
+  const result = await runInlineFixture(
+    '<img alt="x" srcset="data:image/png;base64,AAAA, https://example.com/x.png 2x">',
+  );
+
+  expect(result.ok).toBe(false);
+});
+
+const rejectedCss = [
+  [
+    "an escaped url function",
+    String.raw`<style>.x { background: u\72l(https://example.com/x.png) }</style>`,
+  ],
+  [
+    "an escaped import rule",
+    String.raw`<style>@im\70ort "https://example.com/x.css";</style>`,
+  ],
+  [
+    "an external image-set string",
+    '<style>.x { background: image-set("https://example.com/x.png" 1x) }</style>',
+  ],
+] as const;
+
+for (const [name, html] of rejectedCss) {
+  test("asset inlining rejects " + name, async () => {
+    const result = await runInlineFixture(html);
+
+    expect(result.ok).toBe(false);
+  });
+}
+
+const rejectedFinalDom = [
+  [
+    "an external track",
+    '<video><track src="https://example.com/x.vtt"></video>',
+  ],
+  [
+    "an external SVG image",
+    '<svg><image href="https://example.com/x.png"></image></svg>',
+  ],
+  [
+    "a mixed applet archive URL list",
+    '<applet archive="data:application/java-archive;base64,AAAA https://example.com/x.jar"></applet>',
+  ],
+  [
+    "an external attribution source",
+    '<img src="data:image/png;base64,AAAA" attributionsrc="https://example.com/register">',
+  ],
+  ["an event handler", '<div onload="alert(1)">x</div>'],
+  ["a JavaScript link", '<a href="javascript:alert(1)">x</a>'],
+  [
+    "an escaped external SVG filter",
+    String.raw`<svg><path filter="u\72l(https://example.com/x.svg#f)"></path></svg>`,
+  ],
+] as const;
+
+for (const [name, html] of rejectedFinalDom) {
+  test("asset inlining rejects " + name, async () => {
+    const result = await runInlineFixture(html);
+
+    expect(result.ok).toBe(false);
+  });
+}
 
 test("build reports a build failure when the temporary directory is unavailable", async () => {
   const testCase = await createCase("---\ntitle: Temporary directory\n---");

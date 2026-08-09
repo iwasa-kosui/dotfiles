@@ -9,6 +9,7 @@ import {
   readdir,
   realpath,
   rm,
+  stat,
   symlink,
   writeFile,
 } from "node:fs/promises";
@@ -137,6 +138,22 @@ async function copyAssets(
       );
       let bytes: Uint8Array;
       try {
+        const descriptorStat = await handle.stat({ bigint: true });
+        const verifiedRealSourcePath = await realpath(realSourcePath);
+        if (!isContained(realBaseDirectory, verifiedRealSourcePath)) {
+          return inputFailure(
+            "image paths must stay within the input directory",
+          );
+        }
+        const pathStat = await stat(verifiedRealSourcePath, { bigint: true });
+        if (
+          !descriptorStat.isFile() ||
+          !pathStat.isFile() ||
+          descriptorStat.dev !== pathStat.dev ||
+          descriptorStat.ino !== pathStat.ino
+        ) {
+          return inputFailure("image changed while it was being copied");
+        }
         bytes = await handle.readFile();
       } finally {
         await handle.close();

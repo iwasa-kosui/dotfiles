@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { lstat, open, rename, stat, unlink } from "node:fs/promises";
+import { link, lstat, open, rename, stat, unlink } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 import type { Result } from "./result.ts";
 
@@ -49,11 +49,21 @@ export async function writeOutput(
       await temporary.handle.close();
     }
 
-    if (!force && (await pathExists(outputPath))) {
-      return ioFailure("output already exists: " + output);
+    if (force) {
+      await rename(temporaryPath, outputPath);
+      temporaryPath = undefined;
+    } else {
+      try {
+        await link(temporaryPath, outputPath);
+      } catch (cause) {
+        if (isErrorCode(cause, "EEXIST")) {
+          return ioFailure("output already exists: " + output, cause);
+        }
+        throw cause;
+      }
+      await unlink(temporaryPath);
+      temporaryPath = undefined;
     }
-    await rename(temporaryPath, outputPath);
-    temporaryPath = undefined;
     return { ok: true, value: outputPath };
   } catch (cause) {
     return ioFailure("could not write output: " + output, cause);
