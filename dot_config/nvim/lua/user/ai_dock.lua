@@ -138,7 +138,11 @@ local function api(adapter)
       windows_for_buffer = vim.fn.win_findbuf,
       hide_window = vim.api.nvim_win_hide,
       register_buffer_cleanup = function(buffer, callback)
-        vim.api.nvim_create_autocmd("BufWipeout", { buffer = buffer, once = true, callback = callback })
+        vim.api.nvim_create_autocmd({ "TermClose", "BufDelete", "BufWipeout" }, {
+          buffer = buffer,
+          once = true,
+          callback = callback,
+        })
       end,
       attach_terminal = function(provider, buffer, runtime, handle)
         M.attach(provider, buffer, runtime, handle)

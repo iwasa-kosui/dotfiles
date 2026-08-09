@@ -142,6 +142,23 @@ t.truthy(first ~= second, "a second resume after process exit must create a new 
 t.eq(2, created)
 t.eq(1, discarded)
 
+local registered_cleanup_events
+local original_create_autocmd = vim.api.nvim_create_autocmd
+vim.api.nvim_create_autocmd = function(events)
+	registered_cleanup_events = events
+	return 1
+end
+local cleanup_buffer = vim.api.nvim_create_buf(false, true)
+ai.attach("codex", cleanup_buffer, {
+	buffer_valid = function()
+		return true
+	end,
+	activate_dock = function() end,
+}, { hide = function() end })
+vim.api.nvim_create_autocmd = original_create_autocmd
+t.eq({ "TermClose", "BufDelete", "BufWipeout" }, registered_cleanup_events)
+vim.api.nvim_buf_delete(cleanup_buffer, { force = true })
+
 local deactivated = {}
 local visible_codex = {
 	buf = 88,
