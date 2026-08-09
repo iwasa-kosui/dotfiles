@@ -351,6 +351,11 @@ const rejectedMdx = [
     "Icon must not have children",
   ],
   [
+    "an Icon that is not self-closing",
+    "---\ntitle: X\n---\n<Icon name=\"check\"></Icon>",
+    "Icon must be self-closing",
+  ],
+  [
     "a Timeline with a non-TimelineItem child",
     "---\ntitle: X\n---\n<Timeline><div>x</div><TimelineItem>x</TimelineItem></Timeline>",
     "Timeline may only contain TimelineItem children",

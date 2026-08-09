@@ -101,7 +101,7 @@ export function validateComponent(
     case "Status":
       return validateInlineToneComponent(name, node, values);
     case "Icon":
-      return validateIcon(node, values);
+      return validateIcon(node, values, context);
     case "Timeline":
       return validateTimeline(node, values, context);
     case "TimelineItem":
@@ -245,7 +245,11 @@ function validateInlineToneComponent(
 function validateIcon(
   node: TreeNode,
   values: AttributeValues,
+  context: ComponentContext,
 ): ValidationIssue | undefined {
+  if (!isSelfClosing(node, context.source)) {
+    return issue("Icon must be self-closing", node);
+  }
   const name = values.get("name") ?? "";
   if (!iconNames.includes(name as (typeof iconNames)[number])) {
     return issue("Icon.name must be one of: " + iconNames.join(", "), node);
