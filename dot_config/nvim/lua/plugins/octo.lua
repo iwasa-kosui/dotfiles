@@ -6,43 +6,52 @@ return {
     "nvim-tree/nvim-web-devicons",
   },
   cmd = "Octo",
-  keys = {
-    -- PR操作
-    { "<leader>opl", "<cmd>Octo pr list<cr>", desc = "List PRs" },
-    { "<leader>opc", "<cmd>Octo pr create<cr>", desc = "Create PR" },
-    { "<leader>opC", "<cmd>Octo pr checkout<cr>", desc = "Checkout PR" },
-    { "<leader>opm", "<cmd>Octo pr merge<cr>", desc = "Merge PR" },
-    { "<leader>opd", "<cmd>Octo pr diff<cr>", desc = "PR Diff" },
-    { "<leader>opr", "<cmd>Octo pr ready<cr>", desc = "Mark PR Ready" },
-
-    -- Issue操作
-    { "<leader>oil", "<cmd>Octo issue list<cr>", desc = "List Issues" },
-    { "<leader>oic", "<cmd>Octo issue create<cr>", desc = "Create Issue" },
-    { "<leader>oie", "<cmd>Octo issue edit<cr>", desc = "Edit Issue" },
-
-    -- Review操作
-    { "<leader>ors", "<cmd>Octo review start<cr>", desc = "Start Review" },
-    { "<leader>orr", "<cmd>Octo review resume<cr>", desc = "Resume Review" },
-    { "<leader>orS", "<cmd>Octo review submit<cr>", desc = "Submit Review" },
-    { "<leader>ord", "<cmd>Octo review discard<cr>", desc = "Discard Review" },
-    { "<leader>orc", "<cmd>Octo review comments<cr>", desc = "View Comments" },
-
-    -- Comment操作
-    { "<leader>oca", "<cmd>Octo comment add<cr>", desc = "Add Comment" },
-    { "<leader>ocd", "<cmd>Octo comment delete<cr>", desc = "Delete Comment" },
-
-    -- その他
-    { "<leader>oo", "<cmd>Octo<cr>", desc = "Octo Actions" },
-    { "<leader>os", "<cmd>Octo search<cr>", desc = "Search" },
-  },
   opts = {
     suppress_missing_scope = {
       projects_v2 = true,
     },
     default_to_projects_v2 = true,
+    mappings_disable_default = true,
+    mappings = {
+      pull_request = {
+        review_start = { lhs = "r", desc = "Start review" },
+        review_resume = { lhs = "R", desc = "Resume pending review" },
+      },
+      review_diff = {
+        add_review_comment = { lhs = "c", mode = { "x" }, desc = "Add pending comment" },
+        add_review_suggestion = { lhs = "s", mode = { "x" }, desc = "Add pending suggestion" },
+        next_thread = { lhs = "]c", desc = "Next comment" },
+        prev_thread = { lhs = "[c", desc = "Previous comment" },
+        submit_review = { lhs = "S", desc = "Submit review" },
+        close_review_tab = { lhs = "q", desc = "Close review" },
+      },
+      file_panel = {
+        select_entry = { lhs = "<CR>", desc = "Open changed file" },
+        submit_review = { lhs = "S", desc = "Submit review" },
+        close_review_tab = { lhs = "q", desc = "Close review" },
+      },
+      review_thread = {
+        next_comment = { lhs = "]c", desc = "Next comment" },
+        prev_comment = { lhs = "[c", desc = "Previous comment" },
+        close_review_tab = { lhs = "q", desc = "Close review" },
+      },
+      submit_win = {
+        approve_review = { lhs = "a", mode = "n", desc = "Approve" },
+        comment_review = { lhs = "c", mode = "n", desc = "Comment" },
+        request_changes = { lhs = "r", mode = "n", desc = "Request changes" },
+        close_review_win = { lhs = "q", mode = "n", desc = "Cancel submit" },
+      },
+    },
   },
   config = function(_, opts)
     require("octo").setup(opts)
     vim.treesitter.language.register("markdown", "octo")
+
+    local group = vim.api.nvim_create_augroup("OctoReviewExplorer", { clear = true })
+    vim.api.nvim_create_autocmd("FileType", {
+      group = group,
+      pattern = "octo_panel",
+      callback = require("user.pr_review").ensure_review_explorer,
+    })
   end,
 }

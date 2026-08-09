@@ -1,0 +1,278 @@
+local M = {}
+local worktree_root = require("user.worktree_root")
+
+local caches = {}
+local generations = {}
+local timers = {}
+
+local highlights = {
+  A = "ExplorerBaseAdded",
+  M = "ExplorerBaseModified",
+  R = "ExplorerBaseRenamed",
+}
+
+vim.api.nvim_set_hl(0, "ExplorerBaseAdded", { link = "GitSignsAdd" })
+vim.api.nvim_set_hl(0, "ExplorerBaseModified", { link = "GitSignsChange" })
+vim.api.nvim_set_hl(0, "ExplorerBaseRenamed", { link = "GitSignsChange" })
+
+local function normalize(path)
+  return worktree_root.normalize(path)
+end
+
+local function output_lines(output)
+  return vim.split(output or "", "\n", { trimempty = true })
+end
+
+local function run(command, cwd, callback)
+  vim.system(command, { cwd = cwd, text = true }, callback)
+end
+
+function M.parse_name_status(lines)
+  local result = {}
+  for _, line in ipairs(lines) do
+    local columns = vim.split(line, "\t", { plain = true })
+    local code = columns[1] and columns[1]:sub(1, 1)
+    local path = code == "R" and columns[3] or columns[2]
+    if path and code ~= "D" then
+      result[path] = code
+    end
+  end
+  return result
+end
+
+function M.parse_porcelain_z(output)
+  local result = {}
+  local records = vim.split(output or "", "\0", { plain = true })
+  local index = 1
+  while index <= #records do
+    local record = records[index]
+    local code = record:sub(1, 2)
+    local path = record:sub(4)
+    if code == "??" then
+      result[path] = "A"
+    elseif path ~= "" then
+      if code:find("R", 1, true) then
+        result[path] = "R"
+        index = index + 1
+      elseif code:find("A", 1, true) then
+        result[path] = "A"
+      elseif code:find("D", 1, true) then
+        result[path] = "D"
+      elseif code:find("M", 1, true) then
+        result[path] = "M"
+      end
+    end
+    index = index + 1
+  end
+  return result
+end
+
+function M.base_candidates(pr_base, origin_head)
+  local candidates = {}
+  local seen = {}
+  local function add(branch)
+    if branch and branch ~= "" then
+      branch = branch:gsub("^%s+", ""):gsub("%s+$", "")
+      if branch ~= "" then
+        if not branch:match("^origin/") then
+          branch = "origin/" .. branch
+        end
+        if not seen[branch] then
+          seen[branch] = true
+          candidates[#candidates + 1] = branch
+        end
+      end
+    end
+  end
+
+  add(pr_base)
+  add(origin_head)
+  add("origin/main")
+  add("origin/master")
+  return candidates
+end
+
+local function complete(callback, success)
+  if callback then
+    vim.schedule(function()
+      callback(success)
+    end)
+  end
+end
+
+function M.refresh(cwd, callback, adapter)
+  adapter = adapter or {}
+  cwd = (adapter.root or worktree_root.resolve)(cwd)
+  local execute = adapter.run or run
+  local generation = (generations[cwd] or 0) + 1
+  generations[cwd] = generation
+
+  local function current()
+    return generations[cwd] == generation
+  end
+
+  local function finish(success)
+    if current() then
+      complete(callback, success)
+    end
+  end
+
+  execute({ "gh", "pr", "view", "--json", "baseRefName" }, cwd, function(pr_result)
+    if not current() then
+      return
+    end
+
+    local pr_base
+    if pr_result.code == 0 then
+      local ok, pr = pcall(vim.json.decode, pr_result.stdout or "")
+      if ok and type(pr) == "table" then
+        pr_base = pr.baseRefName
+      end
+    end
+
+    execute({ "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD" }, cwd, function(head_result)
+      if not current() then
+        return
+      end
+
+      local origin_head = head_result.code == 0 and vim.trim(head_result.stdout or "") or nil
+      local candidates = M.base_candidates(pr_base, origin_head)
+
+      local function try_base(index)
+        if not current() then
+          return
+        end
+
+        local base = candidates[index]
+        if not base then
+          finish(false)
+          return
+        end
+
+        execute({ "git", "merge-base", "HEAD", base }, cwd, function(merge_base_result)
+          if not current() then
+            return
+          end
+
+          if merge_base_result.code ~= 0 then
+            try_base(index + 1)
+            return
+          end
+
+          local merge_base = vim.trim(merge_base_result.stdout or "")
+          if merge_base == "" then
+            try_base(index + 1)
+            return
+          end
+
+          execute({ "git", "diff", "--name-status", "--find-renames", merge_base }, cwd, function(diff_result)
+            if not current() then
+              return
+            end
+
+            if diff_result.code ~= 0 then
+              finish(false)
+              return
+            end
+
+            execute({ "git", "status", "--porcelain=v1", "-z", "--untracked-files=all" }, cwd, function(status_result)
+              if not current() then
+                return
+              end
+
+              if status_result.code ~= 0 then
+                finish(false)
+                return
+              end
+
+              local changes = M.parse_name_status(output_lines(diff_result.stdout))
+              for path, status in pairs(M.parse_porcelain_z(status_result.stdout)) do
+                if status == "A" then
+                  changes[path] = status
+                end
+              end
+
+              local cache = {}
+              for path, status in pairs(changes) do
+                cache[normalize(cwd .. "/" .. path)] = status
+              end
+              caches[cwd] = cache
+              finish(true)
+            end)
+          end)
+        end)
+      end
+
+      try_base(1)
+    end)
+  end)
+end
+
+function M.refresh_explorers(cwd)
+  cwd = worktree_root.resolve(cwd)
+  local actions = require("snacks.explorer.actions")
+  for _, picker in ipairs(Snacks.picker.get({ source = "explorer" })) do
+    if normalize(picker:cwd()) == cwd then
+      actions.update(picker, { refresh = true })
+    end
+  end
+end
+
+function M.refresh_and_render(cwd)
+  M.refresh(cwd, function(success)
+    if success then
+      M.refresh_explorers(cwd)
+    end
+  end)
+end
+
+function M.status(path)
+  local normalized = normalize(path)
+  for _, cache in pairs(caches) do
+    local status = cache[normalized]
+    if status then
+      return status
+    end
+  end
+end
+
+function M.format(item, picker)
+  local chunks = Snacks.picker.format.file(item, picker)
+  local path = item.path or (item.file and item.file.path)
+  local highlight = path and highlights[M.status(path)]
+  if highlight then
+    for _, chunk in ipairs(chunks) do
+      if chunk.field == "file" then
+        chunk[2] = highlight
+      end
+    end
+  end
+  return chunks
+end
+
+function M.debounce(cwd)
+  cwd = worktree_root.resolve(cwd)
+  local timer = timers[cwd]
+  if not timer then
+    timer = vim.uv.new_timer()
+    timers[cwd] = timer
+  end
+  timer:stop()
+  timer:start(
+    200,
+    0,
+    vim.schedule_wrap(function()
+      M.refresh_and_render(cwd)
+    end)
+  )
+end
+
+local group = vim.api.nvim_create_augroup("ExplorerBaseDiff", { clear = true })
+vim.api.nvim_create_autocmd({ "BufWritePost", "FocusGained", "ShellCmdPost" }, {
+  group = group,
+  callback = function()
+    M.debounce(worktree_root.resolve(vim.fn.getcwd()))
+  end,
+})
+
+return M
