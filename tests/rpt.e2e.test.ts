@@ -7,6 +7,7 @@ import {
   type DefaultTreeAdapterTypes,
 } from "../dot_local/lib/rpt/node_modules/parse5/dist/index.js";
 import { inlineAssets } from "../dot_local/lib/rpt/src/inline-assets.ts";
+import { buildReport } from "../dot_local/lib/rpt/src/build.ts";
 import { writeOutput } from "../dot_local/lib/rpt/src/output.ts";
 import { validateReport } from "../dot_local/lib/rpt/src/validate.ts";
 
@@ -503,6 +504,137 @@ for (const [name, source, message] of rejectedMdx) {
     }
   });
 }
+
+const rejectedMermaid = [
+  [
+    "oversized diagram",
+    "x".repeat(64 * 1024 + 1),
+    "Mermaid diagram exceeds the 64 KiB limit",
+  ],
+  [
+    "frontmatter",
+    "---\ntheme: dark\n---\nflowchart LR\nA-->B",
+    "Mermaid frontmatter is not allowed",
+  ],
+  [
+    "init directive",
+    '%%{init: {"theme":"dark"}}%%\nflowchart LR\nA-->B',
+    "Mermaid init directives are not allowed",
+  ],
+  [
+    "init directive with whitespace and mixed case",
+    "%% { InIt: {\"theme\":\"dark\"} } %%\nflowchart LR\nA-->B",
+    "Mermaid init directives are not allowed",
+  ],
+] as const;
+
+for (const [name, diagram, message] of rejectedMermaid) {
+  test("build rejects Mermaid " + name + " before creating an output file", async () => {
+    const testCase = await createCase(
+      "---\ntitle: X\n---\n```mermaid\n" + diagram + "\n```",
+    );
+    try {
+      const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+      expect(result.exitCode).toBe(3);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toMatch(/^rpt: \d+:\d+:/);
+      expect(result.stderr).toContain(message);
+      expect(await Bun.file(testCase.output).exists()).toBe(false);
+    } finally {
+      await testCase.cleanup();
+    }
+  });
+}
+
+test("build rejects more than 20 Mermaid diagrams before creating an output file", async () => {
+  const diagram = "```mermaid\nflowchart LR\nA-->B\n```";
+  const testCase = await createCase(
+    "---\ntitle: X\n---\n" + Array.from({ length: 21 }, () => diagram).join("\n\n"),
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(3);
+    expect(result.stdout).toBe("");
+    expect(result.stderr).toMatch(/^rpt: \d+:\d+:/);
+    expect(result.stderr).toContain("Mermaid diagrams exceed the 20 diagram limit");
+    expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build treats case-variant Mermaid fences as ordinary code", async () => {
+  const testCase = await createCase(
+    "---\ntitle: X\n---\n```Mermaid\n%%{init: {\"theme\":\"dark\"}}%%\nflowchart LR\nA-->B\n```",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    expect(await Bun.file(testCase.output).text()).toContain("flowchart LR");
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("validateReport derives hasMermaid and rejects user-provided metadata", () => {
+  const mermaid = validateReport({
+    source: "---\ntitle: X\n---\n```mermaid\nflowchart LR\nA-->B\n```",
+    baseDirectory: repositoryRoot,
+  });
+  expect(mermaid.ok).toBe(true);
+  if (mermaid.ok) {
+    expect(mermaid.value.hasMermaid).toBe(true);
+  }
+
+  const ordinaryCode = validateReport({
+    source: "---\ntitle: X\n---\n```Mermaid\nflowchart LR\nA-->B\n```",
+    baseDirectory: repositoryRoot,
+  });
+  expect(ordinaryCode.ok).toBe(true);
+  if (ordinaryCode.ok) {
+    expect(ordinaryCode.value.hasMermaid).toBe(false);
+  }
+
+  const userMetadata = validateReport({
+    source: "---\ntitle: X\nhasMermaid: true\n---",
+    baseDirectory: repositoryRoot,
+  });
+  expect(userMetadata.ok).toBe(false);
+  if (!userMetadata.ok) {
+    expect(userMetadata.error.message).toBe("frontmatter.hasMermaid is not allowed");
+  }
+});
+
+test("build writes validator-derived Mermaid metadata", async () => {
+  const report = validateReport({
+    source: "---\ntitle: X\n---\n```mermaid\nflowchart LR\nA-->B\n```",
+    baseDirectory: repositoryRoot,
+  });
+  expect(report.ok).toBe(true);
+  if (!report.ok) {
+    return;
+  }
+
+  const built = await buildReport(report.value, join(repositoryRoot, "dot_local/lib/rpt"));
+  expect(built.ok).toBe(true);
+  if (!built.ok) {
+    return;
+  }
+  try {
+    const metadata = JSON.parse(
+      await Bun.file(
+        join(built.value.distDirectory, "..", "src/content/report-data.json"),
+      ).text(),
+    ) as { hasMermaid?: unknown };
+    expect(metadata.hasMermaid).toBe(true);
+  } finally {
+    await built.value.cleanup();
+  }
+});
 
 test("Tabs receive unique internal radio props in validated source", () => {
   const result = validateReport({

@@ -10,6 +10,10 @@ import { validateComponent } from "./component-rules.ts";
 import { decodeRasterDataUrl } from "./image.ts";
 import { maximumTotalImageBytes } from "./limits.ts";
 import {
+  validateMermaidNode,
+  type MermaidValidationState,
+} from "./mermaid.ts";
+import {
   safeHtmlAriaReferences,
   validateSafeHtmlElement,
   type AriaIdReference,
@@ -47,6 +51,7 @@ export type ValidatedReport = Readonly<{
   assets: readonly AssetReference[];
   decodedDataImageBytes: number;
   mainContentId: string;
+  hasMermaid: boolean;
 }>;
 
 type ValidationState = {
@@ -61,6 +66,7 @@ type ValidationState = {
   readonly sourceInsertions: Array<Readonly<{ offset: number; text: string }>>;
   tabsGroupCount: number;
   decodedDataImageBytes: number;
+  readonly mermaid: MermaidValidationState;
 };
 
 const allowedFrontmatter = new Set([
@@ -106,6 +112,7 @@ export function validateReport(input: ReportInput): Result<ValidatedReport> {
     sourceInsertions: [],
     tabsGroupCount: 0,
     decodedDataImageBytes: 0,
+    mermaid: { count: 0, hasMermaid: false },
   };
   const validation = validateNode(tree, undefined, undefined, 0, 0, 0, input, state);
   if (!validation.ok) {
@@ -127,6 +134,7 @@ export function validateReport(input: ReportInput): Result<ValidatedReport> {
       assets: state.assets,
       decodedDataImageBytes: state.decodedDataImageBytes,
       mainContentId,
+      hasMermaid: state.mermaid.hasMermaid,
     },
   };
 }
@@ -266,6 +274,10 @@ function validateNode(
   input: ReportInput,
   state: ValidationState,
 ): Result<void> {
+  const mermaidIssue = validateMermaidNode(node, state.mermaid);
+  if (mermaidIssue !== undefined) {
+    return inputFailure(mermaidIssue.message, mermaidIssue.node);
+  }
   if (node.type === "mdxjsEsm") {
     return inputFailure("import and export are not allowed", node);
   }

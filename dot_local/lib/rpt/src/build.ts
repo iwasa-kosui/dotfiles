@@ -57,6 +57,7 @@ export async function buildReport(
           metadata: report.metadata,
           outline: report.outline,
           mainContentId: report.mainContentId,
+          hasMermaid: report.hasMermaid,
         }),
       ),
       symlink(

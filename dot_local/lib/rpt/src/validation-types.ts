@@ -19,6 +19,7 @@ export type TreeNode = Positioned &
   Readonly<{
     type: string;
     value?: string;
+    lang?: string | null;
     name?: string | null;
     url?: string;
     alt?: string | null;
