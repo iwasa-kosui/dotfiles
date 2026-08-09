@@ -114,3 +114,26 @@ stale_dock:activate("codex", stale_codex)
 stale_dock:deactivate("codex", stale_codex)
 t.eq(current_handle, stale_dock.active.handle, "a stale close must leave the default fallback enabled")
 t.eq(1, current_handle.shown)
+
+local race_dock = require("user.dock").new()
+local race_lazygit = { live = true, shown = 0, hide = function() end }
+function race_lazygit:show()
+	self.shown = self.shown + 1
+end
+race_dock:set_default("lazygit", function()
+	return race_lazygit
+end, function(handle)
+	return handle.live
+end)
+race_dock:activate("lazygit", race_lazygit)
+local race_codex = { hidden = 0 }
+function race_codex:hide()
+	self.hidden = self.hidden + 1
+end
+race_dock:activate("codex", race_codex)
+race_dock:deactivate("lazygit", race_lazygit, { explicit = true, restore = false })
+t.eq(race_codex, race_dock.active.handle, "late LazyGit cleanup must not deactivate the active AI Dock")
+t.eq(false, race_dock.default.enabled, "explicit close must disable its matching default handle when inactive")
+race_dock:deactivate("codex", race_codex)
+t.eq(nil, race_dock.active, "closing AI after explicit LazyGit quit must not restore LazyGit")
+t.eq(0, race_lazygit.shown)

@@ -79,7 +79,7 @@ function Controller:deactivate(name, handle, opts)
     self.active = nil
   end
   if self.default and self.default.name == name then
-    if was_active and opts.explicit then
+    if opts.explicit and handle ~= nil and self.default.handle == handle then
       self:disable_default()
     end
     return nil

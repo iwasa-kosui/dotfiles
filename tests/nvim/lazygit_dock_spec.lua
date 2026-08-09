@@ -198,3 +198,75 @@ end
 local reopened = lazygit_dock.open({ focus = false }, adapter)
 t.eq(replacement, reopened)
 t.eq(3, created, "opening a dead terminal must create a replacement")
+
+local race_dock = require("user.dock").new()
+local race_cleanup
+local race_q
+local race_created = 0
+local race_terminals = {
+	{
+		buf = 201,
+		live = true,
+		show = function() end,
+		hide = function() end,
+		close = function(self)
+			self.live = false
+		end,
+	},
+	{
+		buf = 202,
+		live = true,
+		show = function() end,
+		hide = function() end,
+	},
+}
+local race_adapter = {
+	root = function()
+		return "/repo/.wt/explicit-race"
+	end,
+	has_ui = function()
+		return true
+	end,
+	executable = function()
+		return true
+	end,
+	is_git_repo = function()
+		return true
+	end,
+	dock = race_dock,
+	lazygit = function()
+		race_created = race_created + 1
+		return race_terminals[race_created]
+	end,
+	terminal_live = function(value)
+		return value.live
+	end,
+	set_keymap = function(_, lhs, rhs)
+		if lhs == "q" then
+			race_q = rhs
+		end
+	end,
+	register_cleanup = function(_, callback)
+		race_cleanup = callback
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	discard_terminal = function(value)
+		value:close({ buf = true })
+	end,
+	ensure_explorer = function() end,
+}
+lazygit_dock.reset_for_tests()
+local race_lazygit = lazygit_dock.open({ focus = false }, race_adapter)
+t.eq("q", race_q(), "explicit q must still be forwarded to LazyGit")
+local race_codex = { hide = function() end }
+race_dock:activate("codex", race_codex)
+race_cleanup({ event = "TermClose" })
+t.eq(race_codex, race_dock.active.handle, "late TermClose must leave the replacement Dock active")
+race_dock:deactivate("codex", race_codex)
+t.eq(nil, race_dock.active, "AI close after explicit LazyGit quit must not restore the default")
+t.eq(false, race_dock.default.enabled)
+local manual_reopen = lazygit_dock.open({ focus = false }, race_adapter)
+t.truthy(manual_reopen ~= race_lazygit and manual_reopen.live)
+t.eq(true, race_dock.default.enabled, "manual LazyGit open must re-enable default restoration")
