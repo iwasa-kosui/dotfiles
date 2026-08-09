@@ -75,6 +75,17 @@
   margin-block-start: 1.5rem;
 }
 
+[data-rpt-mermaid] {
+  overflow-x: auto;
+}
+
+[data-rpt-mermaid] svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-inline: auto;
+}
+
 .rpt-callout-title,
 .rpt-evidence figcaption,
 .rpt-metric dt {

@@ -13,10 +13,15 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { tmpdir } from "node:os";
 import { readBounded } from "./bounded-read.ts";
 import { detectImageMimeType } from "./image.ts";
+import {
+  createFinalDomPolicy,
+  type FinalDomPolicy,
+} from "./final-dom-policy.ts";
 import {
   maximumImageBytes,
   maximumTotalImageBytes,
@@ -27,6 +32,7 @@ import type { ValidatedReport } from "./validate.ts";
 export type BuiltReport = Readonly<{
   html: string;
   distDirectory: string;
+  finalDomPolicy: FinalDomPolicy;
   cleanup: () => Promise<void>;
 }>;
 
@@ -43,6 +49,12 @@ export async function buildReport(
   const cleanup = createCleanup(temporaryRoot);
 
   try {
+    const finalDomPolicy = report.hasMermaid
+      ? createFinalDomPolicy(
+          true,
+          randomBytes(18).toString("base64url"),
+        )
+      : createFinalDomPolicy(false);
     await cp(join(packageRoot, "template"), temporaryRoot, { recursive: true });
     const assets = await copyAssets(report, temporaryRoot);
     if (!assets.ok) {
@@ -58,6 +70,7 @@ export async function buildReport(
           outline: report.outline,
           mainContentId: report.mainContentId,
           hasMermaid: report.hasMermaid,
+          finalDomPolicy,
         }),
       ),
       symlink(
@@ -106,6 +119,7 @@ export async function buildReport(
       value: {
         html: await readFile(indexPath, "utf8"),
         distDirectory,
+        finalDomPolicy,
         cleanup,
       },
     };

@@ -14,6 +14,58 @@ import { validateReport } from "../dot_local/lib/rpt/src/validate.ts";
 type Element = DefaultTreeAdapterTypes.Element;
 type ParentNode = DefaultTreeAdapterTypes.ParentNode;
 
+type TestFinalDomPolicy =
+  | Readonly<{ kind: "static"; csp: string }>
+  | Readonly<{
+      kind: "mermaid";
+      nonce: string;
+      csp: string;
+      cdnUrl: "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js";
+      initScript: string;
+    }>;
+
+const staticCsp =
+  "default-src 'none'; img-src data:; style-src 'unsafe-inline'; connect-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'";
+const mermaidCdnUrl =
+  "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js" as const;
+const mermaidNonce = "test-mermaid-nonce";
+const mermaidInitScript = `(() => {
+  const showError = (element) => {
+    const error = document.createElement("p");
+    error.setAttribute("role", "alert");
+    error.textContent = "Mermaid diagram could not be rendered.";
+    element.after(error);
+  };
+  const mermaid = window.mermaid;
+  const elements = document.querySelectorAll("[data-rpt-mermaid]");
+  if (mermaid === undefined) {
+    elements.forEach(showError);
+    return;
+  }
+  mermaid.initialize({ startOnLoad: false, securityLevel: "strict" });
+  elements.forEach(async (element, index) => {
+    const source = element.textContent ?? "";
+    try {
+      const { svg } = await mermaid.render("rpt-mermaid-" + index, source);
+      element.innerHTML = svg;
+    } catch {
+      showError(element);
+    }
+  });
+})();`;
+const staticPolicy: TestFinalDomPolicy = { kind: "static", csp: staticCsp };
+const mermaidPolicy: TestFinalDomPolicy = {
+  kind: "mermaid",
+  nonce: mermaidNonce,
+  csp:
+    staticCsp +
+    "; script-src 'nonce-" +
+    mermaidNonce +
+    "' https://cdn.jsdelivr.net",
+  cdnUrl: mermaidCdnUrl,
+  initScript: mermaidInitScript,
+};
+
 const repositoryRoot = join(import.meta.dir, "..");
 const cliPath = join(repositoryRoot, "dot_local/bin/executable_rpt");
 
@@ -47,6 +99,16 @@ function attributeValue(element: Element, name: string): string | undefined {
   return element.attrs.find(
     (attribute) => attribute.name.toLowerCase() === name,
   )?.value;
+}
+
+function elementTextContent(element: Element): string {
+  return element.childNodes
+    .filter(
+      (node): node is DefaultTreeAdapterTypes.TextNode =>
+        node.nodeName === "#text",
+    )
+    .map((node) => node.value)
+    .join("");
 }
 
 function collectElements(parent: ParentNode): Element[] {
@@ -182,13 +244,36 @@ async function createCase(source: string) {
   };
 }
 
-async function runInlineFixture(html: string) {
+async function runInlineFixture(
+  html: string,
+  policy: TestFinalDomPolicy = staticPolicy,
+  includeExpectedCsp = true,
+) {
   const directory = await mkdtemp(join(tmpdir(), "rpt-inline-e2e-"));
   try {
-    return await inlineAssets(html, directory);
+    const csp = includeExpectedCsp
+      ? `<meta http-equiv="Content-Security-Policy" content="${policy.csp}">`
+      : "";
+    return await inlineAssets(csp + html, directory, policy);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+function mermaidScriptMarkup(
+  options: Readonly<{
+    cdnUrl?: string;
+    cdnNonce?: string;
+    initNonce?: string;
+    initScript?: string;
+    extraScript?: string;
+    reverse?: boolean;
+  }> = {},
+): string {
+  const cdn = `<script src="${options.cdnUrl ?? mermaidCdnUrl}" nonce="${options.cdnNonce ?? mermaidNonce}"></script>`;
+  const init = `<script nonce="${options.initNonce ?? mermaidNonce}">${options.initScript ?? mermaidInitScript}</script>`;
+  const scripts = options.reverse ? init + cdn : cdn + init;
+  return scripts + (options.extraScript ?? "");
 }
 
 test("--help displays the rpt build usage", async () => {
@@ -1093,7 +1178,69 @@ test("build renders an allowed report as a readable static HTML document", async
     expect(html).toContain('id="section-次の対応"');
     expect(html).toContain('aria-label="目次"');
     expect(html).toContain('class="rpt-skip-link"');
-    expect(html).not.toContain("<script");
+    const elements = collectElements(parse(html));
+    expect(elements.filter((element) => element.tagName === "script")).toHaveLength(0);
+    expect(
+      elements.filter(
+        (element) =>
+          element.tagName === "meta" &&
+          attributeValue(element, "http-equiv")?.toLowerCase() ===
+            "content-security-policy",
+      ).map((element) => attributeValue(element, "content")),
+    ).toEqual([staticCsp]);
+    expect(
+      elements.filter(
+        (element) =>
+          element.tagName === "link" ||
+          ((element.tagName === "img" || element.tagName === "source") &&
+            !attributeValue(element, "src")?.startsWith("data:")),
+      ),
+    ).toHaveLength(0);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build renders Mermaid with only the fixed CDN and nonce-bound init script", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Mermaid report\n---\n\n```mermaid\nflowchart LR\nA-->B\n```",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    const html = await Bun.file(testCase.output).text();
+    const elements = collectElements(parse(html));
+    const scripts = elements.filter((element) => element.tagName === "script");
+    const csp = elements.filter(
+      (element) =>
+        element.tagName === "meta" &&
+        attributeValue(element, "http-equiv")?.toLowerCase() ===
+          "content-security-policy",
+    );
+
+    expect(scripts).toHaveLength(2);
+    expect(attributeValue(scripts[0]!, "src")).toBe(mermaidCdnUrl);
+    expect(attributeValue(scripts[0]!, "nonce")).toBeTruthy();
+    expect(attributeValue(scripts[1]!, "nonce")).toBe(
+      attributeValue(scripts[0]!, "nonce"),
+    );
+    expect(attributeValue(scripts[1]!, "src")).toBeUndefined();
+    expect(elementTextContent(scripts[1]!)).toBe(mermaidInitScript);
+    expect(csp).toHaveLength(1);
+    expect(attributeValue(csp[0]!, "content")).toBe(
+      staticCsp +
+        "; script-src 'nonce-" +
+        attributeValue(scripts[0]!, "nonce") +
+        "' https://cdn.jsdelivr.net",
+    );
+    expect(attributeValue(csp[0]!, "content")).toContain("connect-src 'none'");
+    expect(attributeValue(csp[0]!, "content")).toContain("object-src 'none'");
+    expect(attributeValue(csp[0]!, "content")).toContain("base-uri 'none'");
+    expect(html).toContain("data-rpt-mermaid");
+    expect(html).toContain('securityLevel: "strict"');
+    expect(html).toContain("flowchart LR");
   } finally {
     await testCase.cleanup();
   }
@@ -1507,6 +1654,134 @@ const rejectedFinalDomAriaReferences = [
 for (const [name, html] of rejectedFinalDomAriaReferences) {
   test("final DOM rejects unresolved " + name + " ARIA references", async () => {
     const result = await runInlineFixture(html);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain("ARIA reference");
+    }
+  });
+}
+
+test("final DOM accepts only the complete Mermaid script and CSP policy", async () => {
+  const result = await runInlineFixture(
+    '<pre data-rpt-mermaid><code class="language-mermaid">flowchart LR\nA--&gt;B</code></pre>' +
+      mermaidScriptMarkup(),
+    mermaidPolicy,
+  );
+
+  expect(result.ok).toBe(true);
+});
+
+const rejectedScriptPolicies = [
+  [
+    "any script under the static policy",
+    "<script>alert(1)</script>",
+    staticPolicy,
+  ],
+  [
+    "a different Mermaid CDN URL",
+    mermaidScriptMarkup({
+      cdnUrl: "https://cdn.jsdelivr.net/npm/mermaid@11.16.1/dist/mermaid.min.js",
+    }),
+    mermaidPolicy,
+  ],
+  [
+    "a Mermaid CDN nonce mismatch",
+    mermaidScriptMarkup({ cdnNonce: "different-nonce" }),
+    mermaidPolicy,
+  ],
+  [
+    "a Mermaid init nonce mismatch",
+    mermaidScriptMarkup({ initNonce: "different-nonce" }),
+    mermaidPolicy,
+  ],
+  [
+    "a third Mermaid script",
+    mermaidScriptMarkup({ extraScript: '<script nonce="test-mermaid-nonce"></script>' }),
+    mermaidPolicy,
+  ],
+  [
+    "reversed Mermaid script order",
+    mermaidScriptMarkup({ reverse: true }),
+    mermaidPolicy,
+  ],
+  [
+    "a one-character Mermaid init mutation",
+    mermaidScriptMarkup({
+      initScript: mermaidInitScript.replace("rendered.", "rendered!"),
+    }),
+    mermaidPolicy,
+  ],
+  [
+    "Mermaid scripts in the SVG namespace",
+    "<svg>" + mermaidScriptMarkup() + "</svg>",
+    mermaidPolicy,
+  ],
+] as const;
+
+for (const [name, html, policy] of rejectedScriptPolicies) {
+  test("final DOM rejects " + name, async () => {
+    const result = await runInlineFixture(html, policy);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.message).toContain("script");
+    }
+  });
+}
+
+test("final DOM rejects a missing CSP meta", async () => {
+  const result = await runInlineFixture("<main>body</main>", staticPolicy, false);
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain("Content Security Policy");
+  }
+});
+
+test("final DOM rejects multiple CSP metas", async () => {
+  const cspMeta = `<meta http-equiv="Content-Security-Policy" content="${staticCsp}">`;
+  const result = await runInlineFixture(cspMeta + cspMeta, staticPolicy, false);
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain("Content Security Policy");
+  }
+});
+
+test("final DOM rejects a CSP that differs from the policy", async () => {
+  const result = await runInlineFixture(
+    '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'">',
+    staticPolicy,
+    false,
+  );
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain("Content Security Policy");
+  }
+});
+
+test("final DOM rejects a CSP meta outside the document head", async () => {
+  const result = await runInlineFixture(
+    `<!doctype html><html><head></head><body><main>body</main><meta http-equiv="Content-Security-Policy" content="${staticCsp}"></body></html>`,
+    staticPolicy,
+    false,
+  );
+
+  expect(result.ok).toBe(false);
+  if (!result.ok) {
+    expect(result.error.message).toContain("Content Security Policy");
+  }
+});
+
+for (const [name, html] of [
+  ["aria-labelledby", '<div aria-labelledby="missing"></div>'],
+  ["aria-describedby", '<div aria-describedby="missing"></div>'],
+  ["aria-details", '<div aria-details="missing"></div>'],
+] as const) {
+  test("policy-aware final DOM rejects unresolved " + name, async () => {
+    const result = await runInlineFixture(html, staticPolicy);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
