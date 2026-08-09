@@ -445,6 +445,9 @@ function Controller:activate(line, action)
     if item.status == "D" then
       self.adapter.notify("Deleted file can only be opened as a diff")
     else
+      if self.view.close then
+        self.view:close()
+      end
       local target = self.editor_win()
       self.adapter.open_file(self.cwd .. "/" .. item.path, target, function(opened)
         if not opened then
