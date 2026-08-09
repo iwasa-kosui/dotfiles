@@ -8,8 +8,11 @@ import remarkParse from "remark-parse";
 import { parseDocument } from "yaml";
 import { decodeRasterDataUrl } from "./image.ts";
 import { maximumTotalImageBytes } from "./limits.ts";
+import { validateSafeHtmlElement } from "./safe-html.ts";
+import { isAllowedNavigationUrl } from "./safe-url.ts";
 import type { ReportInput } from "./input.ts";
 import type { Result } from "./result.ts";
+import type { Positioned, TreeNode } from "./validation-types.ts";
 
 export type ReportMetadata = Readonly<{
   title: string;
@@ -40,36 +43,6 @@ export type ValidatedReport = Readonly<{
   decodedDataImageBytes: number;
   mainContentId: string;
 }>;
-
-type Point = Readonly<{
-  line: number;
-  column: number;
-  offset?: number;
-}>;
-
-type Positioned = Readonly<{
-  position?: Readonly<{ start: Point; end: Point }>;
-}>;
-
-type Attribute = Positioned &
-  Readonly<{
-    type: string;
-    name?: string;
-    value?: string | Positioned | null;
-  }>;
-
-type TreeNode = Positioned &
-  Readonly<{
-    type: string;
-    value?: string;
-    name?: string | null;
-    url?: string;
-    alt?: string | null;
-    depth?: number;
-    identifier?: string;
-    attributes?: readonly Attribute[];
-    children?: readonly TreeNode[];
-  }>;
 
 type ComponentRule = Readonly<{
   required: readonly string[];
@@ -162,7 +135,7 @@ export function validateReport(input: ReportInput): Result<ValidatedReport> {
     anchorInsertions: [],
     decodedDataImageBytes: 0,
   };
-  const validation = validateNode(tree, undefined, 0, input, state);
+  const validation = validateNode(tree, undefined, undefined, 0, input, state);
   if (!validation.ok) {
     return validation;
   }
@@ -310,6 +283,7 @@ function optionalString(
 function validateNode(
   node: TreeNode,
   parent: TreeNode | undefined,
+  safeHtmlParent: TreeNode | undefined,
   sectionDepth: number,
   input: ReportInput,
   state: ValidationState,
@@ -365,24 +339,39 @@ function validateNode(
     node.type === "mdxJsxFlowElement" ||
     node.type === "mdxJsxTextElement"
   ) {
-    const componentValidation = validateComponent(
-      node,
-      parent,
-      sectionDepth,
-      state,
-    );
-    if (!componentValidation.ok) {
-      return componentValidation;
-    }
-    if (node.name === "Section") {
-      nextSectionDepth += 1;
+    if (node.name !== null && node.name !== undefined && node.name === node.name.toLowerCase()) {
+      const htmlIssue = validateSafeHtmlElement(node, safeHtmlParent, state.htmlIds);
+      if (htmlIssue !== undefined) {
+        return inputFailure(htmlIssue.message, htmlIssue.node);
+      }
+    } else {
+      const componentValidation = validateComponent(
+        node,
+        parent,
+        sectionDepth,
+        state,
+      );
+      if (!componentValidation.ok) {
+        return componentValidation;
+      }
+      if (node.name === "Section") {
+        nextSectionDepth += 1;
+      }
     }
   }
+
+  const childSafeHtmlParent =
+    node.name !== null && node.name !== undefined && node.name === node.name.toLowerCase()
+      ? node
+      : node.type === "paragraph"
+        ? safeHtmlParent
+        : undefined;
 
   for (const child of node.children ?? []) {
     const childValidation = validateNode(
       child,
       node,
+      childSafeHtmlParent,
       nextSectionDepth,
       input,
       state,
@@ -504,7 +493,7 @@ function validateComponent(
 
 function validateLink(node: TreeNode): Result<void> {
   const url = node.url ?? "";
-  if (isAllowedLink(url)) {
+  if (isAllowedNavigationUrl(url)) {
     return { ok: true, value: undefined };
   }
   return inputFailure("link URL is not allowed", node);
@@ -546,17 +535,6 @@ function validateImage(
     state.assets.push({ sourcePath, relativePath });
   }
   return { ok: true, value: undefined };
-}
-
-function isAllowedLink(url: string): boolean {
-  if (url.startsWith("#") || url.toLowerCase().startsWith("mailto:")) {
-    return true;
-  }
-  if (url.startsWith("//")) {
-    return false;
-  }
-  const scheme = hasScheme(url);
-  return scheme === false || scheme.toLowerCase() === "https:";
 }
 
 function hasScheme(value: string): string | false {

@@ -13,6 +13,8 @@ import {
   type DefaultTreeAdapterTypes,
 } from "parse5";
 import { detectImageMimeType } from "./image.ts";
+import { safeStyleViolation } from "./safe-style.ts";
+import { isAllowedNavigationUrl } from "./safe-url.ts";
 import type { Result } from "./result.ts";
 
 type Element = DefaultTreeAdapterTypes.Element;
@@ -71,10 +73,9 @@ async function processElement(
   }
   const style = attribute(element, "style");
   if (style !== undefined) {
-    if (isGeneratedMarkdownStyle(element, style.value)) {
-      element.attrs = element.attrs.filter((candidate) => candidate !== style);
-    } else {
-      return unsafeHtml("report HTML contains a style attribute");
+    const violation = safeStyleViolation(style.value);
+    if (violation !== undefined) {
+      return unsafeHtml("report HTML contains unsafe style: " + violation);
     }
   }
 
@@ -545,12 +546,14 @@ const svgDynamicElementNames = new Set([
 type FinalDomState = {
   readonly idCounts: Map<string, number>;
   readonly fragmentTargets: string[];
+  readonly ariaTargets: string[];
 };
 
 function validateFinalDom(parent: ParentNode): Result<void> {
   const state: FinalDomState = {
     idCounts: new Map(),
     fragmentTargets: [],
+    ariaTargets: [],
   };
   const validation = validateFinalDomInto(parent, state);
   if (!validation.ok) {
@@ -566,6 +569,13 @@ function validateFinalDom(parent: ParentNode): Result<void> {
       return unsafeHtml(
         "report HTML internal fragment must resolve to exactly one id: #" +
           target,
+      );
+    }
+  }
+  for (const target of state.ariaTargets) {
+    if (state.idCounts.get(target) !== 1) {
+      return unsafeHtml(
+        "report HTML ARIA reference must resolve to exactly one id: " + target,
       );
     }
   }
@@ -602,8 +612,22 @@ function validateFinalDomInto(
     }
     for (const candidate of child.attrs) {
       const name = candidate.name.toLowerCase();
-      if (name === "style" || name === "srcdoc" || name.startsWith("on")) {
+      if (name === "style") {
+        const violation = safeStyleViolation(candidate.value);
+        if (violation !== undefined) {
+          return unsafeHtml("report HTML contains unsafe style: " + violation);
+        }
+        continue;
+      }
+      if (name === "srcdoc" || name.startsWith("on")) {
         return unsafeHtml("report HTML contains an executable attribute");
+      }
+      if (
+        name === "aria-labelledby" ||
+        name === "aria-describedby" ||
+        name === "aria-details"
+      ) {
+        state.ariaTargets.push(...candidate.value.trim().split(/\s+/).filter(Boolean));
       }
       if (cssUrlAttributeNames.has(name)) {
         const cssValidation = validateCssValue(candidate.value);
@@ -624,14 +648,14 @@ function validateFinalDomInto(
           return unsafeHtml("report HTML contains an external asset reference");
         }
       } else if (
-        name === "href" &&
-        (tagName === "a" || tagName === "area")
+        (name === "href" && (tagName === "a" || tagName === "area")) ||
+        (name === "cite" && (tagName === "blockquote" || tagName === "q"))
       ) {
-        if (!isSafeNavigationUrl(candidate.value)) {
+        if (!isAllowedNavigationUrl(candidate.value)) {
           return unsafeHtml("report HTML contains an unsafe navigation URL");
         }
         const trimmed = candidate.value.trim();
-        if (trimmed.startsWith("#")) {
+        if (name === "href" && trimmed.startsWith("#")) {
           try {
             state.fragmentTargets.push(decodeURIComponent(trimmed.slice(1)));
           } catch (cause) {
@@ -662,32 +686,8 @@ function validateFinalDomInto(
   return { ok: true, value: undefined };
 }
 
-function isSafeNavigationUrl(value: string): boolean {
-  const trimmed = value.trim();
-  if (trimmed.startsWith("#")) {
-    return true;
-  }
-  try {
-    const url = new URL(trimmed, "https://rpt.invalid/");
-    return (
-      url.origin === "https://rpt.invalid" ||
-      url.protocol === "https:" ||
-      url.protocol === "mailto:"
-    );
-  } catch {
-    return false;
-  }
-}
-
 function attribute(element: Element, name: string) {
   return element.attrs.find((candidate) => candidate.name.toLowerCase() === name);
-}
-
-function isGeneratedMarkdownStyle(element: Element, value: string): boolean {
-  return (
-    (element.tagName === "td" || element.tagName === "th") &&
-    /^\s*text-align\s*:\s*(?:left|center|right)\s*;?\s*$/.test(value)
-  );
 }
 
 function hasRel(element: Element, token: string): boolean {

@@ -272,7 +272,7 @@ const rejectedMdx = [
   [
     "raw HTML",
     "---\ntitle: X\n---\n<script>alert(1)</script>",
-    "raw HTML is not allowed",
+    "element script is not allowed",
   ],
   [
     "an unknown component",
@@ -330,6 +330,57 @@ const rejectedMdx = [
     "attribute anchor is not allowed on Section",
   ],
 ] as const;
+
+test("build renders safe semantic HTML without executable content", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Safe HTML\n---\n\n<section id=\"details\" role=\"region\" aria-label=\"詳細\" style=\"display: grid; gap: 1rem\">\n  <details open=\"true\">\n    <summary>内訳</summary>\n    <table><tbody><tr><th scope=\"row\">状態</th><td>正常</td></tr></tbody></table>\n  </details>\n</section>",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    const document = parse(await Bun.file(testCase.output).text());
+    const section = findElement(
+      document,
+      (element) => element.tagName === "section" && attributeValue(element, "id") === "details",
+    );
+    expect(section).toBeDefined();
+    expect(attributeValue(section!, "aria-label")).toBe("詳細");
+    expect(attributeValue(section!, "style")).toContain("display: grid");
+    expect(collectElements(document).some((element) => element.tagName === "script")).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+const rejectedSafeHtml = [
+  ["script", "<script>alert(1)</script>", "element script is not allowed"],
+  ["class", '<div class="x">x</div>', "attribute class is not allowed on div"],
+  ["event", '<div onClick="x">x</div>', "attribute onClick is not allowed on div"],
+  ["raw image", '<img src="x.png" />', "element img is not allowed"],
+  ["heading", "<h2>Hidden outline</h2>", "element h2 is not allowed"],
+  ["reserved id", '<div id="rpt-user">x</div>', "id prefix rpt- is reserved"],
+  ["duplicate id", '<div id="same">a</div><span id="same">b</span>', "id may only be specified once"],
+  ["invalid child", "<ul><div>x</div></ul>", "ul may only contain li elements"],
+  ["unsafe style", '<div style="position: fixed">x</div>', "style property position is not allowed"],
+] as const;
+
+for (const [name, html, message] of rejectedSafeHtml) {
+  test("build rejects unsafe HTML " + name + " before creating an output file", async () => {
+    const testCase = await createCase("---\ntitle: X\n---\n" + html);
+    try {
+      const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+      expect(result.exitCode).toBe(3);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toMatch(/^rpt: \d+:\d+:/);
+      expect(result.stderr).toContain(message);
+      expect(await Bun.file(testCase.output).exists()).toBe(false);
+    } finally {
+      await testCase.cleanup();
+    }
+  });
+}
 
 for (const [name, source, message] of rejectedMdx) {
   test("build rejects " + name + " before creating an output file", async () => {
