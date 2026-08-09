@@ -79,6 +79,7 @@ AI authoring contract:
     \`\`\`
     Use lowercase mermaid fences only. Each diagram is at most 64 KiB; a report has at most 20.
     Mermaid uses a pinned CDN and client-side JavaScript only for reports that contain a Mermaid diagram.
+    Both Mermaid scripts require the build nonce; the CSP does not trust CDN scripts by host alone.
     Mermaid frontmatter and init directives are not allowed. If unavailable, the source remains readable.
 
   Restrictions:

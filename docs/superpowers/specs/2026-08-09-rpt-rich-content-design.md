@@ -200,13 +200,13 @@ flowchart LR
 - Astroのrehype pluginが`pre > code.language-mermaid`を、元sourceを保持する`pre[data-rpt-mermaid]`へ変換します。
 - Mermaidがある場合だけ`https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.min.js`を追加します。
 - 初期化は`startOnLoad: false`、`securityLevel: "strict"`で固定し、利用者設定で上書きできません。
-- 固定初期化scriptは各図を個別に描画します。成功してから元コードをSVGへ置換し、失敗時は元コードを残して隣に`role="alert"`のエラーを表示します。
+- 固定初期化scriptは自身のnonceをbase64urlとして検証し、`rpt-mermaid-${nonce}-${index}`を描画IDに使って各図を個別に描画します。nonceを取得できない場合や不正な場合は描画しません。成功してから元コードをSVGへ置換し、nonce不正時や描画失敗時は元コードを残して隣に`role="alert"`のエラーを表示します。
 - CDN取得失敗またはJavaScript無効時は元コードがそのまま読めます。
 - Mermaidを含むレポートは閲覧時にCDN接続が必要で、完全オフラインでは図に変換されません。
 
 ## Content Security Policyと最終DOM
 
-全レポートにmeta CSPを出力します。通常レポートは`default-src 'none'`を基準にinline styleとdata imageだけを許可します。Mermaidレポートはbuildごとに生成したnonceを固定CDN scriptと固定初期化scriptへ付与し、script実行をそのnonceに限定します。`connect-src`、`object-src`、`base-uri`、`form-action`は`'none'`です。
+全レポートにmeta CSPを出力します。通常レポートは`default-src 'none'`を基準にinline styleとdata imageだけを許可します。Mermaidレポートはbuildごとに生成したnonceを固定CDN scriptと固定初期化scriptへ付与し、`script-src 'nonce-${nonce}'`だけでscript実行をそのnonceに限定します。CDNのhost sourceは許可しません。`connect-src`、`object-src`、`base-uri`、`form-action`は`'none'`です。
 
 最終DOM検査は次を保証します。
 

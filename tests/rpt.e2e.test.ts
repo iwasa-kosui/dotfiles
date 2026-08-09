@@ -36,17 +36,23 @@ const mermaidInitScript = `(() => {
     error.textContent = "Mermaid diagram could not be rendered.";
     element.after(error);
   };
-  const mermaid = window.mermaid;
   const elements = document.querySelectorAll("[data-rpt-mermaid]");
+  const nonce = document.currentScript?.nonce ?? "";
+  if (!/^[A-Za-z0-9_-]+$/.test(nonce)) {
+    elements.forEach(showError);
+    return;
+  }
+  const mermaid = window.mermaid;
   if (mermaid === undefined) {
     elements.forEach(showError);
     return;
   }
   mermaid.initialize({ startOnLoad: false, securityLevel: "strict" });
+  const renderIdPrefix = "rpt-mermaid-" + nonce + "-";
   elements.forEach(async (element, index) => {
     const source = element.textContent ?? "";
     try {
-      const { svg } = await mermaid.render("rpt-mermaid-" + index, source);
+      const { svg } = await mermaid.render(renderIdPrefix + index, source);
       element.innerHTML = svg;
     } catch {
       showError(element);
@@ -57,11 +63,7 @@ const staticPolicy: TestFinalDomPolicy = { kind: "static", csp: staticCsp };
 const mermaidPolicy: TestFinalDomPolicy = {
   kind: "mermaid",
   nonce: mermaidNonce,
-  csp:
-    staticCsp +
-    "; script-src 'nonce-" +
-    mermaidNonce +
-    "' https://cdn.jsdelivr.net",
+  csp: staticCsp + "; script-src 'nonce-" + mermaidNonce + "'",
   cdnUrl: mermaidCdnUrl,
   initScript: mermaidInitScript,
 };
@@ -276,6 +278,55 @@ function mermaidScriptMarkup(
   return scripts + (options.extraScript ?? "");
 }
 
+function runMermaidInitProbe(scriptSource: string, nonce?: string) {
+  type ProbeAlert = {
+    attributes: Record<string, string>;
+    textContent: string;
+    setAttribute(name: string, value: string): void;
+  };
+
+  const alerts: ProbeAlert[] = [];
+  const diagram = {
+    textContent: "flowchart LR\nA-->B",
+    innerHTML: "",
+    after(alert: ProbeAlert) {
+      alerts.push(alert);
+    },
+  };
+  const renderIds: string[] = [];
+  let initializeCalls = 0;
+  const fakeDocument = {
+    currentScript: nonce === undefined ? null : { nonce },
+    querySelectorAll() {
+      return [diagram];
+    },
+    createElement() {
+      const alert: ProbeAlert = {
+        attributes: {},
+        textContent: "",
+        setAttribute(name, value) {
+          this.attributes[name] = value;
+        },
+      };
+      return alert;
+    },
+  };
+  const fakeWindow = {
+    mermaid: {
+      initialize() {
+        initializeCalls += 1;
+      },
+      async render(id: string) {
+        renderIds.push(id);
+        return { svg: "<svg></svg>" };
+      },
+    },
+  };
+
+  new Function("window", "document", scriptSource)(fakeWindow, fakeDocument);
+  return { alerts, diagram, initializeCalls, renderIds };
+}
+
 test("--help displays the rpt build usage", async () => {
   const result = await runRpt(["--help"]);
 
@@ -307,6 +358,9 @@ test("no arguments displays the detailed AI authoring guide", async () => {
   expect(result.stdout).toContain("```mermaid");
   expect(result.stdout).toContain(
     "Mermaid uses a pinned CDN and client-side JavaScript",
+  );
+  expect(result.stdout).toContain(
+    "Both Mermaid scripts require the build nonce",
   );
   expect(result.stdout).toContain("class and event attributes are not allowed");
   expect(result.stdout).toContain("rpt build - -o report.html");
@@ -1242,7 +1296,7 @@ test("build renders Mermaid with only the fixed CDN and nonce-bound init script"
       staticCsp +
         "; script-src 'nonce-" +
         attributeValue(scripts[0]!, "nonce") +
-        "' https://cdn.jsdelivr.net",
+        "'",
     );
     expect(attributeValue(csp[0]!, "content")).toContain("connect-src 'none'");
     expect(attributeValue(csp[0]!, "content")).toContain("object-src 'none'");
@@ -1252,6 +1306,55 @@ test("build renders Mermaid with only the fixed CDN and nonce-bound init script"
     expect(html).toContain("flowchart LR");
   } finally {
     await testCase.cleanup();
+  }
+});
+
+test("Mermaid runtime render ids include the script nonce when a heading uses the legacy id", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Mermaid id collision\n---\n\n## rpt-mermaid-0\n\n```mermaid\nflowchart LR\nA-->B\n```",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stderr).toBe("");
+    const document = parse(await Bun.file(testCase.output).text());
+    const elements = collectElements(document);
+    const heading = elements.find(
+      (element) =>
+        element.tagName === "h2" && attributeValue(element, "id") === "rpt-mermaid-0",
+    );
+    const scripts = elements.filter((element) => element.tagName === "script");
+    const nonce = attributeValue(scripts[1]!, "nonce");
+    const initScript = elementTextContent(scripts[1]!);
+
+    expect(heading).toBeDefined();
+    expect(nonce).toMatch(/^[A-Za-z0-9_-]{24}$/);
+    expect(initScript).toBe(mermaidInitScript);
+    expect(initScript).not.toContain(nonce!);
+    const probe = runMermaidInitProbe(initScript, nonce);
+    expect(probe.renderIds).toEqual(["rpt-mermaid-" + nonce + "-0"]);
+    expect(probe.initializeCalls).toBe(1);
+    expect(probe.renderIds[0]).not.toBe(attributeValue(heading!, "id"));
+    expect(probe.alerts).toHaveLength(0);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("Mermaid init keeps source and shows an alert without a valid script nonce", () => {
+  for (const nonce of [undefined, "not base64url!"]) {
+    const probe = runMermaidInitProbe(mermaidInitScript, nonce);
+
+    expect(probe.renderIds).toHaveLength(0);
+    expect(probe.initializeCalls).toBe(0);
+    expect(probe.diagram.textContent).toBe("flowchart LR\nA-->B");
+    expect(probe.diagram.innerHTML).toBe("");
+    expect(probe.alerts).toHaveLength(1);
+    expect(probe.alerts[0]!.attributes.role).toBe("alert");
+    expect(probe.alerts[0]!.textContent).toBe(
+      "Mermaid diagram could not be rendered.",
+    );
   }
 });
 

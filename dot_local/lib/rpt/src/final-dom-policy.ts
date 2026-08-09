@@ -11,17 +11,23 @@ export const mermaidInitScript = `(() => {
     error.textContent = "Mermaid diagram could not be rendered.";
     element.after(error);
   };
-  const mermaid = window.mermaid;
   const elements = document.querySelectorAll("[data-rpt-mermaid]");
+  const nonce = document.currentScript?.nonce ?? "";
+  if (!/^[A-Za-z0-9_-]+$/.test(nonce)) {
+    elements.forEach(showError);
+    return;
+  }
+  const mermaid = window.mermaid;
   if (mermaid === undefined) {
     elements.forEach(showError);
     return;
   }
   mermaid.initialize({ startOnLoad: false, securityLevel: "strict" });
+  const renderIdPrefix = "rpt-mermaid-" + nonce + "-";
   elements.forEach(async (element, index) => {
     const source = element.textContent ?? "";
     try {
-      const { svg } = await mermaid.render("rpt-mermaid-" + index, source);
+      const { svg } = await mermaid.render(renderIdPrefix + index, source);
       element.innerHTML = svg;
     } catch {
       showError(element);
@@ -61,7 +67,7 @@ export function createFinalDomPolicy(
       staticContentSecurityPolicy +
       "; script-src 'nonce-" +
       nonce +
-      "' https://cdn.jsdelivr.net",
+      "'",
     cdnUrl: mermaidCdnUrl,
     initScript: mermaidInitScript,
   };

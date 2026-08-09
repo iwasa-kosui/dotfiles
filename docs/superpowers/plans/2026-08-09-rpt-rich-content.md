@@ -545,7 +545,7 @@ default-src 'none'; img-src data:; style-src 'unsafe-inline'; connect-src 'none'
 Mermaid CSPは同じdirectivesへ次を追加する。
 
 ```text
-script-src 'nonce-${nonce}' https://cdn.jsdelivr.net
+script-src 'nonce-${nonce}'
 ```
 
 `initScript`は次の処理を固定sourceとして生成し、入力値を補間しない。
@@ -558,17 +558,23 @@ script-src 'nonce-${nonce}' https://cdn.jsdelivr.net
     error.textContent = "Mermaid diagram could not be rendered.";
     element.after(error);
   };
-  const mermaid = window.mermaid;
   const elements = document.querySelectorAll("[data-rpt-mermaid]");
+  const nonce = document.currentScript?.nonce ?? "";
+  if (!/^[A-Za-z0-9_-]+$/.test(nonce)) {
+    elements.forEach(showError);
+    return;
+  }
+  const mermaid = window.mermaid;
   if (mermaid === undefined) {
     elements.forEach(showError);
     return;
   }
   mermaid.initialize({ startOnLoad: false, securityLevel: "strict" });
+  const renderIdPrefix = "rpt-mermaid-" + nonce + "-";
   elements.forEach(async (element, index) => {
     const source = element.textContent ?? "";
     try {
-      const { svg } = await mermaid.render("rpt-mermaid-" + index, source);
+      const { svg } = await mermaid.render(renderIdPrefix + index, source);
       element.innerHTML = svg;
     } catch {
       showError(element);
