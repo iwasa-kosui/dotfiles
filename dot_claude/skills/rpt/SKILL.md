@@ -11,7 +11,7 @@ Create a safe, editable MDX source and build one shareable HTML report.
 
 1. Extract purpose, audience, decision, source material, and output location. Ask one question only when a missing answer materially changes the report; otherwise make a stated assumption.
 2. Gather only the requested evidence. Browse when freshness, citations, or the request requires it.
-3. Run `rpt` without arguments. Treat stdout as the authoritative authoring contract. Do not rely on remembered component or HTML syntax.
+3. Run `rpt` without arguments in this task before writing any MDX. Do not write MDX or proceed until this run succeeds. Treat stdout as the authoritative authoring contract; derive component and HTML syntax from it, never from memory.
 4. Write the editable `.mdx` source. Use rich components only when they improve comprehension.
 5. Run `rpt build <input.mdx> -o <output.html>`. For exit code 3, fix the reported input location without weakening the content. For exit code 4, rerun with `--debug` and diagnose the runtime; never bypass validation.
 6. Verify both files exist, then return clickable absolute paths for the HTML and MDX. Mention the pinned-CDN requirement when Mermaid is present.
@@ -22,7 +22,7 @@ If `rpt` is unavailable, report that installation or `chezmoi apply` is required
 
 ## Mobile preview
 
-Copy only the generated HTML to `index.html` inside a dedicated preview directory. Serve that directory on `0.0.0.0`, then run `mobile-preview-url <port>`. Never serve `/private/tmp`, a repository, a home directory, or a directory containing unrelated files.
+Copy only the generated HTML to `index.html` inside a dedicated preview directory. Treat the request itself as authorization to start the dedicated local server. Do not ask for additional confirmation. Choose an unused port. If it is occupied, choose another. Serve that directory on `0.0.0.0`. Verify the bind and server working directory or a successful HTTP response for `index.html` before running `mobile-preview-url <port>` and returning its URL. Never serve `/private/tmp`, a repository, a home directory, or a directory containing unrelated files.
 
 If the phone sends TLS bytes to the HTTP server, provide the Meshnet IP URL with an explicit `http://` scheme.
 

@@ -31,6 +31,29 @@ test("rpt skill discovers report creation and uses the live CLI contract", async
   expect(skill).toContain("dedicated preview directory");
 });
 
+test("rpt skill gates MDX authoring on a successful live contract run", async () => {
+  const skill = await Bun.file(skillPaths[0]).text();
+  expect(skill).toContain("Run `rpt` without arguments in this task before writing any MDX");
+  expect(skill).toContain("Do not write MDX or proceed until this run succeeds");
+  expect(skill).toContain("never from memory");
+});
+
+test("rpt skill authorizes and verifies a requested phone preview", async () => {
+  const skill = await Bun.file(skillPaths[0]).text();
+  expect(skill).toContain(
+    "Treat the request itself as authorization to start the dedicated local server",
+  );
+  expect(skill).toContain("Do not ask for additional confirmation");
+  expect(skill).toContain("Choose an unused port");
+  expect(skill).toContain("If it is occupied, choose another");
+  expect(skill).toContain(
+    "Verify the bind and server working directory or a successful HTTP response",
+  );
+  expect(skill).toContain(
+    "before running `mobile-preview-url <port>` and returning its URL",
+  );
+});
+
 test("Codex rpt skill exposes matching UI metadata", async () => {
   const metadata = await Bun.file(
     join(root, "dot_codex/skills/rpt/agents/openai.yaml"),
