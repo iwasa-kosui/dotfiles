@@ -15,12 +15,12 @@
 - `title`だけを必須frontmatterとし、未知のfrontmatterキーを拒否します。
 - MDX import、export、JavaScript式、生HTML、未登録タグ、動的属性をAstro実行前に拒否します。
 - 許可する専用タグは`Callout`、`Metric`、`Evidence`、`Section`だけです。
-- 画像は入力基準ディレクトリ内の相対パスまたはdata URLだけを許可します。
+- 画像は入力基準ディレクトリ内の相対パスまたはbase64 raster data URLだけを許可します。MIME typeはPNG、JPEG、GIF、WebP、AVIFに限定し、magic bytesと照合します。
 - 生成物はCSSと画像を埋め込んだ単一HTMLとし、クライアントJavaScriptと外部アセットを含めません。
 - UIはPCで固定目次を持つ読み物型、スマートフォンで1列、印刷時にA4向けとなる構成です。
-- 入力上限は5MiBです。
+- 入力と画像1件の上限は5MiB、decode後画像合計の上限は20MiBです。data URL画像も合計へ含めます。
 - 既存出力は`--force`がない限り変更しません。
-- 初期版の自動テストは、実際のCLIプロセスを起動するE2Eテストだけです。
+- 初期版の自動テストは実際のCLIプロセスを起動するE2Eを中心にします。制限付きMDXから生成できない敵対的HTMLとpublish raceだけはfocused boundary testを許可します。
 - 依存関係は`dot_local/lib/rpt/package.json`と`bun.lock`へ正確なバージョンで固定します。
 
 ---
@@ -31,7 +31,7 @@
 - `dot_local/lib/rpt/package.json`, `bun.lock`, `tsconfig.json`: 独立Astroパッケージの依存と検証設定です。
 - `dot_local/lib/rpt/src/result.ts`: 成功値と利用者向け失敗の判別共用体です。
 - `dot_local/lib/rpt/src/args.ts`: CLI引数を`Command`へ変換します。
-- `dot_local/lib/rpt/src/input.ts`: ファイルまたはstdinを読み、5MiB制限を適用します。
+- `dot_local/lib/rpt/src/input.ts`: ファイルまたはstdinをdescriptorから上限付きで読み、5MiB制限を適用します。
 - `dot_local/lib/rpt/src/validate.ts`: frontmatter、MDX AST、URL、専用タグを検証します。
 - `dot_local/lib/rpt/src/build.ts`: 一時Astroプロジェクトを作り、静的ビルドを実行します。
 - `dot_local/lib/rpt/src/inline-assets.ts`: ローカルアセットをdata URLへ変換します。
@@ -72,6 +72,8 @@ export type ValidatedReport = Readonly<{
   metadata: ReportMetadata;
   outline: readonly OutlineItem[];
   assets: readonly AssetReference[];
+  decodedDataImageBytes: number;
+  mainContentId: string;
 }>;
 ```
 
@@ -195,7 +197,7 @@ const rejectedMdx = [
 ] as const;
 ```
 
-各ケースで終了コード`3`、行・列付きstderr、出力ファイル不存在を確認します。さらに未知frontmatter、無効な日付・status・tags、動的属性、`style`、`on*`、非HTTPS Evidence source、remote image、基準外画像、5MiB超過を追加します。
+各ケースで終了コード`3`、行・列付きstderr、出力ファイル不存在を確認します。さらに未知frontmatter、無効な日付・status・tags、動的属性、`style`、`on*`、非HTTPS Evidence source、remote image、基準外画像、5MiB超過、不正なdata URL画像を追加します。
 
 - [ ] **Step 2: テストを実行して未検証入力がbuild失敗へ進むことを確認する**
 
@@ -210,7 +212,7 @@ export type ReportInput = Readonly<{ source: string; baseDirectory: string }>;
 export async function readInput(input: string, cwd: string): Promise<Result<ReportInput>>;
 ```
 
-ファイル入力では入力ファイルの親、stdinではcwdを`baseDirectory`にします。UTF-8 byte lengthが`5 * 1024 * 1024`を超えた場合は`input`失敗、ファイル不存在と読取失敗は`io`失敗です。
+ファイル入力では入力ファイルの親、stdinではcwdを`baseDirectory`にします。path-levelの`stat`と`readFile`に分けず、nonblockingで開いたdescriptorがregular fileであることを確認します。descriptor sizeを確認したうえで最大5MiB+1byteだけを読み、超過は`input`失敗、FIFO、device、directory、ファイル不存在、読取失敗は`io`失敗にします。
 
 - [ ] **Step 4: 実行しないMDX allowlist検証を実装する**
 
@@ -234,7 +236,7 @@ const componentRules = {
 } as const;
 ```
 
-リンクは相対URL、fragment、HTTPS、`mailto:`だけを許可します。画像はdata URLまたは基準内相対パスだけを許可します。見出しは`github-slugger`でslug化します。`Section`には`section-`接頭辞のslugを割り当て、利用者が指定できない内部`anchor`属性を開始タグへ後ろのoffsetから挿入します。
+リンクは相対URL、fragment、HTTPS、`mailto:`だけを許可します。画像はbase64形式のPNG、JPEG、GIF、WebP、AVIF data URLまたは基準内相対パスだけを許可します。data URLはdecode後のmagic bytesと宣言MIMEを照合し、1件5MiBと全画像20MiBの上限を適用します。見出しは`github-slugger`でslug化します。`Section`には`section-`接頭辞のslugを割り当て、利用者が指定できない内部`anchor`属性を開始タグへ後ろのoffsetから挿入します。見出しと`Section`の全IDを使って衝突しない`mainContentId`を割り当てます。
 
 - [ ] **Step 5: CLIへ検証を接続する**
 
@@ -378,7 +380,7 @@ import Metric from "../components/Metric.astro";
 import Section from "../components/Section.astro";
 import ReportLayout from "../layouts/ReportLayout.astro";
 ---
-<ReportLayout metadata={reportData.metadata} outline={reportData.outline}>
+<ReportLayout metadata={reportData.metadata} outline={reportData.outline} mainContentId={reportData.mainContentId}>
   <Content components={{ Callout, Evidence, Metric, Section }} />
 </ReportLayout>
 ```
@@ -412,7 +414,7 @@ WebcoreUI対応は次へ限定します。
 }
 ```
 
-目次は`nav aria-label="目次"`とし、スマートフォンでは`details`/`summary`だけで折りたたみます。Astro client directiveとscriptは追加しません。
+目次は`nav aria-label="目次"`とし、スマートフォンでは`details`/`summary`だけで折りたたみます。layoutの`main` IDとskip linkは検証時に割り当てた同じ`mainContentId`を使います。Astro client directiveとscriptは追加しません。
 
 - [ ] **Step 6: CLIへbuildを接続して生成E2Eを通す**
 
@@ -474,7 +476,7 @@ Expected: 画像埋め込み、stdin、上書き、同時実行の新規ケー�
 
 - [ ] **Step 3: 入力画像を一時Astroプロジェクトへ安全にコピーする**
 
-`AssetReference`ごとに`sourcePath`を一時projectの`src/content/<relativePath>`へコピーします。親ディレクトリを作り、コピー直前に`realpath(sourcePath)`が`realpath(baseDirectory)`配下であることを再確認します。
+`AssetReference`ごとに`sourcePath`を一時projectの`src/content/<relativePath>`へコピーします。親ディレクトリを作り、コピー直前に`realpath(sourcePath)`が`realpath(baseDirectory)`配下であることを再確認します。nonblockingで開いたdescriptorのidentityとregular fileを確認し、descriptor sizeと最大5MiB+1byteの実読込を検査します。data URLのdecode後byte数を含め、合計20MiBを超えた時点で拒否します。
 
 許可MIME typeはPNG、JPEG、GIF、WebP、AVIFです。拡張子だけでなくmagic bytesを確認し、SVGと未知形式は入力エラーとして拒否します。
 
@@ -499,7 +501,7 @@ export async function inlineAssets(
 - style属性
 - style本文の`@import`とdata URL以外の`url(...)`
 
-通常の`a[href]`にあるHTTPS Evidence参照は維持します。最後に`parse5.serialize(document)`を返します。
+通常の`a[href]`にあるHTTPS Evidence参照はfragmentを含めて維持します。最終DOMの全`id`が一意であること、`href`が内部fragmentの場合は対象IDがちょうど1件あることを確認します。最後に`parse5.serialize(document)`を返します。
 
 - [ ] **Step 5: 同一ディレクトリの一時ファイルを使う出力を実装する**
 
@@ -555,6 +557,7 @@ git commit -m "feat(rpt): アセット埋め込みと安全なHTML出力を追�
 - 出力に`@media (max-width: 48rem)`、`@media print`、`@page`が含まれます。
 - 出力に目次、skip link、`main`、`article`が含まれます。
 - `Callout tone="danger"`がWebcoreUIの`alert` themeへ変換されます。
+- `## report-content`、`Section`、footnoteを含むHTMLで全IDが一意になり、skip link、目次、footnoteのfragmentがそれぞれ1件のIDへ解決します。
 - 生成HTML以外の一時ファイルが出力先へ残りません。
 
 - [ ] **Step 2: 最終E2Eを実行して未対応契約を確認する**

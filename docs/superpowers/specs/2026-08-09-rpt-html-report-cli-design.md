@@ -23,7 +23,7 @@
 - Mermaidなどの図表レンダラー
 - PDF出力
 - LinuxとWindowsでの動作保証
-- 単体テストと内部モジュールだけを対象にした統合テスト
+- 実CLIで検証できる挙動を内部モジュールだけで確認するテスト
 
 ## CLI契約
 
@@ -42,7 +42,7 @@ rpt build - -o report.html
 - `-h, --help`: 使用方法を表示します。
 - `-v, --version`: バージョンを表示します。
 
-入力に `-` を指定した場合はstdinから読み取ります。それ以外は指定したUTF-8のMDXファイルを読み取ります。入力MDXの上限は5MiBです。
+入力に `-` を指定した場合はstdinから読み取ります。それ以外は指定したUTF-8のMDXファイルを読み取ります。入力MDXの上限は5MiBです。ファイル入力は実際に開いたdescriptorがregular fileであることを確認し、最大5MiB+1byteだけを読みます。FIFO、device、directoryは読み始める前にI/Oエラーとして拒否します。
 
 成功時は生成したHTMLの絶対パスをstdoutへ1行で表示し、終了コード`0`を返します。診断情報はstderrへ出します。
 
@@ -132,9 +132,11 @@ frontmatterでは次のキーだけを許可します。未知のキーは入力
 
 ## 画像
 
-Markdown画像はdata URLまたは相対パスを許可します。HTTPとHTTPSの画像URL、絶対パスは拒否します。
+Markdown画像はbase64形式のdata URLまたは相対パスを許可します。data URLで許可するMIME typeは`image/png`、`image/jpeg`、`image/gif`、`image/webp`、`image/avif`だけです。decode後のmagic bytesが宣言MIMEと一致しない画像、SVG、未知のMIME type、不正なbase64はAstro build前に拒否します。HTTPとHTTPSの画像URL、絶対パスは拒否します。
 
-相対パスの基準は、ファイル入力では入力MDXがあるディレクトリ、stdin入力ではコマンド実行時のカレントディレクトリです。基準ディレクトリの外へ移動するパスは拒否します。許可した画像はMIME typeを判定してdata URLへ変換します。
+相対パスの基準は、ファイル入力では入力MDXがあるディレクトリ、stdin入力ではコマンド実行時のカレントディレクトリです。基準ディレクトリの外へ移動するパスは拒否します。ローカル画像は実際に開いたdescriptorのidentityとregular fileであることを確認し、descriptor sizeと最大5MiB+1byteの実読込の両方で制限します。許可した画像はmagic bytesからMIME typeを判定してdata URLへ変換します。
+
+画像は1件あたりdecode後5MiBまでです。1レポートのdecode後画像合計は20MiBまでとし、ローカル画像とdata URL画像の両方を合計します。
 
 ## 画面設計
 
@@ -144,6 +146,7 @@ Markdown画像はdata URLまたは相対パスを許可します。HTTPとHTTPS�
 - スマートフォンでは1列に変更し、目次を折りたたみます。
 - 冒頭にタイトル、要約、ステータス、作成者、作成日、タグを表示します。
 - Markdown見出しと`Section`から目次とアンカーリンクを生成します。
+- Markdown見出しと`Section`のIDを考慮して本文`main`のIDを割り当て、skip linkと同じIDを使います。
 - 重要情報だけをWebcoreUIのAlert、Card、Badgeなどで強調します。
 - コード、表、長いURLが画面幅を超えないようにします。
 - OS標準フォントを使い、フォントファイルを参照しません。
@@ -184,7 +187,7 @@ run_onchange_after_install-rpt-dependencies.sh.tmpl
 ### コンポーネント境界
 
 - `args.ts`: CLI引数を解析し、使用方法を生成します。
-- `input.ts`: ファイルまたはstdinを読み、サイズと画像の基準ディレクトリを決めます。
+- `input.ts`: ファイルまたはstdinを上限付きで読み、サイズと画像の基準ディレクトリを決めます。
 - `validate.ts`: frontmatterとMDX ASTを検査し、許可した入力だけを返します。
 - `build.ts`: 一時Astroプロジェクトを準備し、Astroビルドを子プロセスとして実行します。
 - `inline-assets.ts`: 画像などをdata URLへ変換し、外部アセット参照が残っていないことを検査します。
@@ -200,7 +203,7 @@ run_onchange_after_install-rpt-dependencies.sh.tmpl
 5. インストール済みパッケージの`node_modules`を作業ディレクトリから参照できるようにします。
 6. Astroの静的ビルドを子プロセスで実行します。
 7. CSSをHTML内へ配置し、画像をdata URLへ変換します。
-8. 外部stylesheet、外部script、外部画像、外部font参照が残っていないことを検査します。通常のHTTPSリンクは残せます。
+8. 外部stylesheet、外部script、外部画像、外部font参照が残っていないこと、全IDが一意であること、内部fragment linkが一意な実在IDへ解決することを検査します。通常のHTTPSリンクはfragmentを含めて残せます。
 9. 出力先と同じディレクトリに一時ファイルを書き、成功後に指定先へ置き換えます。
 10. 成否にかかわらず作業ディレクトリを片付けます。
 
@@ -231,9 +234,9 @@ Astro設定へ`@astrojs/mdx`と`webcoreui/integration`を追加します。Webco
 
 `docs/`と`tests/`は既存の`.chezmoiignore`によりホームディレクトリへ配布しません。
 
-## E2Eテスト
+## 自動テスト
 
-初期版では内部実装に依存しないE2Eテストだけを追加します。テストはBunから実際の`rpt`エントリーポイントを子プロセスとして起動し、一時ディレクトリ内の入出力を検査します。
+初期版では実CLIのE2Eテストを中心にします。テストはBunから実際の`rpt`エントリーポイントを子プロセスとして起動し、一時ディレクトリ内の入出力を検査します。制限付きMDXから生成できない敵対的HTMLと、同時publishの競合だけはfocused boundary testで検査できます。
 
 次の利用経路を検証します。
 
@@ -241,6 +244,9 @@ Astro設定へ`@astrojs/mdx`と`webcoreui/integration`を追加します。Webco
 - stdin入力から自己完結型HTMLを生成できます。
 - 出力にタイトル、メタデータ、目次、見出し、レポート専用タグが含まれます。
 - CSSとローカル画像が埋め込まれ、外部アセット参照が残りません。
+- 許可したbase64 raster data URLを維持し、不正なdata URLをAstro build前に拒否します。
+- ファイル入力と画像の1件5MiB、画像合計20MiBを超過前に拒否します。
+- main、見出し、`Section`、脚注を含む全IDが一意で、skip link、目次、脚注のfragmentが一意な実在IDへ解決します。
 - import、JavaScript式、生HTML、未登録タグ、危険なURLを行と列付きで拒否します。
 - `--force`なしでは既存ファイルを変更しません。
 - `--force`付きでは既存ファイルを置き換えます。
@@ -257,7 +263,7 @@ HTML全体のスナップショットは使いません。利用者が確認で�
 - WebcoreUIを使った読み物型レポートを生成できます。
 - 生成HTMLは外部アセットなしで表示でき、クライアントJavaScriptを必要としません。
 - スマートフォン表示と印刷用CSSを含みます。
-- E2Eテストがすべて成功します。
+- 実CLI E2Eとfocused boundary testがすべて成功します。
 - 型検査、Astroビルド、`git diff --check`、chezmoi配布差分の確認が成功します。
 
 ## 参考資料
