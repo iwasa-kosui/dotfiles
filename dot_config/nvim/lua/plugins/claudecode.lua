@@ -12,6 +12,9 @@ return {
     },
     opts = {
       terminal = {
+        cwd_provider = function(_)
+          return require("lazyvim.util").root.get({ normalize = true }) or vim.uv.cwd() or vim.fn.getcwd()
+        end,
         snacks_win_opts = {
           position = "right",
           width = 0.36,
