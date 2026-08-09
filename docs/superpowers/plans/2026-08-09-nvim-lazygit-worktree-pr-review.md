@@ -12,7 +12,7 @@
 
 - 作業は`/Users/kosui/.local/share/chezmoi/.wt/fix/nvim-leader-find-files`だけで行い、main worktreeを変更しない。
 - PR #133で削除・変更された従来キーマップは、`<leader>p`のSnacks Pickerを除いて復元状態を維持する。
-- `<leader>p`単体にはactionを登録せず、WhichKeyのPRグループとして予約する。
+- activeな`<leader>p`単体にはactionを登録せず、WhichKeyのPRグループとして予約する。PR #133で復元済みだが読み込まれていない`user/vscode_keymaps.lua`のclipboard定義は維持する。
 - Octoの`mappings_disable_default`は設定せず、既定キーマップを残したまま`<leader>p...`をaliasとして追加する。
 - LazyGitの`Space`、`n`、`o`、`d`、`G`、`P`を上書きしない。
 - 他者のPRや選択branchを自動checkoutせず、worktreeも自動作成しない。

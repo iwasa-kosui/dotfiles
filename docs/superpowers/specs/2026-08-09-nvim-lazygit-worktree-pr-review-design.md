@@ -89,7 +89,7 @@ LazyGit本来のキーは維持します。特に次を上書きしません。
 
 PRレビューで普段使う操作は`<leader>p`へ統一します。
 
-`<leader>p`単体に登録されているSnacks Pickerは、`config/keymaps.lua`とSnacks plugin specの両方から削除します。Picker本体と、ファイル・buffer・診断などを直接開く既存キーは残します。`<leader>p`には単体actionを置かず、WhichKeyでPRグループとして表示します。
+`<leader>p`単体に登録されているSnacks Pickerは、`config/keymaps.lua`とSnacks plugin specの両方から削除します。Picker本体と、ファイル・buffer・診断などを直接開く既存キーは残します。復元済みだが読み込まれていない`user/vscode_keymaps.lua`はPR #133以前の内容を維持し、activeな`<leader>p`には単体actionを置かず、WhichKeyでPRグループとして表示します。
 
 | キー | 操作 | 有効な場所 |
 |---|---|---|
