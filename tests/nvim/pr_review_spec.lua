@@ -16,67 +16,67 @@ local loaded_prs = {}
 local notifications = {}
 local branch = "feat/$(touch hacked);quote'and\"double"
 local adapter = {
-  root = function(path)
-    t.eq("/repo path/.wt/feature", path)
-    return "/canonical/repo/.wt/feature"
-  end,
-  dock = {
-    prepare = function(_, name)
-      calls[#calls + 1] = "prepare:" .. name
-    end,
-    activate = function(_, name)
-      calls[#calls + 1] = "activate:" .. name
-    end,
-    deactivate = function(_, name)
-      t.eq("pr", name)
-      restored = restored + 1
-    end,
-  },
-  system = function(argv, opts, callback)
-    t.eq({ "gh", "pr", "view", branch, "--json", "number,url" }, argv)
-    t.eq("/canonical/repo/.wt/feature", opts.cwd)
-    callback({
-      code = 0,
-      stdout = '{"number":133,"url":"https://github.com/selected/repo/pull/133"}',
-      stderr = "",
-    })
-  end,
-  schedule = function(callback)
-    callback()
-  end,
-  defer = function(callback)
-    callback()
-  end,
-  load_pr = function(target, cwd, callback)
-    t.eq("/canonical/repo/.wt/feature", cwd)
-    loaded_prs[#loaded_prs + 1] = target
-    callback({
-      code = 0,
-      stdout = vim.json.encode({
-        data = {
-          repository = {
-            pullRequest = {
-              id = "PR_" .. target.number,
-              number = target.number,
-              url = target.url,
-              timelineItems = { nodes = {} },
-            },
-          },
-        },
-      }),
-      stderr = "",
-    })
-  end,
-  create_pr = function()
-    return 801
-  end,
-  buffer_valid = function(target)
-    return target == 801
-  end,
-  register_cleanup = function() end,
-  notify = function(message)
-    notifications[#notifications + 1] = message
-  end,
+	root = function(path)
+		t.eq("/repo path/.wt/feature", path)
+		return "/canonical/repo/.wt/feature"
+	end,
+	dock = {
+		prepare = function(_, name)
+			calls[#calls + 1] = "prepare:" .. name
+		end,
+		activate = function(_, name)
+			calls[#calls + 1] = "activate:" .. name
+		end,
+		deactivate = function(_, name)
+			t.eq("pr", name)
+			restored = restored + 1
+		end,
+	},
+	system = function(argv, opts, callback)
+		t.eq({ "gh", "pr", "view", branch, "--json", "number,url" }, argv)
+		t.eq("/canonical/repo/.wt/feature", opts.cwd)
+		callback({
+			code = 0,
+			stdout = '{"number":133,"url":"https://github.com/selected/repo/pull/133"}',
+			stderr = "",
+		})
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function(callback)
+		callback()
+	end,
+	load_pr = function(target, cwd, callback)
+		t.eq("/canonical/repo/.wt/feature", cwd)
+		loaded_prs[#loaded_prs + 1] = target
+		callback({
+			code = 0,
+			stdout = vim.json.encode({
+				data = {
+					repository = {
+						pullRequest = {
+							id = "PR_" .. target.number,
+							number = target.number,
+							url = target.url,
+							timelineItems = { nodes = {} },
+						},
+					},
+				},
+			}),
+			stderr = "",
+		})
+	end,
+	create_pr = function()
+		return 801
+	end,
+	buffer_valid = function(target)
+		return target == 801
+	end,
+	register_cleanup = function() end,
+	notify = function(message)
+		notifications[#notifications + 1] = message
+	end,
 }
 
 review.open({ cwd = "/repo path/.wt/feature", branch = branch }, adapter)
@@ -84,8 +84,8 @@ t.eq({ "prepare:pr", "activate:pr" }, calls)
 t.eq("https://github.com/selected/repo/pull/133", loaded_prs[1].url)
 
 adapter.system = function(argv, _, callback)
-  t.eq({ "gh", "pr", "view", branch, "--json", "number,url" }, argv)
-  callback({ code = 1, stdout = "", stderr = "no pull requests found" })
+	t.eq({ "gh", "pr", "view", branch, "--json", "number,url" }, argv)
+	callback({ code = 1, stdout = "", stderr = "no pull requests found" })
 end
 review.open({ cwd = "/repo path/.wt/feature", branch = branch }, adapter)
 t.eq(1, restored, "missing PR must restore LazyGit")
@@ -94,25 +94,25 @@ t.truthy(notifications[#notifications]:find(branch, 1, true), "the failure must 
 t.truthy(notifications[#notifications]:find("no pull requests found", 1, true), "the failure must explain gh stderr")
 
 local invalid_outputs = {
-  '{"number":"1","url":"https://github.com/selected/repo/pull/1"}',
-  '{"number":1.5,"url":"https://github.com/selected/repo/pull/1"}',
-  '[{"number":1},{"number":2}]',
-  '{"number":1,"url":"https://github.com/selected/repo/pull/2"}',
-  '{"number":1,"url":"https://github.com/selected/repo/issues/1"}',
+	'{"number":"1","url":"https://github.com/selected/repo/pull/1"}',
+	'{"number":1.5,"url":"https://github.com/selected/repo/pull/1"}',
+	'[{"number":1},{"number":2}]',
+	'{"number":1,"url":"https://github.com/selected/repo/pull/2"}',
+	'{"number":1,"url":"https://github.com/selected/repo/issues/1"}',
 }
 for _, stdout in ipairs(invalid_outputs) do
-  adapter.system = function(_, _, callback)
-    callback({ code = 0, stdout = stdout, stderr = "" })
-  end
-  review.open({ cwd = "/repo path/.wt/feature", branch = branch }, adapter)
+	adapter.system = function(_, _, callback)
+		callback({ code = 0, stdout = stdout, stderr = "" })
+	end
+	review.open({ cwd = "/repo path/.wt/feature", branch = branch }, adapter)
 end
 t.eq(6, restored, "every ambiguous or invalid PR result must restore LazyGit")
 t.eq(1, #loaded_prs, "invalid PR numbers must never reach the Octo data loader")
 
 local current_branch_argv
 adapter.system = function(argv, _, callback)
-  current_branch_argv = argv
-  callback({ code = 0, stdout = '{"number":7,"url":"https://github.com/selected/repo/pull/7"}', stderr = "" })
+	current_branch_argv = argv
+	callback({ code = 0, stdout = '{"number":7,"url":"https://github.com/selected/repo/pull/7"}', stderr = "" })
 end
 review.open({ cwd = "/repo path/.wt/feature", branch = "" }, adapter)
 t.eq({ "gh", "pr", "view", "--json", "number,url" }, current_branch_argv)
@@ -120,59 +120,59 @@ t.eq("https://github.com/selected/repo/pull/7", loaded_prs[2].url)
 
 local invalid_root_called = false
 local invalid_root_adapter = {
-  root = function(path)
-    t.eq("/outside", path)
-    return nil
-  end,
-  dock = adapter.dock,
-  system = function()
-    invalid_root_called = true
-  end,
-  notify = function(message)
-    t.truthy(message:find("Git", 1, true))
-  end,
+	root = function(path)
+		t.eq("/outside", path)
+		return nil
+	end,
+	dock = adapter.dock,
+	system = function()
+		invalid_root_called = true
+	end,
+	notify = function(message)
+		t.truthy(message:find("Git", 1, true))
+	end,
 }
 review.open({ cwd = "/outside", branch = "feat/review" }, invalid_root_adapter)
 t.eq(false, invalid_root_called, "an unverified cwd must never reach gh")
 
 local received
 review.receive({ cwd = "/repo", branch = "feat/review" }, {
-  open = function(target)
-    received = target
-  end,
-  notify = function(message)
-    error(message)
-  end,
+	open = function(target)
+		received = target
+	end,
+	notify = function(message)
+		error(message)
+	end,
 })
 t.eq({ cwd = "/repo", branch = "feat/review" }, received)
 local invalid_payload_notified = false
 review.receive({ cwd = "", branch = "feat/review" }, {
-  open = function()
-    error("invalid bridge payload must not be opened")
-  end,
-  notify = function()
-    invalid_payload_notified = true
-  end,
+	open = function()
+		error("invalid bridge payload must not be opened")
+	end,
+	notify = function()
+		invalid_payload_notified = true
+	end,
 })
 t.eq(true, invalid_payload_notified)
 
 local function complete_pr_load(target, _, callback)
-  callback({
-    code = 0,
-    stdout = vim.json.encode({
-      data = {
-        repository = {
-          pullRequest = {
-            id = "PR_" .. target.number,
-            number = target.number,
-            url = target.url,
-            timelineItems = { nodes = {} },
-          },
-        },
-      },
-    }),
-    stderr = "",
-  })
+	callback({
+		code = 0,
+		stdout = vim.json.encode({
+			data = {
+				repository = {
+					pullRequest = {
+						id = "PR_" .. target.number,
+						number = target.number,
+						url = target.url,
+						timelineItems = { nodes = {} },
+					},
+				},
+			},
+		}),
+		stderr = "",
+	})
 end
 
 local buffer = vim.api.nvim_create_buf(false, true)
@@ -180,47 +180,47 @@ local aliases = {}
 local review_actions = {}
 local alias_cleanup
 local fake_reviews = {
-  add_review_comment = function(suggestion)
-    review_actions[#review_actions + 1] = suggestion and "suggest" or "comment"
-  end,
-  submit_review = function()
-    review_actions[#review_actions + 1] = "submit"
-  end,
-  discard_review = function()
-    review_actions[#review_actions + 1] = "discard"
-  end,
+	add_review_comment = function(suggestion)
+		review_actions[#review_actions + 1] = suggestion and "suggest" or "comment"
+	end,
+	submit_review = function()
+		review_actions[#review_actions + 1] = "submit"
+	end,
+	discard_review = function()
+		review_actions[#review_actions + 1] = "discard"
+	end,
 }
 local alias_adapter = {
-  set_keymap = function(mode, lhs, rhs, opts)
-    aliases[mode .. lhs] = { rhs = rhs, opts = opts }
-  end,
-  reviews = function()
-    return fake_reviews
-  end,
-  command = function(command)
-    review_actions[#review_actions + 1] = command
-  end,
-  register_cleanup = function(_, callback)
-    alias_cleanup = callback
-  end,
-  buffer_filetype = function()
-    return ""
-  end,
+	set_keymap = function(mode, lhs, rhs, opts)
+		aliases[mode .. lhs] = { rhs = rhs, opts = opts }
+	end,
+	reviews = function()
+		return fake_reviews
+	end,
+	command = function(command)
+		review_actions[#review_actions + 1] = command
+	end,
+	register_cleanup = function(_, callback)
+		alias_cleanup = callback
+	end,
+	buffer_filetype = function()
+		return ""
+	end,
 }
 review.attach(buffer, alias_adapter)
 review.attach(buffer, alias_adapter)
 local expected_aliases = {
-  ["n<leader>pr"] = "Start or resume review",
-  ["x<leader>pc"] = "Add review comment",
-  ["x<leader>ps"] = "Add review suggestion",
-  ["n<leader>pS"] = "Submit review",
-  ["n<leader>pd"] = "Discard review",
-  ["n<leader>pq"] = "Close review",
+	["n<leader>pr"] = "Start or resume review",
+	["x<leader>pc"] = "Add review comment",
+	["x<leader>ps"] = "Add review suggestion",
+	["n<leader>pS"] = "Submit review",
+	["n<leader>pd"] = "Discard review",
+	["n<leader>pq"] = "Close review",
 }
 for lhs, description in pairs(expected_aliases) do
-  t.truthy(aliases[lhs], lhs .. " must be buffer-local")
-  t.eq(description, aliases[lhs].opts.desc)
-  t.eq(buffer, aliases[lhs].opts.buffer)
+	t.truthy(aliases[lhs], lhs .. " must be buffer-local")
+	t.eq(description, aliases[lhs].opts.desc)
+	t.eq(buffer, aliases[lhs].opts.buffer)
 end
 aliases["n<leader>pr"].rhs()
 aliases["x<leader>pc"].rhs()
@@ -241,74 +241,74 @@ local live = { [901] = true, [902] = true }
 local filetypes = { [901] = "octo", [902] = "octo" }
 local cleanups = {}
 local function run_cleanups(target)
-  for _, callback in ipairs(cleanups[target] or {}) do
-    callback()
-  end
+	for _, callback in ipairs(cleanups[target] or {}) do
+		callback()
+	end
 end
 local deferred = {}
 local current_buffer = 901
 local lifecycle_restores = 0
 local lifecycle_adapter = {
-  root = function()
-    return "/repo"
-  end,
-  dock = {
-    prepare = function() end,
-    activate = function() end,
-    deactivate = function()
-      lifecycle_restores = lifecycle_restores + 1
-    end,
-  },
-  system = function(_, _, callback)
-    callback({
-      code = 0,
-      stdout = '{"number":42,"url":"https://github.com/selected/repo/pull/42"}',
-      stderr = "",
-    })
-  end,
-  schedule = function(callback)
-    callback()
-  end,
-  defer = function(callback)
-    deferred[#deferred + 1] = callback
-  end,
-  load_pr = complete_pr_load,
-  create_pr = function()
-    return current_buffer
-  end,
-  notify = function(message)
-    error(message)
-  end,
-  set_keymap = function() end,
-  register_cleanup = function(target, callback)
-    cleanups[target] = cleanups[target] or {}
-    cleanups[target][#cleanups[target] + 1] = callback
-  end,
-  buffer_valid = function(target)
-    return live[target] == true
-  end,
-  buffer_filetype = function(target)
-    return filetypes[target]
-  end,
-  current_buffer = function()
-    return current_buffer
-  end,
-  current_tab = function()
-    return 11
-  end,
-  tab_valid = function()
-    return false
-  end,
-  reviews = function()
-    return {
-      get_current_review = function()
-        return nil
-      end,
-    }
-  end,
-  delete_buffer = function(target)
-    live[target] = false
-  end,
+	root = function()
+		return "/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			lifecycle_restores = lifecycle_restores + 1
+		end,
+	},
+	system = function(_, _, callback)
+		callback({
+			code = 0,
+			stdout = '{"number":42,"url":"https://github.com/selected/repo/pull/42"}',
+			stderr = "",
+		})
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function(callback)
+		deferred[#deferred + 1] = callback
+	end,
+	load_pr = complete_pr_load,
+	create_pr = function()
+		return current_buffer
+	end,
+	notify = function(message)
+		error(message)
+	end,
+	set_keymap = function() end,
+	register_cleanup = function(target, callback)
+		cleanups[target] = cleanups[target] or {}
+		cleanups[target][#cleanups[target] + 1] = callback
+	end,
+	buffer_valid = function(target)
+		return live[target] == true
+	end,
+	buffer_filetype = function(target)
+		return filetypes[target]
+	end,
+	current_buffer = function()
+		return current_buffer
+	end,
+	current_tab = function()
+		return 11
+	end,
+	tab_valid = function()
+		return false
+	end,
+	reviews = function()
+		return {
+			get_current_review = function()
+				return nil
+			end,
+		}
+	end,
+	delete_buffer = function(target)
+		live[target] = false
+	end,
 }
 
 review.open({ cwd = "/repo", branch = "first" }, lifecycle_adapter)
@@ -324,13 +324,13 @@ run_cleanups(902)
 
 run_cleanups(901)
 for _, callback in ipairs(deferred) do
-  callback()
+	callback()
 end
 t.eq(1, lifecycle_restores, "a stale cleanup must not cancel restoration for the current PR session")
 
 run_cleanups(902)
 for _, callback in ipairs(deferred) do
-  callback()
+	callback()
 end
 t.eq(1, lifecycle_restores, "a duplicate close must not deactivate a replacement Dock")
 
@@ -343,19 +343,19 @@ local current_review = {}
 local closed_review_tab
 local lifecycle_review_tab_live = true
 lifecycle_adapter.tab_valid = function(target)
-  return target == 11 and lifecycle_review_tab_live
+	return target == 11 and lifecycle_review_tab_live
 end
 lifecycle_adapter.reviews = function()
-  return {
-    get_current_review = function()
-      return current_review
-    end,
-    close = function(tab)
-      closed_review_tab = tab
-      current_review = nil
-      lifecycle_review_tab_live = false
-    end,
-  }
+	return {
+		get_current_review = function()
+			return current_review
+		end,
+		close = function(tab)
+			closed_review_tab = tab
+			current_review = nil
+			lifecycle_review_tab_live = false
+		end,
+	}
 end
 
 review.open({ cwd = "/repo", branch = "review" }, lifecycle_adapter)
@@ -371,92 +371,92 @@ local repo_picker_calls = {}
 local repo_loaded_prs = {}
 local repo_restores = 0
 local repo_adapter = {
-  root = function(path)
-    if path ~= nil then
-      t.eq("/selected/repo", path)
-    end
-    return "/canonical/selected/repo"
-  end,
-  dock = {
-    prepare = function() end,
-    activate = function() end,
-    deactivate = function()
-      repo_restores = repo_restores + 1
-    end,
-  },
-  system = function(argv, opts, callback)
-    repo_system_calls[#repo_system_calls + 1] = { argv = argv, cwd = opts.cwd }
-    if argv[2] == "pr" and argv[3] == "view" then
-      callback({
-        code = 0,
-        stdout = '{"number":42,"url":"https://github.com/selected/repo/pull/42"}',
-        stderr = "",
-      })
-    elseif argv[2] == "repo" then
-      callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
-    else
-      callback({
-        code = 0,
-        stdout = '[{"number":42,"title":"Selected PR","url":"https://github.com/selected/repo/pull/42","state":"OPEN","isDraft":false,"headRefName":"feature"}]',
-        stderr = "",
-      })
-    end
-  end,
-  schedule = function(callback)
-    callback()
-  end,
-  defer = function() end,
-  load_pr = function(target, cwd, callback)
-    repo_loaded_prs[#repo_loaded_prs + 1] = target
-    complete_pr_load(target, cwd, callback)
-  end,
-  create_pr = function()
-    return 1001
-  end,
-  pick_prs = function(repo, pull_requests)
-    repo_picker_calls[#repo_picker_calls + 1] = { repo = repo, pull_requests = pull_requests }
-    return 1001
-  end,
-  notify = function(message)
-    error(message)
-  end,
-  current_buffer = function()
-    return 1001
-  end,
-  buffer_valid = function(target)
-    return target == 1001
-  end,
-  register_cleanup = function() end,
+	root = function(path)
+		if path ~= nil then
+			t.eq("/selected/repo", path)
+		end
+		return "/canonical/selected/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			repo_restores = repo_restores + 1
+		end,
+	},
+	system = function(argv, opts, callback)
+		repo_system_calls[#repo_system_calls + 1] = { argv = argv, cwd = opts.cwd }
+		if argv[2] == "pr" and argv[3] == "view" then
+			callback({
+				code = 0,
+				stdout = '{"number":42,"url":"https://github.com/selected/repo/pull/42"}',
+				stderr = "",
+			})
+		elseif argv[2] == "repo" then
+			callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+		else
+			callback({
+				code = 0,
+				stdout = '[{"number":42,"title":"Selected PR","url":"https://github.com/selected/repo/pull/42","state":"OPEN","isDraft":false,"headRefName":"feature"}]',
+				stderr = "",
+			})
+		end
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function() end,
+	load_pr = function(target, cwd, callback)
+		repo_loaded_prs[#repo_loaded_prs + 1] = target
+		complete_pr_load(target, cwd, callback)
+	end,
+	create_pr = function()
+		return 1001
+	end,
+	pick_prs = function(repo, pull_requests)
+		repo_picker_calls[#repo_picker_calls + 1] = { repo = repo, pull_requests = pull_requests }
+		return 1001
+	end,
+	notify = function(message)
+		error(message)
+	end,
+	current_buffer = function()
+		return 1001
+	end,
+	buffer_valid = function(target)
+		return target == 1001
+	end,
+	register_cleanup = function() end,
 }
 
 review.open({ cwd = "/selected/repo", branch = "feature" }, repo_adapter)
 t.eq({
-  argv = { "gh", "pr", "view", "feature", "--json", "number,url" },
-  cwd = "/canonical/selected/repo",
+	argv = { "gh", "pr", "view", "feature", "--json", "number,url" },
+	cwd = "/canonical/selected/repo",
 }, repo_system_calls[1], "the selected canonical repository must own the PR lookup")
 t.eq("https://github.com/selected/repo/pull/42", repo_loaded_prs[1].url)
 
 repo_system_calls = {}
 review.list(repo_adapter)
 t.eq({
-  argv = { "gh", "repo", "view", "--json", "nameWithOwner" },
-  cwd = "/canonical/selected/repo",
+	argv = { "gh", "repo", "view", "--json", "nameWithOwner" },
+	cwd = "/canonical/selected/repo",
 }, repo_system_calls[1], "the PR list repository must be resolved from the canonical cwd")
 t.eq({
-  argv = {
-    "gh",
-    "pr",
-    "list",
-    "--repo",
-    "selected/repo",
-    "--state",
-    "open",
-    "--limit",
-    "100",
-    "--json",
-    "number,title,url,state,isDraft,headRefName",
-  },
-  cwd = "/canonical/selected/repo",
+	argv = {
+		"gh",
+		"pr",
+		"list",
+		"--repo",
+		"selected/repo",
+		"--state",
+		"open",
+		"--limit",
+		"100",
+		"--json",
+		"number,title,url,state,isDraft,headRefName",
+	},
+	cwd = "/canonical/selected/repo",
 }, repo_system_calls[2], "the PR list request must preserve argv boundaries in the canonical repository")
 t.eq("selected/repo", repo_picker_calls[1].repo)
 t.eq(42, repo_picker_calls[1].pull_requests[1].number)
@@ -464,41 +464,41 @@ t.eq(0, repo_restores)
 
 local repo_notifications = {}
 repo_adapter.notify = function(message)
-  repo_notifications[#repo_notifications + 1] = message
+	repo_notifications[#repo_notifications + 1] = message
 end
 repo_adapter.system = function()
-  error("spawn failed")
+	error("spawn failed")
 end
 review.list(repo_adapter)
 t.eq(1, repo_restores, "a synchronous repository lookup failure must restore LazyGit")
 
 repo_adapter.system = function(_, _, callback)
-  callback({ code = 1, stdout = "", stderr = "repository unavailable" })
+	callback({ code = 1, stdout = "", stderr = "repository unavailable" })
 end
 review.list(repo_adapter)
 t.eq(2, repo_restores, "an asynchronous repository lookup failure must restore LazyGit")
 t.truthy(repo_notifications[#repo_notifications]:find("repository unavailable", 1, true))
 
 repo_adapter.system = function(_, _, callback)
-  callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo;Octo issue list"}', stderr = "" })
+	callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo;Octo issue list"}', stderr = "" })
 end
 review.list(repo_adapter)
 t.eq(3, repo_restores, "an unsafe repository identity must restore LazyGit")
 
 repo_adapter.system = function(_, _, callback)
-  if not repo_adapter._repo_resolved then
-    repo_adapter._repo_resolved = true
-    callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
-  else
-    callback({
-      code = 0,
-      stdout = '[{"number":42,"title":"Selected PR","url":"https://github.com/selected/repo/pull/42","state":"OPEN","isDraft":false,"headRefName":"feature"}]',
-      stderr = "",
-    })
-  end
+	if not repo_adapter._repo_resolved then
+		repo_adapter._repo_resolved = true
+		callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+	else
+		callback({
+			code = 0,
+			stdout = '[{"number":42,"title":"Selected PR","url":"https://github.com/selected/repo/pull/42","state":"OPEN","isDraft":false,"headRefName":"feature"}]',
+			stderr = "",
+		})
+	end
 end
 repo_adapter.pick_prs = function()
-  error("Octo failed")
+	error("Octo failed")
 end
 review.list(repo_adapter)
 t.eq(4, repo_restores, "an Octo list failure must restore LazyGit")
@@ -509,66 +509,66 @@ local closed_tabs = {}
 local multi_tab_restores = 0
 local multi_tab_maps = {}
 local multi_tab_adapter = {
-  root = function()
-    return "/repo"
-  end,
-  dock = {
-    prepare = function() end,
-    activate = function() end,
-    deactivate = function()
-      multi_tab_restores = multi_tab_restores + 1
-    end,
-  },
-  system = function(_, _, callback)
-    callback({
-      code = 0,
-      stdout = '{"number":51,"url":"https://github.com/selected/repo/pull/51"}',
-      stderr = "",
-    })
-  end,
-  schedule = function(callback)
-    callback()
-  end,
-  defer = function() end,
-  command = function() end,
-  load_pr = complete_pr_load,
-  create_pr = function()
-    return tab == 21 and 921 or 922
-  end,
-  notify = function(message)
-    error(message)
-  end,
-  set_keymap = function(mode, lhs, rhs)
-    multi_tab_maps[mode .. lhs] = rhs
-  end,
-  register_cleanup = function() end,
-  buffer_valid = function()
-    return true
-  end,
-  buffer_filetype = function()
-    return "diff"
-  end,
-  delete_buffer = function() end,
-  current_buffer = function()
-    return tab == 21 and 921 or 922
-  end,
-  current_tab = function()
-    return tab
-  end,
-  tab_valid = function(target)
-    return live_tabs[target] == true
-  end,
-  reviews = function()
-    return {
-      get_current_review = function()
-        return {}
-      end,
-      close = function(target)
-        closed_tabs[#closed_tabs + 1] = target
-        live_tabs[target] = false
-      end,
-    }
-  end,
+	root = function()
+		return "/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			multi_tab_restores = multi_tab_restores + 1
+		end,
+	},
+	system = function(_, _, callback)
+		callback({
+			code = 0,
+			stdout = '{"number":51,"url":"https://github.com/selected/repo/pull/51"}',
+			stderr = "",
+		})
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function() end,
+	command = function() end,
+	load_pr = complete_pr_load,
+	create_pr = function()
+		return tab == 21 and 921 or 922
+	end,
+	notify = function(message)
+		error(message)
+	end,
+	set_keymap = function(mode, lhs, rhs)
+		multi_tab_maps[mode .. lhs] = rhs
+	end,
+	register_cleanup = function() end,
+	buffer_valid = function()
+		return true
+	end,
+	buffer_filetype = function()
+		return "diff"
+	end,
+	delete_buffer = function() end,
+	current_buffer = function()
+		return tab == 21 and 921 or 922
+	end,
+	current_tab = function()
+		return tab
+	end,
+	tab_valid = function(target)
+		return live_tabs[target] == true
+	end,
+	reviews = function()
+		return {
+			get_current_review = function()
+				return {}
+			end,
+			close = function(target)
+				closed_tabs[#closed_tabs + 1] = target
+				live_tabs[target] = false
+			end,
+		}
+	end,
 }
 
 review.open({ cwd = "/repo", branch = "multi-tab" }, multi_tab_adapter)
@@ -588,45 +588,45 @@ local silent_direct_close_attempts = 0
 local silent_restores = 0
 local silent_map
 local silent_adapter = vim.tbl_extend("force", multi_tab_adapter, {
-  dock = {
-    prepare = function() end,
-    activate = function() end,
-    deactivate = function()
-      silent_restores = silent_restores + 1
-    end,
-  },
-  notify = function() end,
-  set_keymap = function(mode, lhs, rhs)
-    if mode == "n" and lhs == "<leader>pq" then
-      silent_map = rhs
-    end
-  end,
-  current_buffer = function()
-    return 931
-  end,
-  current_tab = function()
-    return 31
-  end,
-  tab_valid = function(target)
-    return target == 31 and silent_tab_live
-  end,
-  close_tab = function(target)
-    t.eq(31, target)
-    silent_direct_close_attempts = silent_direct_close_attempts + 1
-    if silent_close_succeeds then
-      silent_tab_live = false
-    end
-  end,
-  reviews = function()
-    return {
-      get_current_review = function()
-        return {}
-      end,
-      close = function()
-        silent_close_attempts = silent_close_attempts + 1
-      end,
-    }
-  end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			silent_restores = silent_restores + 1
+		end,
+	},
+	notify = function() end,
+	set_keymap = function(mode, lhs, rhs)
+		if mode == "n" and lhs == "<leader>pq" then
+			silent_map = rhs
+		end
+	end,
+	current_buffer = function()
+		return 931
+	end,
+	current_tab = function()
+		return 31
+	end,
+	tab_valid = function(target)
+		return target == 31 and silent_tab_live
+	end,
+	close_tab = function(target)
+		t.eq(31, target)
+		silent_direct_close_attempts = silent_direct_close_attempts + 1
+		if silent_close_succeeds then
+			silent_tab_live = false
+		end
+	end,
+	reviews = function()
+		return {
+			get_current_review = function()
+				return {}
+			end,
+			close = function()
+				silent_close_attempts = silent_close_attempts + 1
+			end,
+		}
+	end,
 })
 
 review.open({ cwd = "/repo", branch = "silent-close" }, silent_adapter)
@@ -641,43 +641,43 @@ t.eq(1, silent_restores)
 
 local reused_cleanups = {}
 local reused_adapter = {
-  root = function()
-    return "/repo"
-  end,
-  dock = {
-    prepare = function() end,
-    activate = function() end,
-    deactivate = function() end,
-  },
-  system = function(_, _, callback)
-    callback({
-      code = 0,
-      stdout = '{"number":61,"url":"https://github.com/selected/repo/pull/61"}',
-      stderr = "",
-    })
-  end,
-  schedule = function(callback)
-    callback()
-  end,
-  defer = function() end,
-  command = function() end,
-  load_pr = complete_pr_load,
-  create_pr = function()
-    return 930
-  end,
-  notify = function(message)
-    error(message)
-  end,
-  set_keymap = function() end,
-  register_cleanup = function(_, callback)
-    reused_cleanups[#reused_cleanups + 1] = callback
-  end,
-  buffer_valid = function()
-    return true
-  end,
-  buffer_filetype = function()
-    return "octo"
-  end,
+	root = function()
+		return "/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function() end,
+	},
+	system = function(_, _, callback)
+		callback({
+			code = 0,
+			stdout = '{"number":61,"url":"https://github.com/selected/repo/pull/61"}',
+			stderr = "",
+		})
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function() end,
+	command = function() end,
+	load_pr = complete_pr_load,
+	create_pr = function()
+		return 930
+	end,
+	notify = function(message)
+		error(message)
+	end,
+	set_keymap = function() end,
+	register_cleanup = function(_, callback)
+		reused_cleanups[#reused_cleanups + 1] = callback
+	end,
+	buffer_valid = function()
+		return true
+	end,
+	buffer_filetype = function()
+		return "octo"
+	end,
 }
 
 review.open({ cwd = "/repo", branch = "old" }, reused_adapter)
@@ -695,50 +695,50 @@ local delete_attempts = 0
 local delete_fails = true
 local retry_restores = 0
 local retry_adapter = {
-  root = function()
-    return "/repo"
-  end,
-  dock = {
-    prepare = function() end,
-    activate = function() end,
-    deactivate = function()
-      retry_restores = retry_restores + 1
-    end,
-  },
-  system = reused_adapter.system,
-  schedule = reused_adapter.schedule,
-  defer = reused_adapter.defer,
-  command = reused_adapter.command,
-  load_pr = complete_pr_load,
-  create_pr = function()
-    return 940
-  end,
-  notify = function() end,
-  set_keymap = function(mode, lhs, rhs)
-    if mode == "n" and lhs == "<leader>pq" then
-      retry_map = rhs
-    end
-  end,
-  register_cleanup = function() end,
-  buffer_valid = function()
-    return true
-  end,
-  buffer_filetype = function()
-    return "octo"
-  end,
-  reviews = function()
-    return {
-      get_current_review = function()
-        return nil
-      end,
-    }
-  end,
-  delete_buffer = function()
-    delete_attempts = delete_attempts + 1
-    if delete_fails then
-      error("delete failed")
-    end
-  end,
+	root = function()
+		return "/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			retry_restores = retry_restores + 1
+		end,
+	},
+	system = reused_adapter.system,
+	schedule = reused_adapter.schedule,
+	defer = reused_adapter.defer,
+	command = reused_adapter.command,
+	load_pr = complete_pr_load,
+	create_pr = function()
+		return 940
+	end,
+	notify = function() end,
+	set_keymap = function(mode, lhs, rhs)
+		if mode == "n" and lhs == "<leader>pq" then
+			retry_map = rhs
+		end
+	end,
+	register_cleanup = function() end,
+	buffer_valid = function()
+		return true
+	end,
+	buffer_filetype = function()
+		return "octo"
+	end,
+	reviews = function()
+		return {
+			get_current_review = function()
+				return nil
+			end,
+		}
+	end,
+	delete_buffer = function()
+		delete_attempts = delete_attempts + 1
+		if delete_fails then
+			error("delete failed")
+		end
+	end,
 }
 
 review.open({ cwd = "/repo", branch = "retry-close" }, retry_adapter)
@@ -760,117 +760,117 @@ local async_cleanups = {}
 local async_deferred = {}
 local async_restores = 0
 local function create_async_buffer(name, filetype, ready)
-  async_next_buffer = async_next_buffer + 1
-  local buffer = async_next_buffer
-  async_buffers[buffer] = {
-    live = true,
-    name = name,
-    filetype = filetype,
-    ready = ready == true,
-  }
-  return buffer
+	async_next_buffer = async_next_buffer + 1
+	local buffer = async_next_buffer
+	async_buffers[buffer] = {
+		live = true,
+		name = name,
+		filetype = filetype,
+		ready = ready == true,
+	}
+	return buffer
 end
 local function run_async_deferred(limit)
-  for _ = 1, limit do
-    local callback = table.remove(async_deferred, 1)
-    if not callback then
-      return
-    end
-    callback()
-  end
+	for _ = 1, limit do
+		local callback = table.remove(async_deferred, 1)
+		if not callback then
+			return
+		end
+		callback()
+	end
 end
 local function wipe_async_buffer(buffer)
-  async_buffers[buffer].live = false
-  for _, callback in ipairs(async_cleanups[buffer] or {}) do
-    callback()
-  end
+	async_buffers[buffer].live = false
+	for _, callback in ipairs(async_cleanups[buffer] or {}) do
+		callback()
+	end
 end
 local async_adapter = {
-  root = function()
-    return "/canonical/selected/repo"
-  end,
-  dock = {
-    prepare = function() end,
-    activate = function() end,
-    deactivate = function()
-      async_restores = async_restores + 1
-    end,
-  },
-  system = function(argv, _, callback)
-    if argv[2] == "pr" and argv[3] == "view" then
-      callback({
-        code = 0,
-        stdout = '{"number":71,"url":"https://github.com/selected/repo/pull/71"}',
-        stderr = "",
-      })
-    elseif argv[2] == "repo" then
-      callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
-    elseif async_mode == "stale-old" then
-      async_late_list_callback = callback
-    elseif async_mode == "list-empty" then
-      callback({ code = 0, stdout = "[]", stderr = "" })
-    else
-      callback({
-        code = 0,
-        stdout = '[{"number":71,"title":"Async PR","url":"https://github.com/selected/repo/pull/71","state":"OPEN","isDraft":false,"headRefName":"async"}]',
-        stderr = "",
-      })
-    end
-    return { kill = function() end }
-  end,
-  schedule = function(callback)
-    callback()
-  end,
-  defer = function(callback)
-    async_deferred[#async_deferred + 1] = callback
-  end,
-  load_pr = function(target, _, callback)
-    if async_mode == "open-failure" or async_mode == "list-transition" then
-      async_selected_pr_callback = callback
-    else
-      callback({
-        code = 0,
-        stdout = vim.json.encode({
-          data = {
-            repository = {
-              pullRequest = {
-                id = "PR_" .. target.number,
-                number = target.number,
-                url = target.url,
-                timelineItems = { nodes = {} },
-              },
-            },
-          },
-        }),
-        stderr = "",
-      })
-    end
-    return { kill = function() end }
-  end,
-  create_pr = function(target)
-    return create_async_buffer("octo://" .. target.repo .. "/pull/" .. target.number, "octo", true)
-  end,
-  notify = function() end,
-  current_buffer = function()
-    return 1
-  end,
-  buffer_valid = function(buffer)
-    return async_buffers[buffer] and async_buffers[buffer].live == true
-  end,
-  buffer_filetype = function(buffer)
-    return async_buffers[buffer] and async_buffers[buffer].filetype or ""
-  end,
-  register_cleanup = function(buffer, callback)
-    async_cleanups[buffer] = async_cleanups[buffer] or {}
-    async_cleanups[buffer][#async_cleanups[buffer] + 1] = callback
-  end,
-  pick_prs = function(_, _, callbacks)
-    async_picker_callbacks = callbacks
-    return create_async_buffer("TelescopePrompt", "TelescopePrompt", true)
-  end,
-  delete_buffer = function(buffer)
-    wipe_async_buffer(buffer)
-  end,
+	root = function()
+		return "/canonical/selected/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			async_restores = async_restores + 1
+		end,
+	},
+	system = function(argv, _, callback)
+		if argv[2] == "pr" and argv[3] == "view" then
+			callback({
+				code = 0,
+				stdout = '{"number":71,"url":"https://github.com/selected/repo/pull/71"}',
+				stderr = "",
+			})
+		elseif argv[2] == "repo" then
+			callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+		elseif async_mode == "stale-old" then
+			async_late_list_callback = callback
+		elseif async_mode == "list-empty" then
+			callback({ code = 0, stdout = "[]", stderr = "" })
+		else
+			callback({
+				code = 0,
+				stdout = '[{"number":71,"title":"Async PR","url":"https://github.com/selected/repo/pull/71","state":"OPEN","isDraft":false,"headRefName":"async"}]',
+				stderr = "",
+			})
+		end
+		return { kill = function() end }
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function(callback)
+		async_deferred[#async_deferred + 1] = callback
+	end,
+	load_pr = function(target, _, callback)
+		if async_mode == "open-failure" or async_mode == "list-transition" then
+			async_selected_pr_callback = callback
+		else
+			callback({
+				code = 0,
+				stdout = vim.json.encode({
+					data = {
+						repository = {
+							pullRequest = {
+								id = "PR_" .. target.number,
+								number = target.number,
+								url = target.url,
+								timelineItems = { nodes = {} },
+							},
+						},
+					},
+				}),
+				stderr = "",
+			})
+		end
+		return { kill = function() end }
+	end,
+	create_pr = function(target)
+		return create_async_buffer("octo://" .. target.repo .. "/pull/" .. target.number, "octo", true)
+	end,
+	notify = function() end,
+	current_buffer = function()
+		return 1
+	end,
+	buffer_valid = function(buffer)
+		return async_buffers[buffer] and async_buffers[buffer].live == true
+	end,
+	buffer_filetype = function(buffer)
+		return async_buffers[buffer] and async_buffers[buffer].filetype or ""
+	end,
+	register_cleanup = function(buffer, callback)
+		async_cleanups[buffer] = async_cleanups[buffer] or {}
+		async_cleanups[buffer][#async_cleanups[buffer] + 1] = callback
+	end,
+	pick_prs = function(_, _, callbacks)
+		async_picker_callbacks = callbacks
+		return create_async_buffer("TelescopePrompt", "TelescopePrompt", true)
+	end,
+	delete_buffer = function(buffer)
+		wipe_async_buffer(buffer)
+	end,
 }
 
 async_mode = "open-failure"
@@ -907,9 +907,9 @@ review.open({ cwd = "/repo", branch = "new-session" }, async_adapter)
 local new_surface = async_next_buffer
 async_buffers[new_surface].ready = true
 async_late_list_callback({
-  code = 0,
-  stdout = '[{"number":71,"title":"Stale PR","url":"https://github.com/selected/repo/pull/71","state":"OPEN","isDraft":false,"headRefName":"stale"}]',
-  stderr = "",
+	code = 0,
+	stdout = '[{"number":71,"title":"Stale PR","url":"https://github.com/selected/repo/pull/71","state":"OPEN","isDraft":false,"headRefName":"stale"}]',
+	stderr = "",
 })
 run_async_deferred(10)
 t.eq(4, async_restores, "an old async callback must not restore over a new PR surface")
@@ -931,21 +931,21 @@ local transition_picker = async_next_buffer
 async_picker_callbacks.transition()
 wipe_async_buffer(transition_picker)
 async_picker_callbacks.select({
-  __typename = "PullRequest",
-  number = 71,
-  title = "Async PR",
-  url = "https://github.com/selected/repo/pull/71",
-  state = "OPEN",
-  isDraft = false,
-  headRefName = "async",
-  repository = { nameWithOwner = "selected/repo" },
+	__typename = "PullRequest",
+	number = 71,
+	title = "Async PR",
+	url = "https://github.com/selected/repo/pull/71",
+	state = "OPEN",
+	isDraft = false,
+	headRefName = "async",
+	repository = { nameWithOwner = "selected/repo" },
 })
 run_async_deferred(1)
 t.eq(transition_restores, async_restores, "picker selection must keep the PR session pending after prompt wipe")
 async_selected_pr_callback({
-  code = 0,
-  stdout = '{"data":{"repository":{"pullRequest":{"id":"PR_71","number":71,"url":"https://github.com/selected/repo/pull/71","timelineItems":{"nodes":[]}}}}}',
-  stderr = "",
+	code = 0,
+	stdout = '{"data":{"repository":{"pullRequest":{"id":"PR_71","number":71,"url":"https://github.com/selected/repo/pull/71","timelineItems":{"nodes":[]}}}}}',
+	stderr = "",
 })
 local transition_surface = async_next_buffer
 t.eq(transition_restores, async_restores, "a delayed provisional PR surface must replace the picker session")
@@ -959,66 +959,66 @@ local late_picker_calls = 0
 local late_request_deferred = {}
 local late_request_restores = 0
 local late_request_adapter = {
-  root = function()
-    return "/canonical/selected/repo"
-  end,
-  dock = {
-    prepare = function() end,
-    activate = function() end,
-    deactivate = function()
-      late_request_restores = late_request_restores + 1
-    end,
-  },
-  system = function(argv, opts, callback)
-    t.eq("/canonical/selected/repo", opts.cwd)
-    if argv[2] == "repo" then
-      callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
-      return
-    end
-    t.eq({
-      "gh",
-      "pr",
-      "list",
-      "--repo",
-      "selected/repo",
-      "--state",
-      "open",
-      "--limit",
-      "100",
-      "--json",
-      "number,title,url,state,isDraft,headRefName",
-    }, argv)
-    late_request_callback = callback
-    return {
-      kill = function()
-        late_request_cancelled = true
-      end,
-    }
-  end,
-  schedule = function(callback)
-    callback()
-  end,
-  defer = function(callback)
-    late_request_deferred[#late_request_deferred + 1] = callback
-  end,
-  request_timeout_ms = 1,
-  pick_prs = function()
-    late_picker_calls = late_picker_calls + 1
-  end,
-  notify = function() end,
+	root = function()
+		return "/canonical/selected/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			late_request_restores = late_request_restores + 1
+		end,
+	},
+	system = function(argv, opts, callback)
+		t.eq("/canonical/selected/repo", opts.cwd)
+		if argv[2] == "repo" then
+			callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+			return
+		end
+		t.eq({
+			"gh",
+			"pr",
+			"list",
+			"--repo",
+			"selected/repo",
+			"--state",
+			"open",
+			"--limit",
+			"100",
+			"--json",
+			"number,title,url,state,isDraft,headRefName",
+		}, argv)
+		late_request_callback = callback
+		return {
+			kill = function()
+				late_request_cancelled = true
+			end,
+		}
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function(callback)
+		late_request_deferred[#late_request_deferred + 1] = callback
+	end,
+	request_timeout_ms = 1,
+	pick_prs = function()
+		late_picker_calls = late_picker_calls + 1
+	end,
+	notify = function() end,
 }
 
 review.list(late_request_adapter)
 t.truthy(late_request_callback, "the PR list request must expose its completion callback")
 for _, callback in ipairs(late_request_deferred) do
-  callback()
+	callback()
 end
 t.eq(true, late_request_cancelled, "a timed-out PR list request must be cancelled")
 t.eq(1, late_request_restores)
 late_request_callback({
-  code = 0,
-  stdout = '[{"number":72,"title":"Late PR","url":"https://github.com/selected/repo/pull/72","state":"OPEN","isDraft":false,"headRefName":"late"}]',
-  stderr = "",
+	code = 0,
+	stdout = '[{"number":72,"title":"Late PR","url":"https://github.com/selected/repo/pull/72","state":"OPEN","isDraft":false,"headRefName":"late"}]',
+	stderr = "",
 })
 t.eq(0, late_picker_calls, "a late request callback must not create a picker after LazyGit is restored")
 
@@ -1028,62 +1028,62 @@ local late_pr_created = 0
 local late_pr_deferred = {}
 local late_pr_restores = 0
 local late_pr_adapter = {
-  root = function()
-    return "/canonical/selected/repo"
-  end,
-  dock = {
-    prepare = function() end,
-    activate = function() end,
-    deactivate = function()
-      late_pr_restores = late_pr_restores + 1
-    end,
-  },
-  system = function(_, _, callback)
-    callback({
-      code = 0,
-      stdout = '{"number":73,"url":"https://github.com/selected/repo/pull/73"}',
-      stderr = "",
-    })
-  end,
-  schedule = function(callback)
-    callback()
-  end,
-  defer = function(callback)
-    late_pr_deferred[#late_pr_deferred + 1] = callback
-  end,
-  request_timeout_ms = 1,
-  load_pr = function(target, cwd, callback)
-    t.eq(73, target.number)
-    t.eq("selected/repo", target.repo)
-    t.eq("/canonical/selected/repo", cwd)
-    late_pr_callback = callback
-    return {
-      kill = function()
-        late_pr_cancelled = true
-      end,
-    }
-  end,
-  create_pr = function()
-    late_pr_created = late_pr_created + 1
-    return 1201
-  end,
-  cancel_request = function(request)
-    request:kill()
-  end,
-  notify = function() end,
+	root = function()
+		return "/canonical/selected/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			late_pr_restores = late_pr_restores + 1
+		end,
+	},
+	system = function(_, _, callback)
+		callback({
+			code = 0,
+			stdout = '{"number":73,"url":"https://github.com/selected/repo/pull/73"}',
+			stderr = "",
+		})
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function(callback)
+		late_pr_deferred[#late_pr_deferred + 1] = callback
+	end,
+	request_timeout_ms = 1,
+	load_pr = function(target, cwd, callback)
+		t.eq(73, target.number)
+		t.eq("selected/repo", target.repo)
+		t.eq("/canonical/selected/repo", cwd)
+		late_pr_callback = callback
+		return {
+			kill = function()
+				late_pr_cancelled = true
+			end,
+		}
+	end,
+	create_pr = function()
+		late_pr_created = late_pr_created + 1
+		return 1201
+	end,
+	cancel_request = function(request)
+		request:kill()
+	end,
+	notify = function() end,
 }
 
 review.open({ cwd = "/repo", branch = "late-pr" }, late_pr_adapter)
 t.truthy(late_pr_callback, "the Octo PR data load must expose its completion callback")
 for _, callback in ipairs(late_pr_deferred) do
-  callback()
+	callback()
 end
 t.eq(true, late_pr_cancelled, "a timed-out Octo PR data load must be cancelled")
 t.eq(1, late_pr_restores)
 late_pr_callback({
-  code = 0,
-  stdout = '{"data":{"repository":{"pullRequest":{"id":"PR_73","number":73,"url":"https://github.com/selected/repo/pull/73","timelineItems":{"nodes":[]}}}}}',
-  stderr = "",
+	code = 0,
+	stdout = '{"data":{"repository":{"pullRequest":{"id":"PR_73","number":73,"url":"https://github.com/selected/repo/pull/73","timelineItems":{"nodes":[]}}}}}',
+	stderr = "",
 })
 t.eq(0, late_pr_created, "a late PR load must not create an Octo surface after LazyGit is restored")
 
@@ -1093,38 +1093,38 @@ local metadata_open_deferred = {}
 local metadata_open_restores = 0
 local metadata_open_loads = 0
 local metadata_open_adapter = {
-  root = function()
-    return "/canonical/selected/repo"
-  end,
-  dock = {
-    prepare = function() end,
-    activate = function() end,
-    deactivate = function()
-      metadata_open_restores = metadata_open_restores + 1
-    end,
-  },
-  system = function(argv, opts, callback)
-    t.eq("/canonical/selected/repo", opts.cwd)
-    t.eq("view", argv[3])
-    local request = #metadata_open_callbacks + 1
-    metadata_open_callbacks[request] = callback
-    return {
-      kill = function()
-        metadata_open_cancelled[request] = true
-      end,
-    }
-  end,
-  schedule = function(callback)
-    callback()
-  end,
-  defer = function(callback)
-    metadata_open_deferred[#metadata_open_deferred + 1] = callback
-  end,
-  request_timeout_ms = 1,
-  load_pr = function()
-    metadata_open_loads = metadata_open_loads + 1
-  end,
-  notify = function() end,
+	root = function()
+		return "/canonical/selected/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			metadata_open_restores = metadata_open_restores + 1
+		end,
+	},
+	system = function(argv, opts, callback)
+		t.eq("/canonical/selected/repo", opts.cwd)
+		t.eq("view", argv[3])
+		local request = #metadata_open_callbacks + 1
+		metadata_open_callbacks[request] = callback
+		return {
+			kill = function()
+				metadata_open_cancelled[request] = true
+			end,
+		}
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function(callback)
+		metadata_open_deferred[#metadata_open_deferred + 1] = callback
+	end,
+	request_timeout_ms = 1,
+	load_pr = function()
+		metadata_open_loads = metadata_open_loads + 1
+	end,
+	notify = function() end,
 }
 
 review.open({ cwd = "/repo", branch = "old-metadata" }, metadata_open_adapter)
@@ -1132,9 +1132,9 @@ review.open({ cwd = "/repo", branch = "replacement-metadata" }, metadata_open_ad
 t.eq(true, metadata_open_cancelled[1], "a replacement PR session must cancel the old metadata request")
 metadata_open_deferred[1]()
 metadata_open_callbacks[1]({
-  code = 0,
-  stdout = '{"number":81,"url":"https://github.com/selected/repo/pull/81"}',
-  stderr = "",
+	code = 0,
+	stdout = '{"number":81,"url":"https://github.com/selected/repo/pull/81"}',
+	stderr = "",
 })
 t.eq(0, metadata_open_restores, "an old metadata timeout must not restore over a replacement PR session")
 t.eq(0, metadata_open_loads, "a late old metadata callback must not start an Octo request")
@@ -1142,9 +1142,9 @@ metadata_open_deferred[2]()
 t.eq(true, metadata_open_cancelled[2], "a timed-out PR metadata request must be cancelled")
 t.eq(1, metadata_open_restores, "a timed-out PR metadata request must restore LazyGit")
 metadata_open_callbacks[2]({
-  code = 0,
-  stdout = '{"number":82,"url":"https://github.com/selected/repo/pull/82"}',
-  stderr = "",
+	code = 0,
+	stdout = '{"number":82,"url":"https://github.com/selected/repo/pull/82"}',
+	stderr = "",
 })
 t.eq(0, metadata_open_loads, "late metadata must not open Octo after LazyGit is restored")
 
@@ -1155,38 +1155,38 @@ local metadata_list_restores = 0
 local metadata_list_system_calls = 0
 local metadata_list_picker_calls = 0
 local metadata_list_adapter = {
-  root = function()
-    return "/canonical/selected/repo"
-  end,
-  dock = {
-    prepare = function() end,
-    activate = function() end,
-    deactivate = function()
-      metadata_list_restores = metadata_list_restores + 1
-    end,
-  },
-  system = function(argv, opts, callback)
-    metadata_list_system_calls = metadata_list_system_calls + 1
-    t.eq({ "gh", "repo", "view", "--json", "nameWithOwner" }, argv)
-    t.eq("/canonical/selected/repo", opts.cwd)
-    metadata_list_callback = callback
-    return {
-      kill = function()
-        metadata_list_cancelled = true
-      end,
-    }
-  end,
-  schedule = function(callback)
-    callback()
-  end,
-  defer = function(callback)
-    metadata_list_deferred[#metadata_list_deferred + 1] = callback
-  end,
-  request_timeout_ms = 1,
-  pick_prs = function()
-    metadata_list_picker_calls = metadata_list_picker_calls + 1
-  end,
-  notify = function() end,
+	root = function()
+		return "/canonical/selected/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function()
+			metadata_list_restores = metadata_list_restores + 1
+		end,
+	},
+	system = function(argv, opts, callback)
+		metadata_list_system_calls = metadata_list_system_calls + 1
+		t.eq({ "gh", "repo", "view", "--json", "nameWithOwner" }, argv)
+		t.eq("/canonical/selected/repo", opts.cwd)
+		metadata_list_callback = callback
+		return {
+			kill = function()
+				metadata_list_cancelled = true
+			end,
+		}
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function(callback)
+		metadata_list_deferred[#metadata_list_deferred + 1] = callback
+	end,
+	request_timeout_ms = 1,
+	pick_prs = function()
+		metadata_list_picker_calls = metadata_list_picker_calls + 1
+	end,
+	notify = function() end,
 }
 
 review.list(metadata_list_adapter)
