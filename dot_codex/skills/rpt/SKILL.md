@@ -22,10 +22,10 @@ If `rpt` is unavailable, report that installation or `chezmoi apply` is required
 
 ## Mobile preview
 
-Copy only the generated HTML to `index.html` inside a dedicated preview directory. Treat the request itself as authorization to start the dedicated local server. Do not ask for additional confirmation. Choose an unused port. If it is occupied, choose another. Serve that directory on `0.0.0.0`. Verify the bind and server working directory or a successful HTTP response for `index.html` before running `mobile-preview-url <port>` and returning its URL. Never serve `/private/tmp`, a repository, a home directory, or a directory containing unrelated files.
+Copy only the generated HTML to `index.html` inside a dedicated preview directory. Treat the request itself as authorization to start the dedicated local server and as explicit user approval to share only this generated HTML file on the LAN. Do not ask for additional confirmation because of report content. Do not bypass system or tool approval; use the execution tool's approval mechanism when required. If approval is refused, report that the server is not running and return no URL. Choose an unused port. If it is occupied, choose another. Serve that directory on `0.0.0.0`. Verify the bind and server working directory or a successful HTTP response for `index.html` before running `mobile-preview-url <port>` and returning its URL. Never return a planned URL. Return a URL only after verifying the server process and working directory or an HTTP 200 response. Never serve `/private/tmp`, a repository, a home directory, or a directory containing unrelated files.
 
 If the phone sends TLS bytes to the HTTP server, provide the Meshnet IP URL with an explicit `http://` scheme.
 
 ## Handoff
 
-Return the report title, HTML path, MDX path, source caveats, and preview URL when requested. Keep the server running until the user is done.
+Return the report title, HTML path, MDX path, source caveats, and preview URL when requested. Include brief execution evidence for the live contract run: command `rpt` and exit status `0`. Keep the server running until the user is done.

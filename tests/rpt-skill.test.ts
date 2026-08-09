@@ -54,6 +54,33 @@ test("rpt skill authorizes and verifies a requested phone preview", async () => 
   );
 });
 
+test("rpt skill hands off live contract execution evidence", async () => {
+  const skill = await Bun.file(skillPaths[0]).text();
+  expect(skill).toContain("Include brief execution evidence for the live contract run");
+  expect(skill).toContain("command `rpt`");
+  expect(skill).toContain("exit status `0`");
+});
+
+test("rpt skill distinguishes LAN consent from execution-tool approval", async () => {
+  const skill = await Bun.file(skillPaths[0]).text();
+  expect(skill).toContain(
+    "explicit user approval to share only this generated HTML file on the LAN",
+  );
+  expect(skill).toContain("Do not ask for additional confirmation because of report content");
+  expect(skill).toContain("Do not bypass system or tool approval");
+  expect(skill).toContain("use the execution tool's approval mechanism");
+  expect(skill).toContain("If approval is refused");
+  expect(skill).toContain("server is not running and return no URL");
+});
+
+test("rpt skill returns only a verified live preview URL", async () => {
+  const skill = await Bun.file(skillPaths[0]).text();
+  expect(skill).toContain("Never return a planned URL");
+  expect(skill).toContain(
+    "Return a URL only after verifying the server process and working directory or an HTTP 200 response",
+  );
+});
+
 test("Codex rpt skill exposes matching UI metadata", async () => {
   const metadata = await Bun.file(
     join(root, "dot_codex/skills/rpt/agents/openai.yaml"),
