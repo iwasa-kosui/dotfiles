@@ -10,13 +10,6 @@ return {
         desc = "Explorer",
       },
       {
-        "<leader>p",
-        function()
-          require("snacks").picker()
-        end,
-        desc = "Picker",
-      },
-      {
         "<leader>D",
         function()
           require("snacks").picker.diagnostics()

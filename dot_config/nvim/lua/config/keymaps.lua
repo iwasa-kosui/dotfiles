@@ -36,10 +36,6 @@ end, { desc = "Copy project-relative path" })
 vim.keymap.set("n", "<leader>cpf", function()
   copy_path("filename")
 end, { desc = "Copy filename" })
-vim.keymap.set("n", "<leader>p", function()
-  Snacks.picker()
-end, { desc = "Picker" })
-
 local function open_current_branch_pr()
   local branch = vim.fn.systemlist({ "git", "rev-parse", "--abbrev-ref", "HEAD" })[1]
   if vim.v.shell_error ~= 0 or not branch or branch == "" or branch == "HEAD" then

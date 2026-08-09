@@ -18,7 +18,6 @@ local expected = {
 	["<leader>cpa"] = "Copy absolute path",
 	["<leader>cpr"] = "Copy project-relative path",
 	["<leader>cpf"] = "Copy filename",
-	["<leader>p"] = "Picker",
 	["<leader>gp"] = "Open PR (browser)",
 	["<leader>opl"] = "Existing plugin mapping",
 }
@@ -28,3 +27,6 @@ for lhs, description in pairs(expected) do
 	t.eq(description, mapping.desc, lhs .. " must remain mapped")
 	vim.keymap.del("n", lhs)
 end
+
+local removed = vim.fn.maparg("<leader>p", "n", false, true)
+t.eq({}, removed, "<leader>p must be reserved for the PR group")
