@@ -1086,3 +1086,114 @@ late_pr_callback({
   stderr = "",
 })
 t.eq(0, late_pr_created, "a late PR load must not create an Octo surface after LazyGit is restored")
+
+local metadata_open_callbacks = {}
+local metadata_open_cancelled = {}
+local metadata_open_deferred = {}
+local metadata_open_restores = 0
+local metadata_open_loads = 0
+local metadata_open_adapter = {
+  root = function()
+    return "/canonical/selected/repo"
+  end,
+  dock = {
+    prepare = function() end,
+    activate = function() end,
+    deactivate = function()
+      metadata_open_restores = metadata_open_restores + 1
+    end,
+  },
+  system = function(argv, opts, callback)
+    t.eq("/canonical/selected/repo", opts.cwd)
+    t.eq("view", argv[3])
+    local request = #metadata_open_callbacks + 1
+    metadata_open_callbacks[request] = callback
+    return {
+      kill = function()
+        metadata_open_cancelled[request] = true
+      end,
+    }
+  end,
+  schedule = function(callback)
+    callback()
+  end,
+  defer = function(callback)
+    metadata_open_deferred[#metadata_open_deferred + 1] = callback
+  end,
+  request_timeout_ms = 1,
+  load_pr = function()
+    metadata_open_loads = metadata_open_loads + 1
+  end,
+  notify = function() end,
+}
+
+review.open({ cwd = "/repo", branch = "old-metadata" }, metadata_open_adapter)
+review.open({ cwd = "/repo", branch = "replacement-metadata" }, metadata_open_adapter)
+t.eq(true, metadata_open_cancelled[1], "a replacement PR session must cancel the old metadata request")
+metadata_open_deferred[1]()
+metadata_open_callbacks[1]({
+  code = 0,
+  stdout = '{"number":81,"url":"https://github.com/selected/repo/pull/81"}',
+  stderr = "",
+})
+t.eq(0, metadata_open_restores, "an old metadata timeout must not restore over a replacement PR session")
+t.eq(0, metadata_open_loads, "a late old metadata callback must not start an Octo request")
+metadata_open_deferred[2]()
+t.eq(true, metadata_open_cancelled[2], "a timed-out PR metadata request must be cancelled")
+t.eq(1, metadata_open_restores, "a timed-out PR metadata request must restore LazyGit")
+metadata_open_callbacks[2]({
+  code = 0,
+  stdout = '{"number":82,"url":"https://github.com/selected/repo/pull/82"}',
+  stderr = "",
+})
+t.eq(0, metadata_open_loads, "late metadata must not open Octo after LazyGit is restored")
+
+local metadata_list_callback
+local metadata_list_cancelled = false
+local metadata_list_deferred = {}
+local metadata_list_restores = 0
+local metadata_list_system_calls = 0
+local metadata_list_picker_calls = 0
+local metadata_list_adapter = {
+  root = function()
+    return "/canonical/selected/repo"
+  end,
+  dock = {
+    prepare = function() end,
+    activate = function() end,
+    deactivate = function()
+      metadata_list_restores = metadata_list_restores + 1
+    end,
+  },
+  system = function(argv, opts, callback)
+    metadata_list_system_calls = metadata_list_system_calls + 1
+    t.eq({ "gh", "repo", "view", "--json", "nameWithOwner" }, argv)
+    t.eq("/canonical/selected/repo", opts.cwd)
+    metadata_list_callback = callback
+    return {
+      kill = function()
+        metadata_list_cancelled = true
+      end,
+    }
+  end,
+  schedule = function(callback)
+    callback()
+  end,
+  defer = function(callback)
+    metadata_list_deferred[#metadata_list_deferred + 1] = callback
+  end,
+  request_timeout_ms = 1,
+  pick_prs = function()
+    metadata_list_picker_calls = metadata_list_picker_calls + 1
+  end,
+  notify = function() end,
+}
+
+review.list(metadata_list_adapter)
+t.truthy(metadata_list_callback, "the repository metadata request must expose its completion callback")
+metadata_list_deferred[1]()
+t.eq(true, metadata_list_cancelled, "a timed-out repository metadata request must be cancelled")
+t.eq(1, metadata_list_restores, "a timed-out repository metadata request must restore LazyGit")
+metadata_list_callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+t.eq(1, metadata_list_system_calls, "late repository metadata must not start the PR list request")
+t.eq(0, metadata_list_picker_calls, "late repository metadata must not create an Octo picker")

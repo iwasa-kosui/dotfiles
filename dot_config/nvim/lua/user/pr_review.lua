@@ -193,6 +193,54 @@ local function finish(runtime, generation)
   active.runtime.dock:deactivate("pr", active.handle)
 end
 
+local function start_managed_request(runtime, generation, start, on_complete, on_start_error, on_timeout)
+  if not session or session.generation ~= generation then
+    return
+  end
+  local request_state = { completed = false }
+  session.request = request_state
+  local request_ok, request_error = pcall(function()
+    request_state.handle = start(function(result)
+      if request_state.completed then
+        return
+      end
+      request_state.completed = true
+      runtime.schedule(function()
+        if not session or session.generation ~= generation or session.request ~= request_state then
+          return
+        end
+        session.request = nil
+        on_complete(result or {})
+      end)
+    end)
+  end)
+  if not request_ok then
+    if session and session.generation == generation then
+      if session.request == request_state then
+        session.request = nil
+      end
+      on_start_error(request_error)
+      finish(runtime, generation)
+    end
+    return
+  end
+  if request_state.completed then
+    return
+  end
+  runtime.defer(function()
+    if request_state.completed then
+      return
+    end
+    request_state.completed = true
+    pcall(runtime.cancel_request, request_state.handle)
+    if session and session.generation == generation and session.request == request_state then
+      session.request = nil
+      on_timeout()
+      finish(runtime, generation)
+    end
+  end, runtime.request_timeout_ms)
+end
+
 local function is_octo_buffer(buffer, runtime)
   if not runtime.buffer_valid(buffer) then
     return false
@@ -429,73 +477,44 @@ local function load_pr_surface(runtime, generation, target, cwd)
     return
   end
   session.pending = true
-  local request_state = { completed = false }
-  session.request = request_state
-  local request_ok, request_error = pcall(function()
-    request_state.handle = runtime.load_pr(target, cwd, function(result)
-      if request_state.completed then
-        return
-      end
-      request_state.completed = true
-      runtime.schedule(function()
-        if not session or session.generation ~= generation or session.request ~= request_state then
-          return
-        end
-        session.request = nil
-        result = result or {}
-        if result.code ~= 0 then
-          session.pending = false
-          runtime.notify("OctoのPRデータを取得できませんでした: " .. short_error(result.stderr))
-          finish(runtime, generation)
-          return
-        end
-        local pull = runtime.decode_pr(result.stdout)
-        if
-          type(pull) ~= "table"
-          or type(pull.id) ~= "string"
-          or pull.id == ""
-          or pull.number ~= target.number
-          or pull.url ~= target.url
-        then
-          session.pending = false
-          runtime.notify("OctoのPRデータが不正です")
-          finish(runtime, generation)
-          return
-        end
-        local created, buffer = pcall(runtime.create_pr, target, pull)
-        if not created or not runtime.buffer_valid(buffer) then
-          session.pending = false
-          runtime.notify("OctoのPR画面を作成できませんでした: " .. tostring(buffer))
-          finish(runtime, generation)
-          return
-        end
-        session.pending = false
-        track_buffer(buffer, octo_buffers, runtime, generation)
-      end)
-    end)
-  end)
-  if not request_ok then
-    session.request = nil
+  start_managed_request(runtime, generation, function(callback)
+    return runtime.load_pr(target, cwd, callback)
+  end, function(result)
+    if result.code ~= 0 then
+      session.pending = false
+      runtime.notify("OctoのPRデータを取得できませんでした: " .. short_error(result.stderr))
+      finish(runtime, generation)
+      return
+    end
+    local pull = runtime.decode_pr(result.stdout)
+    if
+      type(pull) ~= "table"
+      or type(pull.id) ~= "string"
+      or pull.id == ""
+      or pull.number ~= target.number
+      or pull.url ~= target.url
+    then
+      session.pending = false
+      runtime.notify("OctoのPRデータが不正です")
+      finish(runtime, generation)
+      return
+    end
+    local created, buffer = pcall(runtime.create_pr, target, pull)
+    if not created or not runtime.buffer_valid(buffer) then
+      session.pending = false
+      runtime.notify("OctoのPR画面を作成できませんでした: " .. tostring(buffer))
+      finish(runtime, generation)
+      return
+    end
+    session.pending = false
+    track_buffer(buffer, octo_buffers, runtime, generation)
+  end, function(request_error)
     session.pending = false
     runtime.notify("OctoのPRデータ取得を開始できませんでした: " .. tostring(request_error))
-    finish(runtime, generation)
-    return
-  end
-  if not request_state.completed then
-    runtime.defer(function()
-      if request_state.completed then
-        return
-      end
-      request_state.completed = true
-      pcall(runtime.cancel_request, request_state.handle)
-      if session and session.generation == generation and session.request == request_state then
-        session.request = nil
-        session.pending = false
-        runtime.notify("OctoのPRデータ取得がtimeoutしました")
-        finish(runtime, generation)
-      end
-    end, runtime.request_timeout_ms)
-  end
+  end, function()
+    session.pending = false
+    runtime.notify("OctoのPRデータ取得がtimeoutしました")
+  end)
 end
 
 function M.open(target, adapter)
@@ -520,32 +539,28 @@ function M.open(target, adapter)
   vim.list_extend(args, { "--json", "number,url" })
 
   local generation = enter(runtime)
-  local ok, system_error = pcall(runtime.system, args, { cwd = cwd, text = true }, function(result)
-    runtime.schedule(function()
-      if not session or session.generation ~= generation then
-        return
-      end
-      result = result or {}
-      if result.code ~= 0 then
-        runtime.notify(("PRを開けません (%s): %s"):format(target_name(branch), short_error(result.stderr)))
-        finish(runtime, generation)
-        return
-      end
+  start_managed_request(runtime, generation, function(callback)
+    return runtime.system(args, { cwd = cwd, text = true }, callback)
+  end, function(result)
+    if result.code ~= 0 then
+      runtime.notify(("PRを開けません (%s): %s"):format(target_name(branch), short_error(result.stderr)))
+      finish(runtime, generation)
+      return
+    end
 
-      local pr = parse_pr_target(result.stdout)
-      if not pr then
-        runtime.notify(("PRを一意に解決できませんでした (%s)"):format(target_name(branch)))
-        finish(runtime, generation)
-        return
-      end
+    local pr = parse_pr_target(result.stdout)
+    if not pr then
+      runtime.notify(("PRを一意に解決できませんでした (%s)"):format(target_name(branch)))
+      finish(runtime, generation)
+      return
+    end
 
-      load_pr_surface(runtime, generation, pr, cwd)
-    end)
-  end)
-  if not ok then
+    load_pr_surface(runtime, generation, pr, cwd)
+  end, function(system_error)
     runtime.notify("ghを起動できませんでした: " .. tostring(system_error))
-    finish(runtime, generation)
-  end
+  end, function()
+    runtime.notify("PR情報の取得がtimeoutしました")
+  end)
 end
 
 function M.receive(payload, adapter)
@@ -574,127 +589,89 @@ function M.list(adapter)
     return
   end
   local generation = enter(runtime)
-  local ok, system_error = pcall(
-    runtime.system,
-    { "gh", "repo", "view", "--json", "nameWithOwner" },
-    { cwd = cwd, text = true },
-    function(result)
-      runtime.schedule(function()
-        if not session or session.generation ~= generation then
-          return
-        end
-        result = result or {}
-        if result.code ~= 0 then
-          runtime.notify("PR一覧のrepositoryを解決できませんでした: " .. short_error(result.stderr))
-          finish(runtime, generation)
-          return
-        end
-        local repo = parse_repo(result.stdout)
-        if not repo then
-          runtime.notify("PR一覧のrepository情報が不正です")
-          finish(runtime, generation)
-          return
-        end
-
-        local request_state = { completed = false }
-        session.request = request_state
-        local request_ok, request_error = pcall(function()
-          request_state.handle = runtime.system({
-            "gh",
-            "pr",
-            "list",
-            "--repo",
-            repo,
-            "--state",
-            "open",
-            "--limit",
-            "100",
-            "--json",
-            "number,title,url,state,isDraft,headRefName",
-          }, { cwd = cwd, text = true }, function(list_result)
-            if request_state.completed then
-              return
-            end
-            request_state.completed = true
-            runtime.schedule(function()
-              if not session or session.generation ~= generation or session.request ~= request_state then
-                return
-              end
-              session.request = nil
-              list_result = list_result or {}
-              if list_result.code ~= 0 then
-                runtime.notify("PR一覧を取得できませんでした: " .. short_error(list_result.stderr))
-                finish(runtime, generation)
-                return
-              end
-              local pull_requests = parse_pr_list(list_result.stdout, repo)
-              if not pull_requests then
-                runtime.notify("PR一覧の応答が不正です")
-                finish(runtime, generation)
-                return
-              end
-              if #pull_requests == 0 then
-                runtime.notify("表示できるopen PRがありません")
-                finish(runtime, generation)
-                return
-              end
-
-              local picker_ok, picker = pcall(runtime.pick_prs, repo, pull_requests, {
-                transition = function()
-                  if session and session.generation == generation then
-                    session.pending = true
-                  end
-                end,
-                select = function(selected)
-                  if not session or session.generation ~= generation then
-                    return
-                  end
-                  local target = selected_pr_target(selected, repo)
-                  if not target then
-                    runtime.notify("選択されたPR情報が不正です")
-                    session.pending = false
-                    finish(runtime, generation)
-                    return
-                  end
-                  load_pr_surface(runtime, generation, target, cwd)
-                end,
-              })
-              if not picker_ok or not runtime.buffer_valid(picker) then
-                runtime.notify("OctoのPR一覧を開けませんでした: " .. tostring(picker))
-                finish(runtime, generation)
-                return
-              end
-              track_buffer(picker, picker_buffers, runtime, generation)
-            end)
-          end)
-        end)
-        if not request_ok then
-          session.request = nil
-          runtime.notify("PR一覧の取得を開始できませんでした: " .. tostring(request_error))
-          finish(runtime, generation)
-          return
-        end
-        if not request_state.completed then
-          runtime.defer(function()
-            if request_state.completed then
-              return
-            end
-            request_state.completed = true
-            pcall(runtime.cancel_request, request_state.handle)
-            if session and session.generation == generation and session.request == request_state then
-              session.request = nil
-              runtime.notify("PR一覧の取得がtimeoutしました")
-              finish(runtime, generation)
-            end
-          end, runtime.request_timeout_ms)
-        end
-      end)
+  start_managed_request(runtime, generation, function(callback)
+    return runtime.system({ "gh", "repo", "view", "--json", "nameWithOwner" }, { cwd = cwd, text = true }, callback)
+  end, function(result)
+    if result.code ~= 0 then
+      runtime.notify("PR一覧のrepositoryを解決できませんでした: " .. short_error(result.stderr))
+      finish(runtime, generation)
+      return
     end
-  )
-  if not ok then
+    local repo = parse_repo(result.stdout)
+    if not repo then
+      runtime.notify("PR一覧のrepository情報が不正です")
+      finish(runtime, generation)
+      return
+    end
+
+    start_managed_request(runtime, generation, function(callback)
+      return runtime.system({
+        "gh",
+        "pr",
+        "list",
+        "--repo",
+        repo,
+        "--state",
+        "open",
+        "--limit",
+        "100",
+        "--json",
+        "number,title,url,state,isDraft,headRefName",
+      }, { cwd = cwd, text = true }, callback)
+    end, function(list_result)
+      if list_result.code ~= 0 then
+        runtime.notify("PR一覧を取得できませんでした: " .. short_error(list_result.stderr))
+        finish(runtime, generation)
+        return
+      end
+      local pull_requests = parse_pr_list(list_result.stdout, repo)
+      if not pull_requests then
+        runtime.notify("PR一覧の応答が不正です")
+        finish(runtime, generation)
+        return
+      end
+      if #pull_requests == 0 then
+        runtime.notify("表示できるopen PRがありません")
+        finish(runtime, generation)
+        return
+      end
+
+      local picker_ok, picker = pcall(runtime.pick_prs, repo, pull_requests, {
+        transition = function()
+          if session and session.generation == generation then
+            session.pending = true
+          end
+        end,
+        select = function(selected)
+          if not session or session.generation ~= generation then
+            return
+          end
+          local target = selected_pr_target(selected, repo)
+          if not target then
+            runtime.notify("選択されたPR情報が不正です")
+            session.pending = false
+            finish(runtime, generation)
+            return
+          end
+          load_pr_surface(runtime, generation, target, cwd)
+        end,
+      })
+      if not picker_ok or not runtime.buffer_valid(picker) then
+        runtime.notify("OctoのPR一覧を開けませんでした: " .. tostring(picker))
+        finish(runtime, generation)
+        return
+      end
+      track_buffer(picker, picker_buffers, runtime, generation)
+    end, function(request_error)
+      runtime.notify("PR一覧の取得を開始できませんでした: " .. tostring(request_error))
+    end, function()
+      runtime.notify("PR一覧の取得がtimeoutしました")
+    end)
+  end, function(system_error)
     runtime.notify("ghを起動できませんでした: " .. tostring(system_error))
-    finish(runtime, generation)
-  end
+  end, function()
+    runtime.notify("PR一覧のrepository取得がtimeoutしました")
+  end)
 end
 
 function M.attach(buffer, adapter)
