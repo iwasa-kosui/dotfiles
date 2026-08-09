@@ -8,7 +8,7 @@
 |---|---|
 | Explorer（左） | 常時表示するファイルツリー。ファイル操作とGit状態の確認を行います。幅とフォルダの展開状態はworktreeごとに復元されます。 |
 | Editor Group（中央） | ファイルを2〜3個の編集領域に分けて並べます。開いているファイルはBufferlineで確認します。 |
-| Utility Dock（右） | Claude Code、Codex、Git、PRのうち一つを表示します。新しいツールを開くと同じ領域を再利用します。 |
+| Utility Dock（右） | Claude Code、Codex、Git、PRのうち一つを表示します。Git repositoryではLazyGitが通常表示で、Claude Code・Codex・PRを閉じるとLazyGitへ戻ります。新しいツールを開くと同じ領域を再利用します。 |
 
 ## 領域間の移動
 
@@ -29,7 +29,6 @@ Explorer、Editor Group、Utility Dockを含むすべての領域を移動でき
 | `<leader><leader>` / `<leader>f` | ファイル検索 |
 | `<leader>g` | Git管理中のファイルを検索 |
 | `<leader>b` | バッファ一覧 |
-| `<leader>p` | Snacks Pickerの一覧 |
 | `<leader>;` | コマンド履歴 |
 | `<leader>D` | 診断一覧 |
 | `<leader>T` | LSPシンボル一覧 |
@@ -45,7 +44,10 @@ Explorer、Editor Group、Utility Dockを含むすべての領域を移動でき
 
 | キー | 説明 |
 |---|---|
-| `<leader>gg` | 右側のUtility DockでLazyGitを開く |
+| `<leader>gg` | 右DockのLazyGitを開く / フォーカス |
+| `<C-l>` | Editorから右DockのLazyGitへ移動 |
+| LazyGitの`3` | Worktreesを先頭tabにした3番目のpanelへ移動 |
+| LazyGit Worktreesの`Space` | 選択worktreeへ切り替え |
 | `<leader>gz` | mainとの差分をDiffviewで開く |
 | `<leader>gh` | 現在ファイルの履歴 |
 | `<leader>gH` | ブランチ全体の履歴 |
@@ -108,8 +110,18 @@ AI Dockにフォーカスがあるときだけ使えます。Claude CodeとCodex
 
 ## GitHub・PRレビュー
 
+`<leader>p`は日常のPRレビュー操作です。以降の`<leader>o...`はOcto互換キーとして残しています。
+
 | キー | 説明 |
 |---|---|
+| `<leader>pp` | リポジトリのPR一覧を開く |
+| `<leader>po` | LazyGit選択branch、または現在branchのPRを開く |
+| `<leader>pr` | レビューを開始 / 再開 |
+| Visualモードの`<leader>pc` | pending commentを追加 |
+| Visualモードの`<leader>ps` | pending suggestionを追加 |
+| `<leader>pS` | レビューを送信 |
+| `<leader>pd` | pending reviewを破棄 |
+| `<leader>pq` | PR/reviewを閉じてLazyGitへ戻る |
 | `<leader>gp` | 現在ブランチのPRをブラウザで開く |
 | `<leader>opl` / `<leader>opc` | PR一覧 / PR作成 |
 | `<leader>opC` / `<leader>opm` | PRをcheckout / merge |
