@@ -285,3 +285,97 @@ end))
 t.truthy(scheduled_target_message:find("target window", 1, true) ~= nil)
 t.eq(nil, scheduled_target_controller:pair())
 t.truthy(vim.api.nvim_win_is_valid(spare_win))
+
+local function window_count()
+	return #vim.api.nvim_tabpage_list_wins(0)
+end
+
+local rollback_target = vim.api.nvim_get_current_win()
+local rollback_original = vim.api.nvim_create_buf(true, false)
+vim.api.nvim_buf_set_name(rollback_original, "base-diff-view-rollback-" .. rollback_original)
+vim.api.nvim_win_set_buf(rollback_target, rollback_original)
+local new_pair_windows = window_count()
+local new_pair_message
+local new_pair_rollback_controller = view.new({
+	check_binary = function(_, _, _, callback)
+		callback(false, nil)
+	end,
+	notify = function(message)
+		new_pair_message = message
+	end,
+})
+new_pair_rollback_controller:open(
+	{ cwd = root, merge_base = "abc123" },
+	{ status = "A", path = "tests/nvim/base_diff_view_spec.lua" },
+	rollback_target
+)
+local original_cmd = vim.cmd
+vim.cmd = function(command)
+	if type(command) == "string" and command:match("^edit ") then
+		error("forced new-pair edit failure")
+	end
+	return original_cmd(command)
+end
+t.truthy(vim.wait(1000, function()
+	return new_pair_message ~= nil
+end))
+vim.cmd = original_cmd
+t.truthy(new_pair_message:find("Base diff display failed", 1, true) ~= nil)
+t.eq(nil, new_pair_rollback_controller:pair())
+t.eq(new_pair_windows, window_count())
+t.eq(rollback_original, vim.api.nvim_win_get_buf(rollback_target))
+
+local reused_original = vim.api.nvim_create_buf(true, false)
+vim.api.nvim_buf_set_name(reused_original, "base-diff-view-reused-" .. reused_original)
+vim.api.nvim_win_set_buf(rollback_target, reused_original)
+local reused_file = vim.fn.bufadd(root .. "/tests/nvim/base_diff_view_spec.lua")
+vim.fn.bufload(reused_file)
+vim.keymap.set("n", "q", function() end, {
+	buffer = reused_file,
+	desc = "base-diff-view-reused-q",
+})
+local reused_windows = window_count()
+local reused_message
+local reused_rollback_controller = view.new({
+	check_binary = function(_, _, _, callback)
+		callback(false, nil)
+	end,
+	notify = function(message)
+		reused_message = message
+	end,
+})
+reused_rollback_controller:open(
+	{ cwd = root, merge_base = "abc123" },
+	{ status = "A", path = "tests/nvim/base_diff_view_spec.lua" },
+	rollback_target
+)
+t.truthy(vim.wait(1000, function()
+	return reused_rollback_controller:pair() ~= nil
+end))
+local reused_pair = reused_rollback_controller:pair()
+vim.cmd = function(command)
+	if type(command) == "string" and command:match("^edit ") then
+		error("forced reused-pair edit failure")
+	end
+	return original_cmd(command)
+end
+reused_rollback_controller:open(
+	{ cwd = root, merge_base = "abc123" },
+	{ status = "A", path = "dot_config/nvim/lua/user/base_diff_view.lua" },
+	rollback_target
+)
+t.truthy(vim.wait(1000, function()
+	return reused_message ~= nil
+end))
+vim.cmd = original_cmd
+t.truthy(reused_message:find("Base diff display failed", 1, true) ~= nil)
+t.eq(nil, reused_rollback_controller:pair())
+t.eq(reused_windows, window_count())
+t.eq(reused_original, vim.api.nvim_win_get_buf(rollback_target))
+t.eq(
+	"base-diff-view-reused-q",
+	vim.api.nvim_buf_call(reused_file, function()
+		return vim.fn.maparg("q", "n", false, true).desc
+	end)
+)
+vim.keymap.del("n", "q", { buffer = reused_file })

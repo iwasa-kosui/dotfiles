@@ -154,6 +154,14 @@ local function default_adapter(controller)
     end
   end
 
+  function adapter.rollback(pair)
+    adapter.restore_mappings(pair)
+    for _, win in ipairs({ pair.left, pair.right }) do
+      adapter.clear_diff(win)
+    end
+    adapter.close_pair(pair)
+  end
+
   function adapter.notify(message)
     vim.notify(message, vim.log.levels.WARN)
   end
@@ -182,6 +190,8 @@ local function default_adapter(controller)
             return vim.api.nvim_get_current_win()
           end)
         end
+        pair.left = left_win
+        pair.right = right_win
 
         local left_name
         if plan.left.kind == "git" then
@@ -201,8 +211,6 @@ local function default_adapter(controller)
           vim.api.nvim_win_set_buf(right_win, right_buffer)
         end
 
-        pair.left = left_win
-        pair.right = right_win
         for _, win in ipairs({ left_win, right_win }) do
           vim.api.nvim_win_call(win, function()
             vim.cmd("diffthis")
@@ -211,7 +219,7 @@ local function default_adapter(controller)
         end
       end, debug.traceback)
       if not ok then
-        callback(nil, "Base diff display failed: " .. err)
+        callback(nil, "Base diff display failed: " .. err, pair)
         return
       end
       callback(pair, nil)
@@ -273,12 +281,18 @@ function Controller:open(snapshot, change, target_win, callback)
         return
       end
       local completed = false
-      local function finish(pair, show_err)
+      local function finish(pair, show_err, rollback_pair)
         if completed or not current() then
           return
         end
         completed = true
         if show_err then
+          if rollback_pair then
+            pcall(self._adapter.rollback, rollback_pair)
+          end
+          if self._pair == previous then
+            self._pair = nil
+          end
           self._adapter.notify(show_err)
           return
         end
