@@ -300,6 +300,15 @@ test("no arguments displays the detailed AI authoring guide", async () => {
   expect(result.stdout).toContain("title: required non-empty string");
   expect(result.stdout).toContain("Allowed components:");
   expect(result.stdout).toContain("Callout, Metric, Evidence, Section");
+  expect(result.stdout).toContain("Safe HTML:");
+  expect(result.stdout).toContain(
+    "Badge, Status, Icon, Timeline, TimelineItem, Tabs, Tab",
+  );
+  expect(result.stdout).toContain("```mermaid");
+  expect(result.stdout).toContain(
+    "Mermaid uses a pinned CDN and client-side JavaScript",
+  );
+  expect(result.stdout).toContain("class and event attributes are not allowed");
   expect(result.stdout).toContain("rpt build - -o report.html");
   expect(result.stderr).toBe("");
 });

@@ -34,6 +34,21 @@ AI authoring contract:
 
   Body:
     Markdown and GFM (tables, task lists, footnotes, and code blocks)
+    Lowercase safe HTML is allowed only in the categories below.
+
+  Safe HTML:
+    Structure: article, section, aside, header, footer, div, span
+    Text: p, blockquote, code, strong, em, mark, small, sub, sup
+    Lists and tables: ul, ol, li, dl, table, thead, tbody, tr, th, td
+    Supporting content: details, summary, figure, figcaption, time, data, a
+    Use static allowed attributes only: id, role, aria-*, title, lang, dir, and style.
+    Links and citations may use relative URLs, fragments, HTTPS, or mailto:.
+    class and event attributes are not allowed; neither are scripts, forms, media, images, headings, or SVG.
+
+  Safe inline styles:
+    Use the fixed allowlist for color, typography, box, flex/grid, table, and list properties.
+    Use literal safe values or --w-* WebcoreUI variables only; no duplicate properties,
+    !important, custom properties, URL/image functions, positioning, animation, or transforms.
 
   Allowed components:
     Callout, Metric, Evidence, Section
@@ -42,8 +57,32 @@ AI authoring contract:
     <Evidence title="Source" source="https://example.com">...</Evidence>
     <Section title="Section title">...</Section>
 
+    Badge, Status, Icon, Timeline, TimelineItem, Tabs, Tab
+    <Badge tone="success">Approved</Badge>
+    <Status tone="warning">Pending review</Status>
+    <Icon name="circle-check" label="Complete" size="20" />
+    Icon names use the fixed WebcoreUI icon catalog (for example: alert, circle-check, github, info, warning).
+    <Timeline theme="icons">
+      <TimelineItem title="Research" icon="search">Confirm requirements.</TimelineItem>
+      <TimelineItem title="Build" icon="check">Generate the report.</TimelineItem>
+    </Timeline>
+    <Tabs>
+      <Tab label="Overview" active="true">Summary.</Tab>
+      <Tab label="Details">Supporting detail.</Tab>
+    </Tabs>
+    Timeline has 2 or more TimelineItem children; Tabs has 2 to 10 Tab children.
+
+  Mermaid:
+    \`\`\`mermaid
+    flowchart LR
+      A[Input] --> B[Validate] --> C[HTML]
+    \`\`\`
+    Use lowercase mermaid fences only. Each diagram is at most 64 KiB; a report has at most 20.
+    Mermaid uses a pinned CDN and client-side JavaScript only for reports that contain a Mermaid diagram.
+    Mermaid frontmatter and init directives are not allowed. If unavailable, the source remains readable.
+
   Restrictions:
-    Do not use imports, exports, JavaScript expressions, raw HTML, or other components.
+    Do not use imports, exports, JavaScript expressions, dynamic or spread attributes, or other components.
     Images must be relative local raster files or valid raster data URLs.
     Input and each image are limited to 5 MiB; all decoded images total 20 MiB.
 
@@ -55,7 +94,8 @@ Options:
   -v, --version        Show the rpt version
 
 Output:
-  On success, rpt writes the absolute output path to stdout.
+  Each successful build writes one single HTML file and its absolute output path to stdout.
+  Mermaid-free reports have no external assets or client-side JavaScript; Mermaid reports use only the fixed CDN exception.
   Diagnostics are written to stderr. Existing files require --force.
 `;
 
