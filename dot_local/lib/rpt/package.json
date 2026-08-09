@@ -1,0 +1,26 @@
+{
+  "name": "rpt",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit && astro check --root template",
+    "test:e2e": "bun test ../../../tests/rpt.e2e.test.ts --timeout 120000"
+  },
+  "dependencies": {
+    "@astrojs/check": "0.9.10",
+    "@astrojs/mdx": "4.3.13",
+    "astro": "5.18.2",
+    "github-slugger": "2.0.0",
+    "parse5": "8.0.1",
+    "remark-frontmatter": "5.0.0",
+    "remark-gfm": "4.0.1",
+    "remark-mdx": "3.1.1",
+    "remark-parse": "11.0.0",
+    "sass": "1.100.0",
+    "typescript": "5.9.3",
+    "unified": "11.0.5",
+    "webcoreui": "1.5.0",
+    "yaml": "2.9.0"
+  }
+}
