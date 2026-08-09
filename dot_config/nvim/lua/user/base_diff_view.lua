@@ -58,6 +58,7 @@ local function default_adapter(controller)
   local adapter = {}
 
   function adapter.check_binary(snapshot, _, plan, callback)
+    callback = vim.schedule_wrap(callback)
     local command
     local accepts_diff_exit = false
     if plan.left.kind == "empty" then
@@ -77,6 +78,7 @@ local function default_adapter(controller)
   end
 
   function adapter.load_git(source, snapshot, callback)
+    callback = vim.schedule_wrap(callback)
     vim.system(
       { "git", "show", source.rev .. ":" .. source.path },
       { cwd = snapshot.cwd, text = true },

@@ -321,6 +321,7 @@ local function default_adapter(controller)
     end
     local ok = pcall(vim.api.nvim_win_call, target, function()
       vim.cmd.edit(vim.fn.fnameescape(path))
+      vim.cmd("diffoff")
     end)
     callback(ok)
   end
