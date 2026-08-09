@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inlineAssets } from "../dot_local/lib/rpt/src/inline-assets.ts";
@@ -696,6 +696,82 @@ test("build reports a build failure when the temporary directory is unavailable"
     expect(result.stdout).toBe("");
     expect(result.stderr).toBe("rpt: could not create temporary build directory\n");
     expect(await Bun.file(testCase.output).exists()).toBe(false);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build omits read failures from normal output and includes their cause with --debug", async () => {
+  const directory = await mkdtemp(join(tmpdir(), "rpt-e2e-"));
+  const input = join(directory, "missing.mdx");
+  const output = join(directory, "report.html");
+  try {
+    const normal = await runRpt(["build", input, "-o", output]);
+    const debug = await runRpt(["build", input, "-o", output, "--debug"]);
+
+    expect(normal.exitCode).toBe(5);
+    expect(normal.stderr).toBe(`rpt: 1:1: could not read input: ${input}\n`);
+    expect(normal.stderr).not.toContain("ENOENT");
+    expect(debug.exitCode).toBe(5);
+    expect(debug.stderr).toContain(`rpt: 1:1: could not read input: ${input}\n`);
+    expect(debug.stderr).toContain("ENOENT");
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("build supports long URLs, code blocks, GFM tables, and footnotes", async () => {
+  const longUrl = "https://example.com/" + "reference/".repeat(40);
+  const testCase = await createCase(
+    `---\ntitle: Rich Markdown\n---\n\n[Long reference](${longUrl})\n\n\`\`\`\nconst answer = 42;\n\`\`\`\n\n| Item | Value |\n| --- | ---: |\n| answer | 42 |\n\nA sourced statement.[^1]\n\n[^1]: Footnote text.`,
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.stderr).toBe("");
+    expect(result.exitCode).toBe(0);
+    const html = await Bun.file(testCase.output).text();
+    expect(html).toContain(`href="${longUrl}"`);
+    expect(html).toContain("const answer = 42;");
+    expect(html).toContain("<table>");
+    expect(html).toContain("Footnote text.");
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build includes responsive print CSS and accessible report landmarks", async () => {
+  const testCase = await createCase(
+    "---\ntitle: Accessible report\n---\n\n<Callout tone=\"danger\">Take care.</Callout>",
+  );
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    const html = await Bun.file(testCase.output).text();
+    expect(html).toMatch(/@media\s*\(\s*max-width\s*:\s*48rem\s*\)/);
+    expect(html).toContain("@media print");
+    expect(html).toContain("@page");
+    expect(html).toContain('aria-label="目次"');
+    expect(html).toContain('class="rpt-skip-link"');
+    expect(html).toContain('<main id="report-content">');
+    expect(html).toContain('<article class="rpt-article">');
+    expect(html).toMatch(/class="[^"]*_alert_[^"]*"/);
+  } finally {
+    await testCase.cleanup();
+  }
+});
+
+test("build leaves no generated temporary files beside its output", async () => {
+  const testCase = await createCase("---\ntitle: Clean output\n---\n\nReport body.");
+  try {
+    const result = await runRpt(["build", testCase.input, "-o", testCase.output]);
+
+    expect(result.exitCode).toBe(0);
+    expect((await readdir(testCase.directory)).sort()).toEqual([
+      "report.html",
+      "report.mdx",
+    ]);
   } finally {
     await testCase.cleanup();
   }

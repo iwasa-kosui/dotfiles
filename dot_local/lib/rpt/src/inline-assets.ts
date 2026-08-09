@@ -93,8 +93,13 @@ async function processElement(
   if (tagName === "script") {
     return unsafeHtml("report HTML contains a script");
   }
-  if (attribute(element, "style") !== undefined) {
-    return unsafeHtml("report HTML contains a style attribute");
+  const style = attribute(element, "style");
+  if (style !== undefined) {
+    if (isGeneratedMarkdownStyle(element, style.value)) {
+      element.attrs = element.attrs.filter((candidate) => candidate !== style);
+    } else {
+      return unsafeHtml("report HTML contains a style attribute");
+    }
   }
 
   if (tagName === "link" && attribute(element, "href") !== undefined) {
@@ -652,6 +657,13 @@ function isSafeNavigationUrl(value: string): boolean {
 
 function attribute(element: Element, name: string) {
   return element.attrs.find((candidate) => candidate.name.toLowerCase() === name);
+}
+
+function isGeneratedMarkdownStyle(element: Element, value: string): boolean {
+  return (
+    (element.tagName === "td" || element.tagName === "th") &&
+    /^\s*text-align\s*:\s*(?:left|center|right)\s*;?\s*$/.test(value)
+  );
 }
 
 function hasRel(element: Element, token: string): boolean {

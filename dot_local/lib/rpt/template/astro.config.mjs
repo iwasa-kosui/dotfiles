@@ -15,6 +15,7 @@ export default defineConfig({
   output: "static",
   outDir: "./dist",
   cacheDir: "./.astro-cache",
+  markdown: { syntaxHighlight: false },
   integrations: [mdx(), webcore()],
   image: { service: passthroughImageService() },
   build: { format: "file", inlineStylesheets: "always" },

@@ -1,0 +1,11 @@
+{{ if eq .chezmoi.os "darwin" -}}
+#!/bin/zsh
+# rpt package.json hash: {{ include "dot_local/lib/rpt/package.json" | sha256sum }}
+# rpt bun.lock hash: {{ include "dot_local/lib/rpt/bun.lock" | sha256sum }}
+set -euo pipefail
+
+if command -v bun &> /dev/null; then
+  cd "{{ .chezmoi.homeDir }}/.local/lib/rpt"
+  bun install --frozen-lockfile
+fi
+{{ end -}}
