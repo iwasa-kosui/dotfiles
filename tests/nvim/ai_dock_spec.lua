@@ -142,22 +142,131 @@ t.truthy(first ~= second, "a second resume after process exit must create a new 
 t.eq(2, created)
 t.eq(1, discarded)
 
-local registered_cleanup_events
+local function expect_claude_attach_failure(preload, reason)
+	local previous_terminal = package.loaded["claudecode.terminal"]
+	local previous_preload = package.preload["claudecode.terminal"]
+	local restored = 0
+	local notifications = {}
+	local activated = 0
+	local cleanup_registrations = 0
+	package.loaded["claudecode.terminal"] = nil
+	package.preload["claudecode.terminal"] = preload
+
+	ai.switch_provider({
+		provider = function()
+			return "codex"
+		end,
+		select_provider = function() end,
+		ensure_explorer = function() end,
+		prepare_dock = function() end,
+		command = function() end,
+		activate_dock = function()
+			activated = activated + 1
+		end,
+		register_buffer_cleanup = function()
+			cleanup_registrations = cleanup_registrations + 1
+		end,
+		schedule = function(callback)
+			callback()
+		end,
+		restore_dock = function()
+			restored = restored + 1
+		end,
+		notify = function(message)
+			notifications[#notifications + 1] = message
+		end,
+	})
+
+	package.loaded["claudecode.terminal"] = previous_terminal
+	package.preload["claudecode.terminal"] = previous_preload
+	t.eq(1, restored, reason .. " must restore LazyGit")
+	t.truthy(#notifications > 0, reason .. " must notify")
+	t.eq(0, activated, reason .. " must not activate Claude Dock")
+	t.eq(0, cleanup_registrations, reason .. " must not register cleanup")
+end
+
+expect_claude_attach_failure(function()
+	error("terminal module failed")
+end, "Claude terminal require failure")
+expect_claude_attach_failure(function()
+	return {}
+end, "missing active-terminal getter")
+expect_claude_attach_failure(function()
+	return {
+		get_active_terminal_bufnr = function()
+			error("active terminal lookup failed")
+		end,
+	}
+end, "active-terminal getter failure")
+expect_claude_attach_failure(function()
+	return {
+		get_active_terminal_bufnr = function()
+			return nil
+		end,
+	}
+end, "missing active Claude buffer")
+
 local original_create_autocmd = vim.api.nvim_create_autocmd
-vim.api.nvim_create_autocmd = function(events)
+local registered_cleanup_events
+local cleanup_callbacks = {}
+vim.api.nvim_create_autocmd = function(events, opts)
 	registered_cleanup_events = events
+	cleanup_callbacks[#cleanup_callbacks + 1] = opts.callback
 	return 1
 end
 local cleanup_buffer = vim.api.nvim_create_buf(false, true)
+local cleanup_dock = require("user.dock").new()
+local cleanup_lazygit = { shown = 0, live = true }
+function cleanup_lazygit:show()
+	self.shown = self.shown + 1
+end
+cleanup_dock:set_default("lazygit", function()
+	return cleanup_lazygit
+end, function(handle)
+	return handle.live
+end)
+cleanup_dock:activate("lazygit", cleanup_lazygit)
+local cleanup_codex = { hide = function() end }
+cleanup_dock:activate("codex", cleanup_codex)
 ai.attach("codex", cleanup_buffer, {
 	buffer_valid = function()
 		return true
 	end,
 	activate_dock = function() end,
-}, { hide = function() end })
-vim.api.nvim_create_autocmd = original_create_autocmd
+	deactivate_dock = function(name, handle)
+		cleanup_dock:deactivate(name, handle)
+	end,
+}, cleanup_codex)
 t.eq({ "TermClose", "BufDelete", "BufWipeout" }, registered_cleanup_events)
+for _, event in ipairs({ "TermClose", "BufDelete", "BufWipeout" }) do
+	cleanup_callbacks[1]({ event = event })
+end
+t.eq(cleanup_lazygit, cleanup_dock.active.handle, "the active Codex cleanup must restore LazyGit once")
+t.eq(1, cleanup_lazygit.shown, "duplicate cleanup events must be idempotent")
+
+local current_codex = { hide = function() end }
+cleanup_dock:activate("codex", current_codex)
+cleanup_callbacks[1]({ event = "BufDelete" })
+t.eq(current_codex, cleanup_dock.active.handle, "a stale cleanup must keep the replacement AI Dock active")
+
+local disabled_buffer = vim.api.nvim_create_buf(false, true)
+local disabled_codex = { hide = function() end }
+cleanup_dock:activate("codex", disabled_codex)
+ai.attach("codex", disabled_buffer, {
+	buffer_valid = function()
+		return true
+	end,
+	activate_dock = function() end,
+	deactivate_dock = function(name, handle)
+		cleanup_dock:deactivate(name, handle)
+	end,
+}, disabled_codex)
+cleanup_dock:disable_default()
+cleanup_callbacks[2]({ event = "TermClose" })
+t.eq(nil, cleanup_dock.active, "disabled LazyGit fallback must not reopen after AI cleanup")
+vim.api.nvim_create_autocmd = original_create_autocmd
 vim.api.nvim_buf_delete(cleanup_buffer, { force = true })
+vim.api.nvim_buf_delete(disabled_buffer, { force = true })
 
 local deactivated = {}
 local visible_codex = {

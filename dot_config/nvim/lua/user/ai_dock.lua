@@ -180,7 +180,7 @@ end
 function M.attach(provider, buffer, adapter, handle)
   local runtime = api(adapter)
   if not runtime.buffer_valid(buffer) then
-    return
+    return false
   end
   vim.b[buffer].ai_dock_provider = provider
   vim.keymap.set("n", "p", M.switch_provider, { buffer = buffer, desc = "Switch AI provider" })
@@ -192,6 +192,7 @@ function M.attach(provider, buffer, adapter, handle)
       runtime.deactivate_dock(provider, handle)
     end)
   end
+  return true
 end
 
 function M.on_hidden(provider, target, adapter)
@@ -203,14 +204,36 @@ function M.on_hidden(provider, target, adapter)
 end
 
 local function attach_claude(adapter)
+  local runtime = api(adapter)
   local ok, terminal = pcall(require, "claudecode.terminal")
-  if not ok or not terminal.get_active_terminal_bufnr then
-    return
+  if not ok then
+    return false, "Claude terminalを読み込めませんでした: " .. tostring(terminal)
   end
-  local buffer = terminal.get_active_terminal_bufnr()
-  if buffer then
-    M.attach("claude", buffer, adapter)
+  if type(terminal.get_active_terminal_bufnr) ~= "function" then
+    return false, "Claude terminalのactive bufferを取得できませんでした"
   end
+  local got_buffer, buffer = pcall(terminal.get_active_terminal_bufnr)
+  if not got_buffer then
+    return false, "Claude terminalのactive bufferを取得できませんでした: " .. tostring(buffer)
+  end
+  if not buffer then
+    return false, "Claude terminalのactive bufferがありません"
+  end
+  local attached, result = pcall(M.attach, "claude", buffer, runtime)
+  if not attached or not result then
+    return false, "Claude Dockを接続できませんでした" .. (attached and "" or ": " .. tostring(result))
+  end
+  return true
+end
+
+local function attach_scheduled_claude(runtime)
+  runtime.schedule(function()
+    local attached, err = attach_claude(runtime)
+    if not attached then
+      runtime.notify(err)
+      runtime.restore_dock()
+    end
+  end)
 end
 
 local function codex_command(cwd)
@@ -270,9 +293,7 @@ local function show_claude(adapter)
     runtime.restore_dock()
     return
   end
-  runtime.schedule(function()
-    attach_claude(runtime)
-  end)
+  attach_scheduled_claude(runtime)
 end
 
 local function show_provider(provider, adapter)
@@ -329,9 +350,7 @@ function M.resume(adapter)
     runtime.restore_dock()
     return
   end
-  runtime.schedule(function()
-    attach_claude(runtime)
-  end)
+  attach_scheduled_claude(runtime)
 end
 
 local function send_to_codex(context, adapter)
