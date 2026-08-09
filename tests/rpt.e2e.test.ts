@@ -680,7 +680,7 @@ title: Rich components
     );
     expect(html).not.toContain("--w-color-secondary");
     expect(html).not.toContain("--w-color-on-info");
-    expect(html).toContain("var(--w-color-primary)");
+    expect(html).toContain("var(--w-color-primary-50)");
     expect(html).toContain("var(--w-color-info-fg)");
     expect(collectElements(document).filter((element) => element.tagName === "script")).toHaveLength(0);
   } finally {
