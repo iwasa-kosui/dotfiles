@@ -33,9 +33,13 @@ local adapter = {
     end,
   },
   system = function(argv, opts, callback)
-    t.eq({ "gh", "pr", "view", branch, "--json", "number" }, argv)
+    t.eq({ "gh", "pr", "view", branch, "--json", "number,url" }, argv)
     t.eq("/canonical/repo/.wt/feature", opts.cwd)
-    callback({ code = 0, stdout = '{"number":133}', stderr = "" })
+    callback({
+      code = 0,
+      stdout = '{"number":133,"url":"https://github.com/selected/repo/pull/133"}',
+      stderr = "",
+    })
   end,
   schedule = function(callback)
     callback()
@@ -53,11 +57,11 @@ local adapter = {
 
 review.open({ cwd = "/repo path/.wt/feature", branch = branch }, adapter)
 t.eq({ "prepare:pr", "activate:pr" }, calls)
-t.eq({ "Octo pr edit 133" }, commands)
+t.eq({ { cmd = "Octo", args = { "https://github.com/selected/repo/pull/133" } } }, commands)
 
 commands = {}
 adapter.system = function(argv, _, callback)
-  t.eq({ "gh", "pr", "view", branch, "--json", "number" }, argv)
+  t.eq({ "gh", "pr", "view", branch, "--json", "number,url" }, argv)
   callback({ code = 1, stdout = "", stderr = "no pull requests found" })
 end
 review.open({ cwd = "/repo path/.wt/feature", branch = branch }, adapter)
@@ -67,9 +71,11 @@ t.truthy(notifications[#notifications]:find(branch, 1, true), "the failure must 
 t.truthy(notifications[#notifications]:find("no pull requests found", 1, true), "the failure must explain gh stderr")
 
 local invalid_outputs = {
-  '{"number":"1"}',
-  '{"number":1.5}',
+  '{"number":"1","url":"https://github.com/selected/repo/pull/1"}',
+  '{"number":1.5,"url":"https://github.com/selected/repo/pull/1"}',
   '[{"number":1},{"number":2}]',
+  '{"number":1,"url":"https://github.com/selected/repo/pull/2"}',
+  '{"number":1,"url":"https://github.com/selected/repo/issues/1"}',
 }
 for _, stdout in ipairs(invalid_outputs) do
   adapter.system = function(_, _, callback)
@@ -77,17 +83,17 @@ for _, stdout in ipairs(invalid_outputs) do
   end
   review.open({ cwd = "/repo path/.wt/feature", branch = branch }, adapter)
 end
-t.eq(4, restored, "every ambiguous or invalid PR result must restore LazyGit")
+t.eq(6, restored, "every ambiguous or invalid PR result must restore LazyGit")
 t.eq({}, commands, "invalid PR numbers must never be interpolated into an Octo command")
 
 local current_branch_argv
 adapter.system = function(argv, _, callback)
   current_branch_argv = argv
-  callback({ code = 0, stdout = '{"number":7}', stderr = "" })
+  callback({ code = 0, stdout = '{"number":7,"url":"https://github.com/selected/repo/pull/7"}', stderr = "" })
 end
 review.open({ cwd = "/repo path/.wt/feature", branch = "" }, adapter)
-t.eq({ "gh", "pr", "view", "--json", "number" }, current_branch_argv)
-t.eq({ "Octo pr edit 7" }, commands)
+t.eq({ "gh", "pr", "view", "--json", "number,url" }, current_branch_argv)
+t.eq({ { cmd = "Octo", args = { "https://github.com/selected/repo/pull/7" } } }, commands)
 
 local invalid_root_called = false
 local invalid_root_adapter = {
@@ -207,7 +213,11 @@ local lifecycle_adapter = {
     end,
   },
   system = function(_, _, callback)
-    callback({ code = 0, stdout = '{"number":42}', stderr = "" })
+    callback({
+      code = 0,
+      stdout = '{"number":42,"url":"https://github.com/selected/repo/pull/42"}',
+      stderr = "",
+    })
   end,
   schedule = function(callback)
     callback()
@@ -299,3 +309,279 @@ review.attach_if_review(904, lifecycle_adapter)
 review.close(lifecycle_adapter)
 t.eq(11, closed_review_tab)
 t.eq(2, lifecycle_restores, "leader-pq must restore LazyGit even when the source PR buffer remains valid")
+
+local repo_commands = {}
+local repo_system_calls = {}
+local repo_restores = 0
+local list_context_cwd
+local repo_adapter = {
+  root = function(path)
+    if path ~= nil then
+      t.eq("/selected/repo", path)
+    end
+    return "/canonical/selected/repo"
+  end,
+  dock = {
+    prepare = function() end,
+    activate = function() end,
+    deactivate = function()
+      repo_restores = repo_restores + 1
+    end,
+  },
+  system = function(argv, opts, callback)
+    repo_system_calls[#repo_system_calls + 1] = { argv = argv, cwd = opts.cwd }
+    if argv[2] == "pr" then
+      callback({
+        code = 0,
+        stdout = '{"number":42,"url":"https://github.com/selected/repo/pull/42"}',
+        stderr = "",
+      })
+    else
+      callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+    end
+  end,
+  schedule = function(callback)
+    callback()
+  end,
+  defer = function() end,
+  command = function(command)
+    repo_commands[#repo_commands + 1] = command
+  end,
+  with_cwd = function(cwd, callback)
+    list_context_cwd = cwd
+    callback()
+  end,
+  notify = function(message)
+    error(message)
+  end,
+  current_buffer = function()
+    return 1001
+  end,
+  buffer_valid = function()
+    return false
+  end,
+}
+
+review.open({ cwd = "/selected/repo", branch = "feature" }, repo_adapter)
+t.eq({
+  argv = { "gh", "pr", "view", "feature", "--json", "number,url" },
+  cwd = "/canonical/selected/repo",
+}, repo_system_calls[1], "the selected canonical repository must own the PR lookup")
+t.eq({ cmd = "Octo", args = { "https://github.com/selected/repo/pull/42" } }, repo_commands[1])
+
+repo_commands = {}
+repo_system_calls = {}
+review.list(repo_adapter)
+t.eq({
+  argv = { "gh", "repo", "view", "--json", "nameWithOwner" },
+  cwd = "/canonical/selected/repo",
+}, repo_system_calls[1], "the PR list repository must be resolved from the canonical cwd")
+t.eq("/canonical/selected/repo", list_context_cwd, "Octo must resolve the selected repository host from canonical cwd")
+t.eq({ cmd = "Octo", args = { "pr", "list", "selected/repo" } }, repo_commands[1])
+t.eq(0, repo_restores)
+
+local repo_notifications = {}
+repo_adapter.notify = function(message)
+  repo_notifications[#repo_notifications + 1] = message
+end
+repo_adapter.system = function()
+  error("spawn failed")
+end
+review.list(repo_adapter)
+t.eq(1, repo_restores, "a synchronous repository lookup failure must restore LazyGit")
+
+repo_adapter.system = function(_, _, callback)
+  callback({ code = 1, stdout = "", stderr = "repository unavailable" })
+end
+review.list(repo_adapter)
+t.eq(2, repo_restores, "an asynchronous repository lookup failure must restore LazyGit")
+t.truthy(repo_notifications[#repo_notifications]:find("repository unavailable", 1, true))
+
+repo_adapter.system = function(_, _, callback)
+  callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo;Octo issue list"}', stderr = "" })
+end
+review.list(repo_adapter)
+t.eq(3, repo_restores, "an unsafe repository identity must restore LazyGit")
+
+repo_adapter.system = function(_, _, callback)
+  callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+end
+repo_adapter.command = function()
+  error("Octo failed")
+end
+review.list(repo_adapter)
+t.eq(4, repo_restores, "an Octo list failure must restore LazyGit")
+
+local tab = 21
+local closed_tabs = {}
+local multi_tab_restores = 0
+local multi_tab_maps = {}
+local multi_tab_adapter = {
+  root = function()
+    return "/repo"
+  end,
+  dock = {
+    prepare = function() end,
+    activate = function() end,
+    deactivate = function()
+      multi_tab_restores = multi_tab_restores + 1
+    end,
+  },
+  system = function(_, _, callback)
+    callback({
+      code = 0,
+      stdout = '{"number":51,"url":"https://github.com/selected/repo/pull/51"}',
+      stderr = "",
+    })
+  end,
+  schedule = function(callback)
+    callback()
+  end,
+  defer = function() end,
+  command = function() end,
+  notify = function(message)
+    error(message)
+  end,
+  set_keymap = function(mode, lhs, rhs)
+    multi_tab_maps[mode .. lhs] = rhs
+  end,
+  register_cleanup = function() end,
+  buffer_valid = function()
+    return true
+  end,
+  buffer_filetype = function()
+    return "diff"
+  end,
+  current_buffer = function()
+    return tab == 21 and 921 or 922
+  end,
+  current_tab = function()
+    return tab
+  end,
+  tab_valid = function(target)
+    return target == 21 or target == 22
+  end,
+  reviews = function()
+    return {
+      get_current_review = function()
+        return {}
+      end,
+      close = function(target)
+        closed_tabs[#closed_tabs + 1] = target
+      end,
+    }
+  end,
+}
+
+review.open({ cwd = "/repo", branch = "multi-tab" }, multi_tab_adapter)
+review.attach_if_review(921, multi_tab_adapter)
+tab = 22
+review.attach_if_review(922, multi_tab_adapter)
+tab = 21
+multi_tab_maps["n<leader>pq"]()
+table.sort(closed_tabs)
+t.eq({ 21, 22 }, closed_tabs, "leader-pq must close every review tab in its PR session")
+t.eq(1, multi_tab_restores, "LazyGit must be restored only after the whole PR session closes")
+
+local reused_cleanups = {}
+local reused_adapter = {
+  root = function()
+    return "/repo"
+  end,
+  dock = {
+    prepare = function() end,
+    activate = function() end,
+    deactivate = function() end,
+  },
+  system = function(_, _, callback)
+    callback({
+      code = 0,
+      stdout = '{"number":61,"url":"https://github.com/selected/repo/pull/61"}',
+      stderr = "",
+    })
+  end,
+  schedule = function(callback)
+    callback()
+  end,
+  defer = function() end,
+  command = function() end,
+  notify = function(message)
+    error(message)
+  end,
+  set_keymap = function() end,
+  register_cleanup = function(_, callback)
+    reused_cleanups[#reused_cleanups + 1] = callback
+  end,
+  buffer_valid = function()
+    return true
+  end,
+  buffer_filetype = function()
+    return "octo"
+  end,
+}
+
+review.open({ cwd = "/repo", branch = "old" }, reused_adapter)
+review.attach(930, reused_adapter)
+review.open({ cwd = "/repo", branch = "new" }, reused_adapter)
+review.attach(930, reused_adapter)
+t.eq(4, #reused_cleanups)
+reused_cleanups[1]()
+reused_cleanups[2]()
+review.attach(930, reused_adapter)
+t.eq(4, #reused_cleanups, "stale cleanup must not clear a reused buffer's current-generation marker")
+
+local retry_map
+local delete_attempts = 0
+local delete_fails = true
+local retry_restores = 0
+local retry_adapter = {
+  root = function()
+    return "/repo"
+  end,
+  dock = {
+    prepare = function() end,
+    activate = function() end,
+    deactivate = function()
+      retry_restores = retry_restores + 1
+    end,
+  },
+  system = reused_adapter.system,
+  schedule = reused_adapter.schedule,
+  defer = reused_adapter.defer,
+  command = reused_adapter.command,
+  notify = function() end,
+  set_keymap = function(mode, lhs, rhs)
+    if mode == "n" and lhs == "<leader>pq" then
+      retry_map = rhs
+    end
+  end,
+  register_cleanup = function() end,
+  buffer_valid = function()
+    return true
+  end,
+  buffer_filetype = function()
+    return "octo"
+  end,
+  reviews = function()
+    return {
+      get_current_review = function()
+        return nil
+      end,
+    }
+  end,
+  delete_buffer = function()
+    delete_attempts = delete_attempts + 1
+    if delete_fails then
+      error("delete failed")
+    end
+  end,
+}
+
+review.open({ cwd = "/repo", branch = "retry-close" }, retry_adapter)
+review.attach(940, retry_adapter)
+retry_map()
+t.eq(0, retry_restores, "LazyGit must stay hidden while a PR surface failed to close")
+delete_fails = false
+retry_map()
+t.eq(2, delete_attempts, "leader-pq must retry a PR surface that failed to close")
+t.eq(1, retry_restores)

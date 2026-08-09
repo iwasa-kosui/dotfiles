@@ -37,6 +37,15 @@ local function defaults(adapter)
       schedule = vim.schedule,
       defer = vim.defer_fn,
       command = vim.cmd,
+      with_cwd = function(cwd, callback)
+        local previous = vim.fn.getcwd()
+        vim.api.nvim_set_current_dir(cwd)
+        local ok, result = xpcall(callback, debug.traceback)
+        vim.api.nvim_set_current_dir(previous)
+        if not ok then
+          error(result)
+        end
+      end,
       notify = function(message)
         vim.notify(message, vim.log.levels.ERROR)
       end,
@@ -151,8 +160,10 @@ local function track_buffer(buffer, entries, runtime, generation)
   runtime.register_cleanup(buffer, function()
     if entries[buffer] == generation then
       entries[buffer] = nil
+      if attached_buffers[buffer] == generation then
+        attached_buffers[buffer] = nil
+      end
     end
-    attached_buffers[buffer] = nil
     schedule_surface_check(runtime, generation)
   end)
 end
@@ -191,6 +202,45 @@ function M.parse_pr(json)
   return value.number
 end
 
+local function parse_pr_target(json)
+  if type(json) ~= "string" then
+    return nil
+  end
+  local ok, value = pcall(vim.json.decode, json)
+  if not ok or type(value) ~= "table" or type(value.url) ~= "string" then
+    return nil
+  end
+  local number = M.parse_pr(json)
+  if not number then
+    return nil
+  end
+  local host, owner, name, url_number = value.url:match("^https://([^/]+)/([^/]+)/([^/]+)/pull/(%d+)$")
+  if
+    not host
+    or not host:match("^[%w.-]+$")
+    or not owner:match("^[%w_.-]+$")
+    or not name:match("^[%w_.-]+$")
+    or tonumber(url_number) ~= number
+  then
+    return nil
+  end
+  return { number = number, url = value.url, repo = owner .. "/" .. name }
+end
+
+local function parse_repo(json)
+  if type(json) ~= "string" then
+    return nil
+  end
+  local ok, value = pcall(vim.json.decode, json)
+  if not ok or type(value) ~= "table" or type(value.nameWithOwner) ~= "string" then
+    return nil
+  end
+  if not value.nameWithOwner:match("^[%w_.-]+/[%w_.-]+$") then
+    return nil
+  end
+  return value.nameWithOwner
+end
+
 function M.open(target, adapter)
   target = target or {}
   local runtime = defaults(adapter)
@@ -210,7 +260,7 @@ function M.open(target, adapter)
   if branch ~= "" then
     args[#args + 1] = branch
   end
-  vim.list_extend(args, { "--json", "number" })
+  vim.list_extend(args, { "--json", "number,url" })
 
   local generation = enter(runtime)
   local ok, system_error = pcall(runtime.system, args, { cwd = cwd, text = true }, function(result)
@@ -225,14 +275,14 @@ function M.open(target, adapter)
         return
       end
 
-      local number = M.parse_pr(result.stdout)
-      if not number then
+      local pr = parse_pr_target(result.stdout)
+      if not pr then
         runtime.notify(("PRを一意に解決できませんでした (%s)"):format(target_name(branch)))
         finish(runtime, generation)
         return
       end
 
-      local command_ok, command_error = pcall(runtime.command, ("Octo pr edit %d"):format(number))
+      local command_ok, command_error = pcall(runtime.command, { cmd = "Octo", args = { pr.url } })
       if not command_ok then
         runtime.notify("OctoでPRを開けませんでした: " .. tostring(command_error))
         finish(runtime, generation)
@@ -271,32 +321,73 @@ function M.list(adapter)
     return
   end
   local generation = enter(runtime)
-  local previous_buffer = runtime.current_buffer()
-  local ok, command_error = pcall(runtime.command, "Octo pr list")
+  local ok, system_error = pcall(
+    runtime.system,
+    { "gh", "repo", "view", "--json", "nameWithOwner" },
+    { cwd = cwd, text = true },
+    function(result)
+      runtime.schedule(function()
+        if not session or session.generation ~= generation then
+          return
+        end
+        result = result or {}
+        if result.code ~= 0 then
+          runtime.notify("PR一覧のrepositoryを解決できませんでした: " .. short_error(result.stderr))
+          finish(runtime, generation)
+          return
+        end
+        local repo = parse_repo(result.stdout)
+        if not repo then
+          runtime.notify("PR一覧のrepository情報が不正です")
+          finish(runtime, generation)
+          return
+        end
+
+        local previous_buffer = runtime.current_buffer()
+        local command_ok, command_error = pcall(runtime.with_cwd, cwd, function()
+          runtime.command({ cmd = "Octo", args = { "pr", "list", repo } })
+        end)
+        if not command_ok then
+          runtime.notify("OctoのPR一覧を開けませんでした: " .. tostring(command_error))
+          finish(runtime, generation)
+          return
+        end
+        runtime.schedule(function()
+          if not session or session.generation ~= generation then
+            return
+          end
+          local buffer = runtime.current_buffer()
+          if buffer ~= previous_buffer and runtime.buffer_valid(buffer) then
+            track_buffer(buffer, picker_buffers, runtime, generation)
+          end
+        end)
+      end)
+    end
+  )
   if not ok then
-    runtime.notify("OctoのPR一覧を開けませんでした: " .. tostring(command_error))
+    runtime.notify("ghを起動できませんでした: " .. tostring(system_error))
     finish(runtime, generation)
-    return
   end
-  runtime.schedule(function()
-    if not session or session.generation ~= generation then
-      return
-    end
-    local buffer = runtime.current_buffer()
-    if buffer ~= previous_buffer and runtime.buffer_valid(buffer) then
-      track_buffer(buffer, picker_buffers, runtime, generation)
-    end
-  end)
 end
 
 function M.attach(buffer, adapter)
   local runtime = defaults(adapter)
-  if attached_buffers[buffer] then
+  local generation
+  local octo_buffer = is_octo_buffer(buffer, runtime)
+  if octo_buffer then
+    generation = ensure_session(runtime)
+  elseif session then
+    generation = session.generation
+  end
+  local owner = generation or true
+  if attached_buffers[buffer] == owner then
     return
   end
-  attached_buffers[buffer] = true
+  attached_buffers[buffer] = owner
   runtime.register_cleanup(buffer, function()
-    attached_buffers[buffer] = nil
+    if attached_buffers[buffer] == owner then
+      attached_buffers[buffer] = nil
+    end
   end)
 
   runtime.set_keymap("n", "<leader>pr", function()
@@ -315,11 +406,10 @@ function M.attach(buffer, adapter)
     runtime.reviews().discard_review()
   end, { buffer = buffer, desc = "Discard review" })
   runtime.set_keymap("n", "<leader>pq", function()
-    M.close(runtime)
+    M.close(runtime, generation)
   end, { buffer = buffer, desc = "Close review" })
 
-  if is_octo_buffer(buffer, runtime) then
-    local generation = ensure_session(runtime)
+  if octo_buffer then
     track_buffer(buffer, octo_buffers, runtime, generation)
   end
 end
@@ -341,23 +431,66 @@ function M.on_tab_closed(_, adapter)
   schedule_surface_check(runtime)
 end
 
-function M.close(adapter)
-  local runtime = defaults(adapter)
-  local generation = session and session.generation
-  local ok, reviews = pcall(runtime.reviews)
-  local current_review = ok and reviews.get_current_review()
-  if current_review then
-    local tab = runtime.current_tab()
-    reviews.close(tab)
-    review_tabs[tostring(tab)] = nil
-  else
-    local buffer = runtime.current_buffer()
-    if is_octo_buffer(buffer, runtime) then
-      octo_buffers[buffer] = nil
-      runtime.delete_buffer(buffer)
+local function close_buffers(entries, generation, runtime)
+  local ok = true
+  for buffer, owner in pairs(entries) do
+    if owner == generation then
+      if runtime.buffer_valid(buffer) then
+        local deleted, delete_error = pcall(runtime.delete_buffer, buffer)
+        if not deleted then
+          ok = false
+          runtime.notify("PR画面を閉じられませんでした: " .. tostring(delete_error))
+        else
+          entries[buffer] = nil
+        end
+      else
+        entries[buffer] = nil
+      end
     end
   end
-  finish(runtime, generation)
+  return ok
+end
+
+function M.close(adapter, requested_generation)
+  local runtime = defaults(adapter)
+  local generation = session and session.generation
+  if not generation or (requested_generation and requested_generation ~= generation) then
+    return
+  end
+  local ok, reviews = pcall(runtime.reviews)
+  local closed_all = ok
+  local closed_review = false
+  if ok then
+    for key, tracked in pairs(review_tabs) do
+      if tracked.generation == generation then
+        if runtime.tab_valid(tracked.handle) then
+          local closed, close_error = pcall(reviews.close, tracked.handle)
+          if not closed then
+            closed_all = false
+            runtime.notify("review tabを閉じられませんでした: " .. tostring(close_error))
+          else
+            closed_review = true
+            review_tabs[key] = nil
+          end
+        else
+          review_tabs[key] = nil
+        end
+      end
+    end
+    if not closed_review and reviews.get_current_review() then
+      local tab = runtime.current_tab()
+      local closed, close_error = pcall(reviews.close, tab)
+      if not closed then
+        closed_all = false
+        runtime.notify("review tabを閉じられませんでした: " .. tostring(close_error))
+      end
+    end
+  end
+  closed_all = close_buffers(picker_buffers, generation, runtime) and closed_all
+  closed_all = close_buffers(octo_buffers, generation, runtime) and closed_all
+  if closed_all then
+    finish(runtime, generation)
+  end
 end
 
 function M.ensure_review_explorer()
