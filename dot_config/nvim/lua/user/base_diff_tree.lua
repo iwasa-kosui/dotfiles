@@ -240,8 +240,16 @@ local function default_adapter(controller)
     return type(win) == "number" and vim.api.nvim_win_is_valid(win)
   end
 
-  function adapter.available_height(explorer_win)
-    return vim.api.nvim_win_get_height(explorer_win)
+  function adapter.available_height(explorer_win, panel_win)
+    local height = vim.api.nvim_win_get_height(explorer_win)
+    if controller.adapter.valid_win(panel_win) then
+      height = height + vim.api.nvim_win_get_height(panel_win) + SPLIT_SEPARATOR_HEIGHT
+    end
+    return height
+  end
+
+  function adapter.get_height(win)
+    return vim.api.nvim_win_get_height(win)
   end
 
   function adapter.set_height(panel_win, height)
@@ -364,20 +372,7 @@ local function default_adapter(controller)
       vim.api.nvim_create_autocmd("WinResized", {
         group = lifecycle_group,
         callback = function()
-          if controller.state.collapsed or not controller.adapter.valid_win(controller.panel_win) then
-            return
-          end
-          for _, win in ipairs(vim.v.event.windows or {}) do
-            if tonumber(win) == controller.panel_win then
-              local height = vim.api.nvim_win_get_height(controller.panel_win)
-              if height >= 4 then
-                controller.state.height = height
-                controller.expanded_height = height
-                controller.adapter.save_state(controller.cwd, controller.state)
-              end
-              return
-            end
-          end
+          controller:on_resized(vim.v.event.windows or {})
         end,
       }),
       vim.api.nvim_create_autocmd("WinClosed", {
@@ -404,6 +399,74 @@ local function default_adapter(controller)
   return adapter
 end
 
+function Controller:is_collapsed()
+  return self.state.collapsed == true or self.force_collapsed == true
+end
+
+function Controller:render_state()
+  return vim.tbl_extend("force", {}, self.state, { collapsed = self:is_collapsed() })
+end
+
+function Controller:apply_height(height)
+  self._programmatic_height = height
+  self.adapter.set_height(self.panel_win, height)
+end
+
+function Controller:recalculate_layout(resize)
+  local available_height = self.adapter.available_height(self.explorer_win, self.panel_win)
+  local max_expanded_height = available_height - MIN_EXPLORER_HEIGHT - SPLIT_SEPARATOR_HEIGHT
+  self.available_height = available_height
+  self.force_collapsed = max_expanded_height < MIN_PANEL_HEIGHT
+  local desired_height = self.state.height or math.max(MIN_PANEL_HEIGHT, math.floor(available_height / 2))
+  self.expanded_height = self.force_collapsed and MIN_PANEL_HEIGHT or math.min(desired_height, max_expanded_height)
+  if resize and self.adapter.valid_win(self.panel_win) then
+    self:apply_height(self:is_collapsed() and 1 or self.expanded_height)
+  end
+end
+
+function Controller:on_resized(windows)
+  if not self.adapter.valid_win(self.panel_win) or not self.adapter.valid_win(self.explorer_win) then
+    return
+  end
+  local relevant = false
+  for _, win in ipairs(windows or {}) do
+    win = tonumber(win)
+    if win == self.panel_win or win == self.explorer_win then
+      relevant = true
+      break
+    end
+  end
+  if not relevant then
+    return
+  end
+
+  local available_height = self.adapter.available_height(self.explorer_win, self.panel_win)
+  local panel_height = self.adapter.get_height(self.panel_win)
+  if self._programmatic_height == panel_height and self.available_height == available_height then
+    self._programmatic_height = nil
+    return
+  end
+  self._programmatic_height = nil
+
+  if self.available_height == available_height and not self:is_collapsed() and panel_height >= MIN_PANEL_HEIGHT then
+    local max_expanded_height = available_height - MIN_EXPLORER_HEIGHT - SPLIT_SEPARATOR_HEIGHT
+    local height = math.min(panel_height, max_expanded_height)
+    self.state.height = height
+    self.expanded_height = height
+    self.adapter.save_state(self.cwd, self.state)
+    if height ~= panel_height then
+      self:apply_height(height)
+    end
+    return
+  end
+
+  local was_collapsed = self:is_collapsed()
+  self:recalculate_layout(true)
+  if was_collapsed ~= self:is_collapsed() then
+    self:update(self.snapshot, self.error)
+  end
+end
+
 function Controller:ensure(opts)
   if self.adapter.valid_win(self.panel_win) then
     return self.panel_win
@@ -417,15 +480,8 @@ function Controller:ensure(opts)
       self.state = self.adapter.load_state(self.cwd)
     end
 
-    local available_height = self.adapter.available_height(self.explorer_win)
-    local max_expanded_height = available_height - MIN_EXPLORER_HEIGHT - SPLIT_SEPARATOR_HEIGHT
-    self.force_collapsed = max_expanded_height < MIN_PANEL_HEIGHT
-    if self.force_collapsed then
-      self.state.collapsed = true
-    end
-    local desired_height = self.state.height or math.max(MIN_PANEL_HEIGHT, math.floor(available_height / 2))
-    self.expanded_height = self.force_collapsed and MIN_PANEL_HEIGHT or math.min(desired_height, max_expanded_height)
-    local height = self.state.collapsed and 1 or self.expanded_height
+    self:recalculate_layout(false)
+    local height = self:is_collapsed() and 1 or self.expanded_height
     self.panel_win, self.buf = self.adapter.create_panel(self.explorer_win, self.cwd, height)
     self._subscription_generation = (self._subscription_generation or 0) + 1
     local subscription_generation = self._subscription_generation
@@ -453,13 +509,13 @@ end
 function Controller:update(snapshot, error)
   self.snapshot = snapshot
   self.error = error
-  self.rendered = M.render(snapshot, self.state, error)
+  self.rendered = M.render(snapshot, self:render_state(), error)
   if snapshot then
     local filtered, changed = filter_open_dirs(self.state.open_dirs, self.rendered.valid_open_dirs)
     if changed then
       self.state.open_dirs = filtered
       self.adapter.save_state(self.cwd, self.state)
-      self.rendered = M.render(snapshot, self.state, error)
+      self.rendered = M.render(snapshot, self:render_state(), error)
     end
   end
   self.adapter.render_buffer(self.buf, self.rendered, self.panel_win)
@@ -472,10 +528,14 @@ function Controller:activate(line, action)
     self.state.collapsed = true
     state_changed = true
   elseif action == "expand" then
-    self.state.collapsed = self.force_collapsed == true
+    self.state.collapsed = false
     state_changed = true
   elseif item and item.kind == "header" then
-    self.state.collapsed = self.force_collapsed == true or not self.state.collapsed
+    if self.force_collapsed then
+      self.state.collapsed = false
+    else
+      self.state.collapsed = not self.state.collapsed
+    end
     state_changed = true
   elseif item and item.kind == "directory" then
     toggle_open_dir(self.state.open_dirs, item.path)
@@ -496,7 +556,9 @@ function Controller:activate(line, action)
       end)
     end
   elseif item and item.kind == "file" then
-    local target = self.editor_win()
+    local pair = self.view.pair and self.view:pair()
+    local target = pair and self.adapter.valid_win(pair.left) and self.adapter.valid_win(pair.right) and pair.right
+      or self.editor_win()
     if target then
       self.view:open(self.snapshot, item.change, target)
     else
@@ -511,7 +573,7 @@ function Controller:activate(line, action)
     self.state.open_dirs = filter_open_dirs(self.state.open_dirs, self.rendered.valid_open_dirs)
   end
   self.adapter.save_state(self.cwd, self.state)
-  self.adapter.set_height(self.panel_win, self.state.collapsed and 1 or self.expanded_height)
+  self:apply_height(self:is_collapsed() and 1 or self.expanded_height)
   self:update(self.snapshot, self.error)
 end
 
