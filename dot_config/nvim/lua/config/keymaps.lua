@@ -1,52 +1,28 @@
--- Keymaps are automatically loaded on the VeryLazy event
--- Default keymaps that are always set: https://github.com/LazyVim/LazyVim/blob/main/lua/lazyvim/config/keymaps.lua
--- Add any additional keymaps here
-local function copy_path(type)
-  local fullpath = vim.fn.expand("%:p")
-  if fullpath == "" or fullpath:match("^%[.*%]$") then
-    vim.notify("No file is open", vim.log.levels.WARN)
-    return
-  end
+local workspace = require("user.workspace")
+local map = vim.keymap.set
 
-  local root = require("lazyvim.util").root.get({ path = fullpath })
-  local path
-
-  if type == "absolute" then
-    path = fullpath
-  elseif type == "relative" then
-    if root and fullpath:find(root, 1, true) == 1 then
-      path = fullpath:sub(#root + 2) -- +2 for the slash
-    else
-      path = vim.fn.expand("%")
-    end
-  elseif type == "filename" then
-    path = vim.fn.expand("%:t")
-  end
-
-  vim.fn.setreg("+", path)
-  vim.notify("Copied: " .. path, vim.log.levels.INFO)
+map("n", "<leader>e", workspace.focus_explorer, { desc = "Explorer" })
+for _, lhs in ipairs({ "<C-p>", "<leader>f" }) do
+  map("n", lhs, workspace.files, { desc = "Find files" })
 end
-
-vim.keymap.set("n", "<leader>cpa", function()
-  copy_path("absolute")
-end, { desc = "Copy absolute path" })
-vim.keymap.set("n", "<leader>cpr", function()
-  copy_path("relative")
-end, { desc = "Copy project-relative path" })
-vim.keymap.set("n", "<leader>cpf", function()
-  copy_path("filename")
-end, { desc = "Copy filename" })
-
-local function open_current_branch_pr()
-  local branch = vim.fn.systemlist({ "git", "rev-parse", "--abbrev-ref", "HEAD" })[1]
-  if vim.v.shell_error ~= 0 or not branch or branch == "" or branch == "HEAD" then
-    vim.notify("current branch not found", vim.log.levels.ERROR)
-    return
-  end
-  local out = vim.fn.system({ "gh", "pr", "view", branch, "--web" })
-  if vim.v.shell_error ~= 0 then
-    vim.notify("gh pr view failed: " .. out, vim.log.levels.ERROR)
-  end
+for _, lhs in ipairs({ "<C-S-f>", "<leader>s" }) do
+  map("n", lhs, workspace.search, { desc = "Search text" })
 end
+map("n", "<leader>r", workspace.replace, { desc = "Replace across files" })
+for _, lhs in ipairs({ "<C-Tab>", "<leader>bn" }) do
+  map("n", lhs, workspace.next_file, { desc = "Next file" })
+end
+for _, lhs in ipairs({ "<C-S-Tab>", "<leader>bp" }) do
+  map("n", lhs, workspace.previous_file, { desc = "Previous file" })
+end
+map("n", "<leader>bd", function()
+  Snacks.bufdelete()
+end, { desc = "Close file" })
+map("n", "<leader>|", "<C-w>v", { remap = true, desc = "Split right" })
+map("n", "<leader>-", "<C-w>s", { remap = true, desc = "Split below" })
+map("n", "<leader>wd", "<C-w>c", { remap = true, desc = "Close editor group" })
+map("n", "<leader>g", workspace.git_dock, { desc = "Git dock" })
 
-vim.keymap.set("n", "<leader>gp", open_current_branch_pr, { desc = "Open PR (browser)" })
+vim.schedule(function()
+  require("user.keymap_policy").prune()
+end)

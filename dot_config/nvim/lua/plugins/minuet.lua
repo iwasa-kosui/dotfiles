@@ -4,11 +4,6 @@ return {
     event = "InsertEnter",
     dependencies = { "nvim-lua/plenary.nvim" },
     main = "minuet", -- 明示しないと lazy が require 名を誤り setup() が呼ばれない
-    keys = {
-      { "<leader>mp", "<cmd>Minuet duet predict<cr>", desc = "Minuet duet: predict" },
-      { "<leader>ma", "<cmd>Minuet duet apply<cr>", desc = "Minuet duet: apply" },
-      { "<leader>md", "<cmd>Minuet duet dismiss<cr>", desc = "Minuet duet: dismiss" },
-    },
     opts = {
       provider = "openai_fim_compatible",
       n_completions = 1,
