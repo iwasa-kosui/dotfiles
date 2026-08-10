@@ -129,7 +129,7 @@ function M.switch_to_branch(opts, adapter)
 
   local branch = opts.branch
   if type(branch) ~= "string" or branch == "" then
-    fail("Worktree switch: the pull request branch is empty")
+    fail("Worktree switch: the branch name is empty")
     return
   end
 
