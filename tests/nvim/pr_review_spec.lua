@@ -36,6 +36,7 @@ t.eq(nil, review.parse_pr('{"number":"1"}'))
 t.eq(nil, review.parse_pr('[{"number":1},{"number":2}]'))
 
 local calls = {}
+local switch_picker_callbacks
 local restored = 0
 local loaded_prs = {}
 local notifications = {}
@@ -842,6 +843,9 @@ local async_adapter = {
 			async_restores = async_restores + 1
 		end,
 	},
+	switch_worktree = function(opts)
+		opts.on_current()
+	end,
 	system = function(argv, _, callback)
 		if argv[2] == "pr" and argv[3] == "view" then
 			callback({
@@ -1370,6 +1374,9 @@ local transition_adapter = {
 			transition_events[#transition_events + 1] = "deactivate"
 		end,
 	},
+	switch_worktree = function(opts)
+		opts.on_current()
+	end,
 	load_octo = function() end,
 	system = function(argv, _, callback)
 		transition_system_calls = transition_system_calls + 1
@@ -1546,6 +1553,132 @@ t.eq(false, transition_live_buffers[retry_surface], "a later transition must ret
 t.eq(true, transition_live_buffers[retry_picker], "the replacement picker may open only after cleanup succeeds")
 review.close(transition_adapter)
 run_transition_deferred()
+
+local switch_calls = {}
+local switch_notifications = {}
+local switch_loaded = {}
+local switch_mode = "switch"
+local switch_adapter = {
+	root = function()
+		return "/repo"
+	end,
+	dock = {
+		prepare = function() end,
+		activate = function() end,
+		deactivate = function() end,
+	},
+	system = function(argv, _, callback)
+		if argv[2] == "repo" then
+			callback({ code = 0, stdout = '{"nameWithOwner":"selected/repo"}', stderr = "" })
+			return
+		end
+		callback({
+			code = 0,
+			stdout = vim.json.encode({
+				{
+					number = 77,
+					title = "Switch PR",
+					url = "https://github.com/selected/repo/pull/77",
+					state = "OPEN",
+					isDraft = false,
+					headRefName = "feat/switch",
+				},
+			}),
+			stderr = "",
+		})
+	end,
+	schedule = function(callback)
+		callback()
+	end,
+	defer = function() end,
+	load_pr = function(target, cwd, callback)
+		switch_loaded[#switch_loaded + 1] = { target = target, cwd = cwd }
+		callback({ code = 1, stdout = "", stderr = "stop here" })
+	end,
+	notify = function(message)
+		switch_notifications[#switch_notifications + 1] = message
+	end,
+	switch_worktree = function(opts)
+		switch_calls[#switch_calls + 1] = opts
+		if switch_mode == "current" then
+			opts.on_current()
+		elseif switch_mode == "error" then
+			opts.on_error("Worktree switch: git fetch failed: no remote ref")
+		end
+	end,
+	pick_prs = function(_, _, callbacks)
+		switch_picker_callbacks = callbacks
+		return 4001
+	end,
+	buffer_valid = function()
+		return true
+	end,
+	register_cleanup = function() end,
+	current_buffer = function()
+		return 4001
+	end,
+	current_tab = function()
+		return 41
+	end,
+	tab_valid = function()
+		return false
+	end,
+	buffer_filetype = function()
+		return "TelescopePrompt"
+	end,
+	delete_buffer = function() end,
+	reviews = function()
+		return { get_current_review = function() end }
+	end,
+	set_keymap = function() end,
+}
+
+local selected_pr = {
+	__typename = "PullRequest",
+	number = 77,
+	title = "Switch PR",
+	url = "https://github.com/selected/repo/pull/77",
+	state = "OPEN",
+	isDraft = false,
+	headRefName = "feat/switch",
+	repository = { nameWithOwner = "selected/repo" },
+}
+
+review.list(switch_adapter)
+switch_picker_callbacks.transition()
+switch_picker_callbacks.select(selected_pr)
+t.eq(1, #switch_calls, "selecting a PR must delegate the worktree switch")
+t.eq("feat/switch", switch_calls[1].branch)
+t.eq("/repo", switch_calls[1].cwd)
+t.eq("lua require('user.pr_review').open()", switch_calls[1].command)
+t.eq({}, switch_loaded, "a PR needing a switch must not open its surface before the restart")
+
+switch_mode = "current"
+switch_calls = {}
+review.list(switch_adapter)
+switch_picker_callbacks.transition()
+switch_picker_callbacks.select(selected_pr)
+t.eq(1, #switch_loaded, "a PR in the current worktree must open its surface without restarting")
+t.eq(77, switch_loaded[1].target.number)
+
+switch_mode = "error"
+switch_notifications = {}
+review.list(switch_adapter)
+switch_picker_callbacks.transition()
+switch_picker_callbacks.select(selected_pr)
+t.truthy(
+	switch_notifications[1] and switch_notifications[1]:find("git fetch failed", 1, true),
+	"a failed switch must report git's message"
+)
+
+switch_mode = "switch"
+switch_calls = {}
+switch_notifications = {}
+review.list(switch_adapter)
+switch_picker_callbacks.transition()
+switch_picker_callbacks.select(vim.tbl_extend("force", selected_pr, { headRefName = "" }))
+t.eq({}, switch_calls, "a PR without a head branch must not switch")
+t.eq(1, #switch_notifications)
 
 package.loaded["lazy"] = previous_lazy_loaded
 package.preload["lazy"] = previous_lazy_preload
