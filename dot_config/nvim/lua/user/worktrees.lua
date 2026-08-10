@@ -75,18 +75,39 @@ function M.sort(items, activities, current)
   return sorted
 end
 
+---@param items { path: string, branch: string }[]
+---@param branch string
+---@param current string
+---@return { state: "current"|"switch"|"missing", path?: string, branch: string }
+function M.classify_branch(items, branch, current)
+  local normalized_current = normalize(current)
+  for _, item in ipairs(items) do
+    if item.branch == branch then
+      if item.path == normalized_current then
+        return { state = "current", path = item.path, branch = branch }
+      end
+      return { state = "switch", path = item.path, branch = branch }
+    end
+  end
+  return { state = "missing", branch = branch }
+end
+
 function M.restart_in_place(item, adapter)
   adapter = adapter or {}
   local getcwd = adapter.getcwd or vim.fn.getcwd
   local set_current_dir = adapter.set_current_dir or vim.api.nvim_set_current_dir
-  local restart = adapter.restart or function()
-    vim.cmd.restart()
+  local restart = adapter.restart or function(command)
+    if type(command) == "string" and command ~= "" then
+      vim.cmd("restart " .. command)
+    else
+      vim.cmd.restart()
+    end
   end
   local report = adapter.notify or notify
 
   local previous = getcwd()
   set_current_dir(item.path)
-  local ok, err = pcall(restart)
+  local ok, err = pcall(restart, item.command)
   if ok then
     return true
   end
