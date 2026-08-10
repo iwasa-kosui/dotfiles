@@ -108,7 +108,7 @@ function M.classify_branch(items, branch, current)
   return { state = "missing", branch = branch }
 end
 
----@param opts { branch: string, cwd: string, command?: string, on_current: fun(), on_error?: fun(message: string) }
+---@param opts { branch: string, cwd: string, command?: string, on_current: fun(), on_error?: fun(message: string), should_continue?: fun(): boolean }
 function M.switch_to_branch(opts, adapter)
   adapter = adapter or {}
   local execute = adapter.run
@@ -149,6 +149,9 @@ function M.switch_to_branch(opts, adapter)
         fail("Worktree switch: git wt did not report a worktree path")
         return
       end
+      if opts.should_continue and not opts.should_continue() then
+        return
+      end
       switch({ path = path, branch = branch, command = opts.command }, { notify = fail })
     end)
   end
@@ -165,6 +168,9 @@ function M.switch_to_branch(opts, adapter)
       return
     end
     if target.state == "switch" then
+      if opts.should_continue and not opts.should_continue() then
+        return
+      end
       switch({ path = target.path, branch = branch, command = opts.command }, { notify = fail })
       return
     end

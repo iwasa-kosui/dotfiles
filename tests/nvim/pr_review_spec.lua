@@ -1680,6 +1680,38 @@ switch_picker_callbacks.select(vim.tbl_extend("force", selected_pr, { headRefNam
 t.eq({}, switch_calls, "a PR without a head branch must not switch")
 t.eq(1, #switch_notifications)
 
+local continue_calls = {}
+local continue_picker_callbacks
+local continue_adapter = vim.tbl_extend("force", switch_adapter, {
+	notify = function() end,
+	switch_worktree = function(opts)
+		continue_calls[#continue_calls + 1] = opts
+	end,
+	pick_prs = function(_, _, callbacks)
+		continue_picker_callbacks = callbacks
+		return 4001
+	end,
+})
+
+review.list(continue_adapter)
+continue_picker_callbacks.transition()
+continue_picker_callbacks.select(selected_pr)
+t.eq(1, #continue_calls, "selecting a PR must delegate the worktree switch")
+t.eq("function", type(continue_calls[1].should_continue), "switch_worktree must receive a should_continue probe")
+t.eq(true, continue_calls[1].should_continue(), "the originating PR session is still the live one")
+
+review.close(continue_adapter)
+t.eq(false, continue_calls[1].should_continue(), "a finished PR session must report should_continue as false")
+
+continue_calls = {}
+review.list(continue_adapter)
+continue_picker_callbacks.transition()
+continue_picker_callbacks.select(selected_pr)
+t.eq(true, continue_calls[1].should_continue(), "a freshly selected PR session is still the live one")
+review.list(continue_adapter)
+t.eq(false, continue_calls[1].should_continue(), "a replaced PR session must report should_continue as false")
+review.close(continue_adapter)
+
 package.loaded["lazy"] = previous_lazy_loaded
 package.preload["lazy"] = previous_lazy_preload
 package.loaded["octo"] = previous_octo_loaded

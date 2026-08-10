@@ -248,3 +248,72 @@ worktrees.switch_to_branch({
 }, restart_failure.adapter)
 t.eq(1, #restart_errors, "a failed restart must reach on_error")
 t.truthy(restart_errors[1]:find("unsaved changes", 1, true), "the restart failure message must reach on_error")
+
+local skip_switch = make_adapter({ ["git worktree list --porcelain"] = { code = 0, stdout = list_output } })
+local skip_switch_errors = {}
+worktrees.switch_to_branch({
+	branch = "feat/a",
+	cwd = "/repo",
+	command = "lua open()",
+	should_continue = function()
+		return false
+	end,
+	on_current = function()
+		error("must not be called")
+	end,
+	on_error = function(message)
+		skip_switch_errors[#skip_switch_errors + 1] = message
+	end,
+}, skip_switch.adapter)
+t.eq({}, skip_switch.switched, "a stale switch to an existing worktree must not restart when should_continue is false")
+t.eq({}, skip_switch_errors, "a should_continue abort must not report an error")
+
+local skip_create = make_adapter({
+	["git worktree list --porcelain"] = { code = 0, stdout = list_output },
+	["git rev-parse --verify --quiet refs/heads/feat/local"] = { code = 0, stdout = "bbbb\n" },
+	["git wt feat/local --nocd"] = { code = 0, stdout = "/repo/.wt/feat-local\n" },
+})
+local skip_create_errors = {}
+worktrees.switch_to_branch({
+	branch = "feat/local",
+	cwd = "/repo",
+	should_continue = function()
+		return false
+	end,
+	on_current = function()
+		error("must not be called")
+	end,
+	on_error = function(message)
+		skip_create_errors[#skip_create_errors + 1] = message
+	end,
+}, skip_create.adapter)
+t.eq({}, skip_create.switched, "a stale switch to a freshly created worktree must not restart when should_continue is false")
+t.eq({}, skip_create_errors, "a should_continue abort after creation must not report an error")
+
+local continue_local = make_adapter({
+	["git worktree list --porcelain"] = { code = 0, stdout = list_output },
+	["git rev-parse --verify --quiet refs/heads/feat/local"] = { code = 0, stdout = "bbbb\n" },
+	["git wt feat/local --nocd"] = { code = 0, stdout = "/repo/.wt/feat-local\n" },
+})
+worktrees.switch_to_branch({
+	branch = "feat/local",
+	cwd = "/repo",
+	should_continue = function()
+		return true
+	end,
+	on_current = function()
+		error("must not be called")
+	end,
+}, continue_local.adapter)
+t.eq(1, #continue_local.switched, "should_continue returning true must not block the restart")
+
+local no_should_continue = make_adapter({ ["git worktree list --porcelain"] = { code = 0, stdout = list_output } })
+worktrees.switch_to_branch({
+	branch = "feat/a",
+	cwd = "/repo",
+	command = "lua open()",
+	on_current = function()
+		error("must not be called")
+	end,
+}, no_should_continue.adapter)
+t.eq(1, #no_should_continue.switched, "omitting should_continue must preserve today's behaviour")

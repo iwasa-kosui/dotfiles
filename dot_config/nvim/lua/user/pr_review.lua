@@ -690,6 +690,9 @@ function M.list(adapter)
             branch = target.branch,
             cwd = cwd,
             command = "lua require('user.pr_review').open()",
+            should_continue = function()
+              return session ~= nil and session.generation == generation
+            end,
             on_current = function()
               if not session or session.generation ~= generation then
                 return
