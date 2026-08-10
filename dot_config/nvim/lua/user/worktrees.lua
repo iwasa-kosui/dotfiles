@@ -149,7 +149,7 @@ function M.switch_to_branch(opts, adapter)
         fail("Worktree switch: git wt did not report a worktree path")
         return
       end
-      switch({ path = path, branch = branch, command = opts.command })
+      switch({ path = path, branch = branch, command = opts.command }, { notify = fail })
     end)
   end
 
@@ -165,7 +165,7 @@ function M.switch_to_branch(opts, adapter)
       return
     end
     if target.state == "switch" then
-      switch({ path = target.path, branch = branch, command = opts.command })
+      switch({ path = target.path, branch = branch, command = opts.command }, { notify = fail })
       return
     end
     execute({ "git", "rev-parse", "--verify", "--quiet", "refs/heads/" .. branch }, function(ref_result)

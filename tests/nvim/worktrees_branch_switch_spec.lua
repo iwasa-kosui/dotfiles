@@ -229,3 +229,22 @@ worktrees.switch_to_branch({
 }, invalid.adapter)
 t.eq({}, invalid.commands, "an empty branch must not run any git command")
 t.eq(1, #invalid_errors)
+
+local restart_failure = make_adapter({ ["git worktree list --porcelain"] = { code = 0, stdout = list_output } })
+restart_failure.adapter.restart_in_place = function(_, sub)
+	sub.notify("Worktree switch: Neovim restart failed: unsaved changes")
+end
+local restart_errors = {}
+worktrees.switch_to_branch({
+	branch = "feat/a",
+	cwd = "/repo",
+	command = "lua open()",
+	on_current = function()
+		error("must not be called")
+	end,
+	on_error = function(message)
+		restart_errors[#restart_errors + 1] = message
+	end,
+}, restart_failure.adapter)
+t.eq(1, #restart_errors, "a failed restart must reach on_error")
+t.truthy(restart_errors[1]:find("unsaved changes", 1, true), "the restart failure message must reach on_error")
