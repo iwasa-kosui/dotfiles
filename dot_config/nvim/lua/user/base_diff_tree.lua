@@ -215,7 +215,20 @@ local function default_adapter(controller)
     base_diff_state.save(cwd, state)
   end
 
-  function adapter.create_panel(explorer_win, cwd, height)
+  -- Snacks Explorerのlistはlayout rootのsplitへ重ねたfloating windowで、floating windowは分割できない。
+  -- 分割すると新しいwindowがEditor Group側へ作られるため、列を所有するroot windowまで辿る。
+  function adapter.column_host(explorer_win)
+    if not controller.adapter.valid_win(explorer_win) then
+      return explorer_win
+    end
+    local config = vim.api.nvim_win_get_config(explorer_win)
+    if config.relative ~= "" and controller.adapter.valid_win(config.win) then
+      return config.win
+    end
+    return explorer_win
+  end
+
+  function adapter.create_panel(host_win, cwd, height)
     local buf = vim.api.nvim_create_buf(false, true)
     vim.api.nvim_buf_set_name(buf, "base-diff-tree://" .. cwd .. "#" .. buf)
     vim.bo[buf].buftype = "nofile"
@@ -225,13 +238,7 @@ local function default_adapter(controller)
     vim.bo[buf].filetype = "BaseDiffTree"
     vim.bo[buf].buflisted = false
 
-    local panel_win
-    vim.api.nvim_win_call(explorer_win, function()
-      vim.cmd("belowright split")
-      panel_win = vim.api.nvim_get_current_win()
-    end)
-    vim.api.nvim_win_set_buf(panel_win, buf)
-    vim.api.nvim_win_set_height(panel_win, height)
+    local panel_win = vim.api.nvim_open_win(buf, false, { split = "below", win = host_win, height = height })
     vim.wo[panel_win].winfixwidth = true
     return panel_win, buf
   end
@@ -240,8 +247,8 @@ local function default_adapter(controller)
     return type(win) == "number" and vim.api.nvim_win_is_valid(win)
   end
 
-  function adapter.available_height(explorer_win, panel_win)
-    local height = vim.api.nvim_win_get_height(explorer_win)
+  function adapter.available_height(host_win, panel_win)
+    local height = vim.api.nvim_win_get_height(host_win)
     if controller.adapter.valid_win(panel_win) then
       height = height + vim.api.nvim_win_get_height(panel_win) + SPLIT_SEPARATOR_HEIGHT
     end
@@ -407,13 +414,20 @@ function Controller:render_state()
   return vim.tbl_extend("force", {}, self.state, { collapsed = self:is_collapsed() })
 end
 
+function Controller:refit_explorer()
+  if self.refit_explorer_callback then
+    pcall(self.refit_explorer_callback)
+  end
+end
+
 function Controller:apply_height(height)
   self._programmatic_height = height
   self.adapter.set_height(self.panel_win, height)
+  self:refit_explorer()
 end
 
 function Controller:recalculate_layout(resize)
-  local available_height = self.adapter.available_height(self.explorer_win, self.panel_win)
+  local available_height = self.adapter.available_height(self.host_win, self.panel_win)
   local max_expanded_height = available_height - MIN_EXPLORER_HEIGHT - SPLIT_SEPARATOR_HEIGHT
   self.available_height = available_height
   self.force_collapsed = max_expanded_height < MIN_PANEL_HEIGHT
@@ -431,7 +445,8 @@ function Controller:on_resized(windows)
   local relevant = false
   for _, win in ipairs(windows or {}) do
     win = tonumber(win)
-    if win == self.panel_win or win == self.explorer_win then
+    -- Explorer自身のwindowはlayoutが列の高さへ追従させるだけなので、列とパネルの変化だけを見る
+    if win == self.panel_win or win == self.host_win then
       relevant = true
       break
     end
@@ -440,7 +455,7 @@ function Controller:on_resized(windows)
     return
   end
 
-  local available_height = self.adapter.available_height(self.explorer_win, self.panel_win)
+  local available_height = self.adapter.available_height(self.host_win, self.panel_win)
   local panel_height = self.adapter.get_height(self.panel_win)
   if self._programmatic_height == panel_height and self.available_height == available_height then
     self._programmatic_height = nil
@@ -456,6 +471,8 @@ function Controller:on_resized(windows)
     self.adapter.save_state(self.cwd, self.state)
     if height ~= panel_height then
       self:apply_height(height)
+    else
+      self:refit_explorer()
     end
     return
   end
@@ -476,13 +493,16 @@ function Controller:ensure(opts)
     self.cwd = opts.cwd
     self.explorer_win = opts.explorer_win
     self.editor_win = opts.editor_win
+    self.refit_explorer_callback = opts.refit_explorer
+    self.host_win = self.adapter.column_host(self.explorer_win)
     if not self.state then
       self.state = self.adapter.load_state(self.cwd)
     end
 
     self:recalculate_layout(false)
     local height = self:is_collapsed() and 1 or self.expanded_height
-    self.panel_win, self.buf = self.adapter.create_panel(self.explorer_win, self.cwd, height)
+    self.panel_win, self.buf = self.adapter.create_panel(self.host_win, self.cwd, height)
+    self:refit_explorer()
     self._subscription_generation = (self._subscription_generation or 0) + 1
     local subscription_generation = self._subscription_generation
     self.unsubscribe = self.adapter.subscribe_diff(self.cwd, function(snapshot, error)
@@ -593,6 +613,8 @@ function Controller:close()
   self.panel_win = nil
   self.buf = nil
   self.rendered = nil
+  self.host_win = nil
+  self:refit_explorer()
 end
 
 function M.new(adapter)

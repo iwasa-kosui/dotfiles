@@ -37,6 +37,15 @@ local function defaults(adapter)
       close_base_diff = function(cwd, explorer_win)
         require("user.base_diff_tree").close(cwd, explorer_win)
       end,
+      -- Explorerのwindowはfloatingで、列のsplitを分割しても自動では縮まない
+      refit_explorer = function(picker)
+        if not picker or picker.closed or not picker.layout then
+          return
+        end
+        pcall(function()
+          picker.layout:update()
+        end)
+      end,
       notify = function(message, level)
         vim.notify(message, level)
       end,
@@ -117,6 +126,9 @@ local function ensure_base_diff(picker, cwd, api)
       cwd = cwd,
       explorer_win = explorer_win,
       editor_win = api.editor_win,
+      refit_explorer = function()
+        api.refit_explorer(picker)
+      end,
     })
     api.refresh_base_diff(cwd)
   end)
