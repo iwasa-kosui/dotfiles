@@ -55,6 +55,15 @@ local function defaults(adapter)
           callback(shown_picker)
         end
       end,
+      arg_count = function()
+        return vim.fn.argc()
+      end,
+      arg_path = function(index)
+        return vim.fn.argv(index)
+      end,
+      is_directory = function(path)
+        return vim.fn.isdirectory(path) == 1
+      end,
       current_win = function()
         return vim.api.nvim_get_current_win()
       end,
@@ -141,6 +150,18 @@ local function ensure_base_diff_when_ready(picker, cwd, api)
     pending_panel_by_picker[picker] = nil
     ensure_base_diff(shown_picker, cwd, api)
   end)
+end
+
+function M.single_file_session(adapter)
+  local api = defaults(adapter)
+  if api.arg_count() ~= 1 then
+    return false
+  end
+  local path = api.arg_path(0)
+  if type(path) ~= "string" or path == "" then
+    return false
+  end
+  return not api.is_directory(path)
 end
 
 function M.ensure_explorer(opts, adapter)

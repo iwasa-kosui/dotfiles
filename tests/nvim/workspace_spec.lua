@@ -315,4 +315,40 @@ t.eq(81, workspace.editor_win(tabbed_adapter), "fallback must ignore normal wind
 current_tab = 5
 t.eq(80, workspace.editor_win(tabbed_adapter), "remembered Editor Group must be scoped by tab")
 
+local function argv_adapter(args, directories)
+	return {
+		arg_count = function()
+			return #args
+		end,
+		arg_path = function(index)
+			return args[index + 1]
+		end,
+		is_directory = function(path)
+			return directories[path] == true
+		end,
+	}
+end
+
+t.eq(
+	true,
+	workspace.single_file_session(argv_adapter({ "/repo/.git/COMMIT_EDITMSG" }, {})),
+	"editing one file must be reported as a single file session"
+)
+t.eq(false, workspace.single_file_session(argv_adapter({}, {})), "starting without arguments must open the workspace")
+t.eq(
+	false,
+	workspace.single_file_session(argv_adapter({ "/repo", "/repo/init.lua" }, {})),
+	"opening several arguments must open the workspace"
+)
+t.eq(
+	false,
+	workspace.single_file_session(argv_adapter({ "/repo" }, { ["/repo"] = true })),
+	"opening one directory must open the workspace"
+)
+t.eq(
+	false,
+	workspace.single_file_session(argv_adapter({ "" }, {})),
+	"an empty argument must not be treated as a file"
+)
+
 vim.fn.delete(state_dir, "rf")
