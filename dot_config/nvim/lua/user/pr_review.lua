@@ -34,6 +34,9 @@ local function defaults(adapter)
     __index = {
       root = default_root,
       dock = require("user.dock"),
+      switch_worktree = function(opts)
+        require("user.worktrees").switch_to_branch(opts)
+      end,
       system = vim.system,
       schedule = vim.schedule,
       defer = vim.defer_fn,
@@ -466,6 +469,9 @@ local function selected_pr_target(value, repo)
   then
     return nil
   end
+  if type(value.headRefName) ~= "string" or value.headRefName == "" then
+    return nil
+  end
   local host, owner, name, url_number = value.url:match("^https://([^/]+)/([^/]+)/([^/]+)/pull/(%d+)$")
   if
     not host
@@ -482,6 +488,7 @@ local function selected_pr_target(value, repo)
     owner = owner,
     name = name,
     host = host,
+    branch = value.headRefName,
   }
 end
 
@@ -678,7 +685,29 @@ function M.list(adapter)
             finish(runtime, generation)
             return
           end
-          load_pr_surface(runtime, generation, target, cwd)
+          session.pending = true
+          runtime.switch_worktree({
+            branch = target.branch,
+            cwd = cwd,
+            command = "lua require('user.pr_review').open()",
+            should_continue = function()
+              return session ~= nil and session.generation == generation
+            end,
+            on_current = function()
+              if not session or session.generation ~= generation then
+                return
+              end
+              load_pr_surface(runtime, generation, target, cwd)
+            end,
+            on_error = function(message)
+              if not session or session.generation ~= generation then
+                return
+              end
+              session.pending = false
+              runtime.notify("PRのworktree切り替えに失敗しました: " .. message)
+              finish(runtime, generation)
+            end,
+          })
         end,
       })
       if not picker_ok or not runtime.buffer_valid(picker) then
