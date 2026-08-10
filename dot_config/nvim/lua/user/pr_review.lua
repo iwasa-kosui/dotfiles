@@ -704,7 +704,7 @@ function M.list(adapter)
                 return
               end
               session.pending = false
-              runtime.notify(message)
+              runtime.notify("PRのworktree切り替えに失敗しました: " .. message)
               finish(runtime, generation)
             end,
           })

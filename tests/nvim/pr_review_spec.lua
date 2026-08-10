@@ -1670,6 +1670,10 @@ t.truthy(
 	switch_notifications[1] and switch_notifications[1]:find("git fetch failed", 1, true),
 	"a failed switch must report git's message"
 )
+t.truthy(
+	switch_notifications[1] and switch_notifications[1]:find("PRのworktree切り替えに失敗しました", 1, true),
+	"a failed switch must be prefixed in Japanese"
+)
 
 switch_mode = "switch"
 switch_calls = {}
