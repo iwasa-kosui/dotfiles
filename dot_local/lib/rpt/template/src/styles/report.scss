@@ -1,6 +1,12 @@
 @use "webcoreui/styles" as *;
 
-@include setup();
+// color-scheme だけではブラウザ既定のUIしか切り替わらない。webcoreui の配色トークンは
+// setup() の theme で決まり、既定は dark なので明示的に light を渡す。
+@include setup(
+  (
+    theme: "light",
+  )
+);
 
 :root {
   color-scheme: light;
