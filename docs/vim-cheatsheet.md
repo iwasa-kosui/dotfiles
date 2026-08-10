@@ -127,7 +127,7 @@ AI Dockにフォーカスがあるときだけ使えます。Claude CodeとCodex
 
 | キー | 説明 |
 |---|---|
-| `<leader>pp` | リポジトリのPR一覧を開く |
+| `<leader>pp` | リポジトリのPR一覧を開く。選んだPRのブランチのworktreeへ切り替える |
 | `<leader>po` | LazyGit選択branch、または現在branchのPRを開く |
 | `<leader>pr` | レビューを開始 / 再開 |
 | Visualモードの`<leader>pc` | pending commentを追加 |
