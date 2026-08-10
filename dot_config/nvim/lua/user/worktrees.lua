@@ -22,6 +22,22 @@ local function run(command, callback)
   vim.system(command, { text = true }, vim.schedule_wrap(callback))
 end
 
+local function command_detail(result)
+  local message = vim.trim((result and (result.stderr or result.stdout)) or "")
+  return message ~= "" and message or "unknown error"
+end
+
+local function last_output_path(output)
+  local path
+  for _, line in ipairs(vim.split(output or "", "\n", { plain = true })) do
+    local trimmed = vim.trim(line)
+    if trimmed ~= "" then
+      path = trimmed
+    end
+  end
+  return path
+end
+
 function M.parse_porcelain(lines)
   local worktrees = {}
   local current = nil
@@ -90,6 +106,82 @@ function M.classify_branch(items, branch, current)
     end
   end
   return { state = "missing", branch = branch }
+end
+
+---@param opts { branch: string, cwd: string, command?: string, on_current: fun(), on_error?: fun(message: string) }
+function M.switch_to_branch(opts, adapter)
+  adapter = adapter or {}
+  local execute = adapter.run
+    or function(command, callback)
+      vim.system(command, { cwd = opts.cwd, text = true }, vim.schedule_wrap(callback))
+    end
+  local switch = adapter.restart_in_place or M.restart_in_place
+  local resolve = adapter.root or root.resolve
+  local report = adapter.notify or notify
+
+  local function fail(message)
+    if opts.on_error then
+      opts.on_error(message)
+    else
+      report(message)
+    end
+  end
+
+  local branch = opts.branch
+  if type(branch) ~= "string" or branch == "" then
+    fail("Worktree switch: the pull request branch is empty")
+    return
+  end
+
+  local function create(start_point)
+    local command = { "git", "wt", branch }
+    if start_point then
+      command[#command + 1] = start_point
+    end
+    command[#command + 1] = "--nocd"
+    execute(command, function(result)
+      if result.code ~= 0 then
+        fail("Worktree switch: git wt failed: " .. command_detail(result))
+        return
+      end
+      local path = last_output_path(result.stdout)
+      if not path then
+        fail("Worktree switch: git wt did not report a worktree path")
+        return
+      end
+      switch({ path = path, branch = branch, command = opts.command })
+    end)
+  end
+
+  execute({ "git", "worktree", "list", "--porcelain" }, function(list_result)
+    if list_result.code ~= 0 then
+      fail("Worktree switch: git worktree list failed: " .. command_detail(list_result))
+      return
+    end
+    local items = M.parse_porcelain(vim.split(list_result.stdout or "", "\n", { plain = true }))
+    local target = M.classify_branch(items, branch, resolve(opts.cwd))
+    if target.state == "current" then
+      opts.on_current()
+      return
+    end
+    if target.state == "switch" then
+      switch({ path = target.path, branch = branch, command = opts.command })
+      return
+    end
+    execute({ "git", "rev-parse", "--verify", "--quiet", "refs/heads/" .. branch }, function(ref_result)
+      if ref_result.code == 0 then
+        create(nil)
+        return
+      end
+      execute({ "git", "fetch", "origin", branch }, function(fetch_result)
+        if fetch_result.code ~= 0 then
+          fail("Worktree switch: git fetch failed: " .. command_detail(fetch_result))
+          return
+        end
+        create("origin/" .. branch)
+      end)
+    end)
+  end)
 end
 
 function M.restart_in_place(item, adapter)
