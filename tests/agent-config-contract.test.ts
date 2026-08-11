@@ -28,6 +28,16 @@ describe("agent runtime contract", () => {
     }
   });
 
+  test("Codex instructions have managed rules and no Claude-only execution API", async () => {
+    const instructions = await Bun.file("dot_codex/AGENTS.md").text();
+    expect(instructions).not.toContain("CLAUDE_CODE_SUBAGENT_MODEL");
+    expect(instructions).not.toContain("@RTK.md");
+    expect(instructions).toContain("~/.codex/rules/");
+    for (const rule of manifest.runtimes.codex.requiredRules) {
+      expect(await Bun.file(`dot_codex/rules/${rule}`).exists()).toBe(true);
+    }
+  });
+
   test("requires explicit approval after a Draft PR in the common and Cursor policies", async () => {
     const policy = await Bun.file("agent_policy/contract.md").text();
     const cursorPolicy = await Bun.file("dot_cursor/rules/auto-ship.mdc").text();

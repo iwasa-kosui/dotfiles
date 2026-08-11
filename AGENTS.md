@@ -37,7 +37,7 @@ chezmoi diff
 | Neovim | `dot_config/nvim/` (LazyVim-based) |
 | Zsh | `dot_zshrc`, `dot_config/zsh/` |
 | Git | `dot_gitconfig`, `dot_config/git/` |
-| Codex | `dot_claude/` |
+| Codex | `dot_codex/` |
 | Cursor | `dot_cursor/` → `~/.cursor/`（rules, hooks, skills, cli-config） |
 | Tmux | `dot_tmux.conf` |
 | cmux | `dot_config/cmux/` |
@@ -45,7 +45,7 @@ chezmoi diff
 ## Neovim Plugin Architecture
 
 Uses LazyVim with plugins defined in `dot_config/nvim/lua/plugins/`:
-- `Codex.lua` - Codex integration
+- `claudecode.lua` - Codex integration
 - `git.lua` - Git tools (lazygit, diffview.nvim)
 - `plugin.lua` - Snacks, Copilot
 - `minuet.lua` - ollama (qwen2.5-coder) によるローカルコード補完を blink.cmp に統合

@@ -1,6 +1,19 @@
 {
   "runtimes": {
-    "codex": { "home": "~/.codex", "rules": "dot_codex/rules", "skills": "dot_codex/skills", "hooks": "dot_codex/hooks.json" },
+    "codex": {
+      "home": "~/.codex",
+      "rules": "dot_codex/rules",
+      "skills": "dot_codex/skills",
+      "hooks": "dot_codex/hooks.json",
+      "requiredRules": [
+        "communication-style.md",
+        "shell-command-style.md",
+        "subagent-tool-usage.md",
+        "secret-file-access.md",
+        "commit-message.md",
+        "worktree-workflow.md"
+      ]
+    },
     "claude": { "home": "~/.claude", "rules": "dot_claude/rules", "skills": "dot_claude/skills", "hooks": "dot_claude/modify_settings.json.tmpl" },
     "cursor": { "home": "~/.cursor", "rules": "dot_cursor/rules", "skills": "dot_cursor/skills", "hooks": "dot_cursor/hooks.json" }
   }
