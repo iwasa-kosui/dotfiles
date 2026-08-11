@@ -58,15 +58,39 @@ describe("agent runtime contract", () => {
     }
   });
 
-  test("all runtime policy adapters preserve Draft ship and explicit escalation", async () => {
+  test("all runtime policy adapters preserve every Draft ship boundary", async () => {
     for (const path of [
       "dot_codex/AGENTS.md",
       "dot_cursor/rules/auto-ship.mdc",
       "dot_claude/CLAUDE.md",
     ]) {
       const text = await Bun.file(path).text();
-      expect(text).toContain("Draft");
-      expect(text).toMatch(/Ready|merge|force push/);
+      expect(text).toContain("Draft PR");
+      expect(text).toContain("明示的な承認");
+      expect(text).toContain("Ready 化");
+      expect(text).toContain("merge");
+      expect(text).toContain("force-push");
+      expect(text).toContain("保護ブランチへの直接変更");
+      expect(text).toMatch(/質問[^。\n]*ship しません/);
+      expect(text).toMatch(/調査[^。\n]*ship しません/);
+      expect(text).toMatch(/コードレビュー[^。\n]*ship しません/);
+    }
+  });
+
+  test("Cursor and Claude secret-file policies cover hook-managed local paths", async () => {
+    for (const path of [
+      "dot_cursor/rules/secret-file-access.mdc",
+      "dot_claude/rules/secret-file-access.md",
+    ]) {
+      const text = await Bun.file(path).text();
+      for (const protectedPath of [
+        "~/.config/confluence-cli/**",
+        "~/.config/jira-cli/**",
+        "~/.local/state/**",
+        "~/.zshrc_local",
+      ]) {
+        expect(text).toContain(protectedPath);
+      }
     }
   });
 
