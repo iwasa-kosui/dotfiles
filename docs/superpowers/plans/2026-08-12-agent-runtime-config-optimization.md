@@ -69,7 +69,7 @@ Expected: FAIL because `agent_policy/runtime-manifest.json` does not exist.
 
 - [ ] **Step 4: Extend the test with adapter assertions and verify GREEN**
 
-Add assertions that every manifest path exists and that `dot_cursor/rules/auto-ship.mdc` contains the same Draft/Ready boundary as `contract.md`.
+Add assertions that the currently materialized Claude and Cursor manifest paths exist and that `dot_cursor/rules/auto-ship.mdc` contains the same Draft/Ready boundary as `contract.md`. Codex rules are intentionally excluded here because Task 2 creates and validates `dot_codex/rules/`.
 
 Run: `bun test tests/agent-config-contract.test.ts`
 
