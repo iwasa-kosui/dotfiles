@@ -58,6 +58,18 @@ describe("agent runtime contract", () => {
     }
   });
 
+  test("all runtime policy adapters preserve Draft ship and explicit escalation", async () => {
+    for (const path of [
+      "dot_codex/AGENTS.md",
+      "dot_cursor/rules/auto-ship.mdc",
+      "dot_claude/CLAUDE.md",
+    ]) {
+      const text = await Bun.file(path).text();
+      expect(text).toContain("Draft");
+      expect(text).toMatch(/Ready|merge|force push/);
+    }
+  });
+
   test("Codex and Cursor adapters do not hard-code Claude runtime state", async () => {
     const files = [
       "dot_codex/skills/pr/SKILL.md",
