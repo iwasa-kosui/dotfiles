@@ -38,6 +38,13 @@ describe("agent runtime contract", () => {
     }
   });
 
+  test("Codex worktree rule avoids unverified settings-local sharing assertions", async () => {
+    const worktreeRule = await Bun.file("dot_codex/rules/worktree-workflow.md").text();
+    expect(worktreeRule).not.toContain("symlink");
+    expect(worktreeRule).not.toContain("全worktreeで共有");
+    expect(worktreeRule).not.toContain("許可はメイン側に蓄積");
+  });
+
   test("requires explicit approval after a Draft PR in the common and Cursor policies", async () => {
     const policy = await Bun.file("agent_policy/contract.md").text();
     const cursorPolicy = await Bun.file("dot_cursor/rules/auto-ship.mdc").text();
