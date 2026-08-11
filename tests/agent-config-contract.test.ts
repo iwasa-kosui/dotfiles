@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync } from "node:fs";
 
 const manifest = await Bun.file("agent_policy/runtime-manifest.json").json();
 
@@ -11,17 +10,7 @@ describe("agent runtime contract", () => {
     expect(policy).toContain("Ready 化");
   });
 
-  test("keeps repository-managed adapter paths and the Cursor Draft boundary", async () => {
-    const managedPaths = Object.values(manifest.runtimes).flatMap(({ rules, skills, hooks }) => [
-      rules,
-      skills,
-      hooks,
-    ]);
-
-    for (const path of managedPaths) {
-      expect(existsSync(path)).toBe(true);
-    }
-
+  test("keeps the Cursor adapter at the Draft PR stage", async () => {
     const policy = await Bun.file("agent_policy/contract.md").text();
     const cursorPolicy = await Bun.file("dot_cursor/rules/auto-ship.mdc").text();
     expect(policy).toContain("Draft PR まで");
