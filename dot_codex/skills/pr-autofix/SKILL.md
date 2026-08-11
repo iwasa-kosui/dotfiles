@@ -59,7 +59,7 @@ mkdir -p /tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-1
 #### Subagent B: SonarCloud指摘
 - `subagent_type`: `general-purpose`
 - プロンプト例:
-  > `~/.codex/skills/sonarcloud-issues/SKILL.md` を読み、PR `<owner/repo>#<PR>` に対してそのスキルを実行してください。
+  > `~/.codex/skills/sonarcloud-issues/SKILL.md` が存在すれば読み、PR `<owner/repo>#<PR>` に対してそのスキルを実行してください。存在しなければ、空の `issues: []` と「SonarCloud スキル未配備」の理由をJSONに記録してください。
   > 結果を `/tmp/pr-autofix/.../iteration-N/sonarcloud.json` にJSONとして保存し、サマリを返してください。
   > `SONAR_TOKEN` 未設定や Sonar コメント不在で取得できなければ、空の `issues: []` と理由をJSONに記録してください。
 

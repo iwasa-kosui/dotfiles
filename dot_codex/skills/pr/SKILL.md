@@ -54,11 +54,13 @@ gh pr view --json number,title,body 2>/dev/null
 - scope: コードベースのセクションを表す名詞（`auth` / `api` / `ui` / `config` 等）
 - description は「何をなぜ変えたか」を自己完結的に。「レビュー対応」「フィードバック反映」のようなトリガーをメッセージにしない（詳細は `~/.Codex/rules/commit-message.md`）
 
-コミット本文に以下を含める:
+コミット本文の末尾に Co-Authored-By トレーラを入れる。
 
 ```
-Co-Authored-By: Codex <noreply@openai.com>
+Co-Authored-By: <実行中のモデル名> <モデル提供元のnoreplyアドレス>
 ```
+
+モデル名は **実際に動いているモデル** を書く。バージョン番号を固定で書かない。アドレスも提供元に合わせる。OpenAI のモデルなら `<noreply@openai.com>`。
 
 ### 5. push
 

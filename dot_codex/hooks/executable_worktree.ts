@@ -21,7 +21,7 @@ interface WorktreeInput {
 }
 
 const input = await readInput<WorktreeInput>();
-const logDir = join(homedir(), ".claude", "logs");
+const logDir = join(homedir(), ".codex", "logs");
 await mkdir(logDir, { recursive: true });
 
 const timestamp = new Date().toISOString().replace(/[T:.]/g, "_").slice(0, 15);

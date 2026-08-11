@@ -57,4 +57,18 @@ describe("agent runtime contract", () => {
       expect(source).toContain("明示的な承認");
     }
   });
+
+  test("Codex and Cursor adapters do not hard-code Claude runtime state", async () => {
+    const files = [
+      "dot_codex/skills/pr/SKILL.md",
+      "dot_codex/skills/pr-autofix/SKILL.md",
+      "dot_cursor/skills/pr/SKILL.md",
+      "dot_cursor/skills/pr-autofix/SKILL.md",
+      "dot_codex/hooks/executable_plan-export.ts",
+      "dot_codex/hooks/executable_worktree.ts",
+    ];
+    for (const path of files) {
+      expect(await Bun.file(path).text()).not.toContain("~/.claude");
+    }
+  });
 });
