@@ -209,7 +209,7 @@ mkdir -p /tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-1
      sha=$(git rev-parse --short HEAD)
      cat > /tmp/pr-reply.md <<EOF
      <details>
-     <summary>🤖 Codex</summary>
+     <summary>🤖 <実行中のエージェント名></summary>
 
      修正しました ($sha)
 

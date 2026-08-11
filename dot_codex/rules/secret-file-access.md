@@ -14,7 +14,8 @@ alwaysApply: true
 - 証明書・鍵ファイル: `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`
 - SSH鍵: `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`
 - `~/.aws/**`, `~/.ssh/**`, `~/.gnupg/**`, `~/.kube/**` 配下の全ファイル
-- `~/.npmrc`, `~/.netrc`, `~/.docker/config.json`, `~/.config/gh/hosts.yml`
+- `~/.npmrc`, `~/.netrc`, `~/.docker/config.json`, `~/.config/gh/hosts.yml`, `~/.zshrc_local`
+- `~/.config/confluence-cli/**`, `~/.config/jira-cli/**`, `~/.local/state/**` 配下の全ファイル
 
 ## ユーザーから参照を求められた場合
 

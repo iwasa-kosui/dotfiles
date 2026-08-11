@@ -25,6 +25,9 @@ const SENSITIVE_DIR_PREFIXES = [
   `${homedir()}/.ssh/`,
   `${homedir()}/.gnupg/`,
   `${homedir()}/.kube/`,
+  `${homedir()}/.config/confluence-cli/`,
+  `${homedir()}/.config/jira-cli/`,
+  `${homedir()}/.local/state/`,
 ];
 
 const SENSITIVE_HOME_FILES = [
@@ -32,23 +35,16 @@ const SENSITIVE_HOME_FILES = [
   `${homedir()}/.netrc`,
   `${homedir()}/.docker/config.json`,
   `${homedir()}/.config/gh/hosts.yml`,
+  `${homedir()}/.zshrc_local`,
 ];
 
-function matchesPattern(filePath: string, pattern: string): boolean {
-  const name = basename(filePath);
-  const regex = new RegExp(
-    "^" +
-      pattern
-        .replaceAll(".", "\\.")
-        .replaceAll("**", ".*")
-        .replaceAll("*", "[^/]*") +
-      "$",
-  );
-  return regex.test(name) || regex.test(filePath);
-}
-
 function isSensitivePath(rawPath: string, cwd: string): boolean {
-  const filePath = isAbsolute(rawPath) ? rawPath : resolve(cwd, rawPath);
+  const expandedPath = rawPath
+    .replace(/^\$HOME(?=\/|$)/, homedir())
+    .replace(/^~(?=\/|$)/, homedir());
+  const filePath = isAbsolute(expandedPath)
+    ? expandedPath
+    : resolve(cwd, expandedPath);
 
   const name = basename(filePath);
   const lowerName = name.toLowerCase();
@@ -58,27 +54,25 @@ function isSensitivePath(rawPath: string, cwd: string): boolean {
   }
 
   const sensitiveNamePatterns = [
-    ".*credential.*",
-    ".*secret.*",
-    ".*password.*",
-    ".*apikey.*",
-    ".*api_key.*",
-    ".*_token.*",
-    ".*\\.pem$",
-    ".*\\.p12$",
-    ".*\\.pfx$",
-    ".*\\.jks$",
-    ".*\\.keystore$",
-    "id_rsa.*",
-    "id_ed25519.*",
-    "id_ecdsa.*",
-    "id_dsa.*",
+    /credential/,
+    /secret/,
+    /password/,
+    /apikey/,
+    /api_key/,
+    /_token/,
+    /\.pem$/,
+    /\.p12$/,
+    /\.pfx$/,
+    /\.jks$/,
+    /\.keystore$/,
+    /^id_rsa/,
+    /^id_ed25519/,
+    /^id_ecdsa/,
+    /^id_dsa/,
   ];
 
-  for (const pattern of sensitiveNamePatterns) {
-    if (matchesPattern(lowerName, pattern) || matchesPattern(filePath, pattern)) {
-      return true;
-    }
+  if (sensitiveNamePatterns.some((pattern) => pattern.test(lowerName))) {
+    return true;
   }
 
   for (const prefix of SENSITIVE_DIR_PREFIXES) {

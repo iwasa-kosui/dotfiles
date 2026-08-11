@@ -45,7 +45,7 @@ chezmoi diff
 ## Neovim Plugin Architecture
 
 Uses LazyVim with plugins defined in `dot_config/nvim/lua/plugins/`:
-- `claudecode.lua` - Codex integration
+- `claudecode.lua` - Claude Code integration
 - `git.lua` - Git tools (lazygit, diffview.nvim)
 - `plugin.lua` - Snacks, Copilot
 - `minuet.lua` - ollama (qwen2.5-coder) によるローカルコード補完を blink.cmp に統合
@@ -127,7 +127,7 @@ PRのレビューコメントに返信する際は、本文全体を details ブ
 
 ````markdown
 <details>
-<summary>🤖 Codex</summary>
+<summary>🤖 <実行中のエージェント名></summary>
 
 修正しました (e4dcbb406)
 
