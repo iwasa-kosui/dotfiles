@@ -130,7 +130,7 @@ cat > /tmp/pr-body.md <<'EOF'
 - [ ] <Testing steps>
 
 ---
-Generated with Claude Code
+Generated with <実行中のエージェント名>
 EOF
 gh pr create --draft --title "<conventional commit style title>" --body-file /tmp/pr-body.md
 ```

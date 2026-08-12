@@ -1,0 +1,178 @@
+{
+  "runtimes": {
+    "codex": {
+      "home": "~/.codex",
+      "rules": "dot_codex/rules",
+      "skills": "dot_codex/skills",
+      "hooks": "dot_codex/hooks.json",
+      "responsibilities": {
+        "hooks": "hooks.json に登録した Codex のイベント境界で、ツール実行を検査する",
+        "rules": "Codex が常時または必要時に適用する運用・安全ポリシーを提示する",
+        "subagents": "独立した調査や診断を Codex の利用可能なサブエージェントへ委譲する"
+      },
+      "hookRoles": {
+        "force-push-guard": {
+          "path": "dot_codex/hooks/executable_force-push-guard.ts",
+          "status": "active",
+          "responsibility": "force push を拒否する"
+        },
+        "gh-comment-format-guard": {
+          "path": "dot_codex/hooks/executable_gh-comment-format-guard.ts",
+          "status": "active",
+          "responsibility": "GitHub コメントの必須書式を検査する"
+        },
+        "main-branch-guard": {
+          "path": "dot_codex/hooks/executable_main-branch-guard.ts",
+          "status": "active",
+          "responsibility": "保護ブランチでの変更コマンドを拒否する"
+        },
+        "main-repo-guard": {
+          "path": "dot_codex/hooks/executable_main-repo-guard.ts",
+          "status": "active",
+          "responsibility": "メインリポジトリへの直接編集を拒否する"
+        },
+        "plan-export": {
+          "path": "dot_codex/hooks/executable_plan-export.ts",
+          "status": "active",
+          "responsibility": "計画終了時の成果物を Codex の状態領域へ保存する"
+        },
+        "secret-file-guard": {
+          "path": "dot_codex/hooks/executable_secret-file-guard.ts",
+          "status": "active",
+          "responsibility": "秘密情報の可能性があるファイルへのアクセスを拒否する"
+        },
+        "session-init": {
+          "path": "dot_codex/hooks/executable_session-init.ts",
+          "status": "active",
+          "responsibility": "セッション開始時の作業コンテキストを収集する"
+        },
+        "shell-policy-guard": {
+          "path": "dot_codex/hooks/executable_shell-policy-guard.ts",
+          "status": "active",
+          "responsibility": "危険なシェルコマンドを拒否する"
+        },
+        "webfetch-guard": {
+          "path": "dot_codex/hooks/executable_webfetch-guard.ts",
+          "status": "active",
+          "responsibility": "許可されていない Web fetch を拒否する"
+        },
+        "worktree": {
+          "path": "dot_codex/hooks/executable_worktree.ts",
+          "status": "deferred",
+          "responsibility": "worktree 作成・削除時の状態を管理する",
+          "owner": "Codex configuration maintainer",
+          "reason": "Codex hooks.json に worktree イベントが未登録で、対応 matcher の仕様も未確認のため"
+        }
+      },
+      "requiredRules": [
+        "communication-style.md",
+        "shell-command-style.md",
+        "subagent-tool-usage.md",
+        "secret-file-access.md",
+        "commit-message.md",
+        "worktree-workflow.md"
+      ]
+    },
+    "claude": {
+      "home": "~/.claude",
+      "rules": "dot_claude/rules",
+      "skills": "dot_claude/skills",
+      "hooks": "dot_claude/modify_settings.json.tmpl",
+      "responsibilities": {
+        "hooks": "Claude Code の hook イベントでツール実行と worktree lifecycle を検査する",
+        "rules": "Claude Code が常時または必要時に適用する運用・安全ポリシーを提示する",
+        "subagents": "Agent ツールと設定済み実行モデルを使って独立した調査や診断を委譲する"
+      },
+      "hookRoles": {
+        "force-push-guard": {
+          "path": "dot_claude/hooks/executable_force-push-guard.ts",
+          "status": "active",
+          "responsibility": "force push を拒否する"
+        },
+        "gh-comment-format-guard": {
+          "path": "dot_claude/hooks/executable_gh-comment-format-guard.ts",
+          "status": "active",
+          "responsibility": "GitHub コメントの必須書式を検査する"
+        },
+        "main-branch-guard": {
+          "path": "dot_claude/hooks/executable_main-branch-guard.ts",
+          "status": "active",
+          "responsibility": "保護ブランチでの変更コマンドを拒否する"
+        },
+        "main-repo-guard": {
+          "path": "dot_claude/hooks/executable_main-repo-guard.ts",
+          "status": "active",
+          "responsibility": "メインリポジトリへの直接編集を拒否する"
+        },
+        "plan-export": {
+          "path": "dot_claude/hooks/executable_plan-export.ts",
+          "status": "active",
+          "responsibility": "計画終了時の成果物を Claude Code の状態領域へ保存する"
+        },
+        "session-init": {
+          "path": "dot_claude/hooks/executable_session-init.ts",
+          "status": "active",
+          "responsibility": "セッション開始時の作業コンテキストを収集する"
+        },
+        "webfetch-guard": {
+          "path": "dot_claude/hooks/executable_webfetch-guard.ts",
+          "status": "active",
+          "responsibility": "許可されていない Web fetch を拒否する"
+        },
+        "worktree": {
+          "path": "dot_claude/hooks/executable_worktree.ts",
+          "status": "active",
+          "responsibility": "worktree 作成・削除時の状態を管理する"
+        }
+      }
+    },
+    "cursor": {
+      "home": "~/.cursor",
+      "rules": "dot_cursor/rules",
+      "skills": "dot_cursor/skills",
+      "hooks": "dot_cursor/hooks.json",
+      "responsibilities": {
+        "hooks": "Cursor の hook イベントでファイル・シェル・Web 操作を検査する",
+        "rules": "Cursor が常時または必要時に適用する運用・安全ポリシーを提示する",
+        "subagents": "Cursor で利用可能な委譲機能がある場合に独立した調査や診断を分離する"
+      },
+      "hookRoles": {
+        "force-push-guard": {
+          "path": "dot_cursor/hooks/executable_force-push-guard.ts",
+          "status": "active",
+          "responsibility": "force push を拒否する"
+        },
+        "gh-comment-format-guard": {
+          "path": "dot_cursor/hooks/executable_gh-comment-format-guard.ts",
+          "status": "active",
+          "responsibility": "GitHub コメントの必須書式を検査する"
+        },
+        "main-branch-guard": {
+          "path": "dot_cursor/hooks/executable_main-branch-guard.ts",
+          "status": "active",
+          "responsibility": "保護ブランチでの変更コマンドを拒否する"
+        },
+        "main-repo-guard": {
+          "path": "dot_cursor/hooks/executable_main-repo-guard.ts",
+          "status": "active",
+          "responsibility": "メインリポジトリへの直接編集を拒否する"
+        },
+        "main-repo-shell-guard": {
+          "path": "dot_cursor/hooks/executable_main-repo-shell-guard.ts",
+          "status": "active",
+          "responsibility": "シェル経由のメインリポジトリ直接変更を拒否する"
+        },
+        "secret-file-guard": {
+          "path": "dot_cursor/hooks/executable_secret-file-guard.ts",
+          "status": "active",
+          "responsibility": "秘密情報の可能性があるファイルへのアクセスを拒否する"
+        },
+        "webfetch-guard": {
+          "path": "dot_cursor/hooks/executable_webfetch-guard.ts",
+          "status": "active",
+          "responsibility": "許可されていない Web fetch を拒否する"
+        }
+      }
+    }
+  }
+}

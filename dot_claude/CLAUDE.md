@@ -25,6 +25,16 @@
 - `pdf-post-processing.md` — PDF→Markdown変換後の後処理
 - `typescript-discriminated-union.md` — TypeScript判別共用体
 
+## Ship 境界
+
+共通方針はリポジトリの `agent_policy/contract.md` を正本とする。
+
+実装、設定変更、バグ修正は、必要な検証後に Draft PR まで進めてよいです。Draft PR はレビュー可能な下書きであり、ユーザーの明示的な承認を置き換えません。
+
+Ready 化、merge、force-push、保護ブランチへの直接変更は、ユーザーから明示的な承認を受けるまで行いません。
+
+質問への回答、調査、コードレビュー、設計相談、変更を伴わない状況確認では ship しません。ユーザーがコミット、push、PR 作成を止めるよう指定した場合も ship しません。
+
 ## コマンド/スキル設計原則: サブエージェント駆動
 
 コマンドやスキルを設計する際は、Opus（司令塔）と Sonnet（実行者）の役割を分離する。

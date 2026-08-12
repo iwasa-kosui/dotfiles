@@ -9,7 +9,7 @@ alwaysApply: true
 
 ## 禁止対象
 
-- ファイル名に `credential`, `secret`, `password`, `apikey`, `api_key`, `_token` を大文字小文字を区別せず含むファイル
+- ファイル名に `credential`, `secret`, `password`, `apikey`, `api_key`, `_token` を含むファイル
 - `.env`, `.env.*` ファイル（プロジェクト内を含む全パス）
 - 証明書・鍵ファイル: `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`
 - SSH鍵: `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`

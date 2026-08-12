@@ -12,7 +12,7 @@ const planFile = input.tool_input?.plan_file ?? "";
 if (planFile) {
   const file = Bun.file(planFile);
   if (await file.exists()) {
-    const exportDir = join(homedir(), ".claude", "plans");
+    const exportDir = join(homedir(), ".codex", "plans");
     await mkdir(exportDir, { recursive: true });
     const timestamp = new Date()
       .toISOString()

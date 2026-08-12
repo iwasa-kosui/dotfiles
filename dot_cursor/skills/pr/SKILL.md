@@ -51,7 +51,7 @@ gh pr view --json number,title,body 2>/dev/null
 
 - type: `feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore` / `perf` / `ci` / `build`
 - scope: コードベースのセクションを表す名詞（`auth` / `api` / `ui` / `config` 等）
-- description は「何をなぜ変えたか」を自己完結的に。「レビュー対応」「フィードバック反映」のようなトリガーをメッセージにしない（詳細は `~/.claude/rules/commit-message.md`）
+- description は「何をなぜ変えたか」を自己完結的に。「レビュー対応」「フィードバック反映」のようなトリガーをメッセージにしない（詳細は `~/.cursor/rules/commit-message.mdc`）
 
 コミット本文の末尾に Co-Authored-By トレーラを入れる。
 
@@ -104,7 +104,7 @@ find . -maxdepth 3 \( -iname '*pull_request_template*' \) 2>/dev/null | head -20
 
 #### 6c. PR を作成
 
-シェル引数に `#` を含む複数行テキストを直接埋め込むと権限プロンプトが余計に出るため、**本文は一時ファイルに書き出して `--body-file` で渡す**（詳細は `~/.claude/rules/shell-command-style.md`）。
+シェル引数に `#` を含む複数行テキストを直接埋め込むと権限プロンプトが余計に出るため、**本文は一時ファイルに書き出して `--body-file` で渡す**（詳細は `~/.cursor/rules/shell-command-style.mdc`）。
 
 テンプレートが無い場合のデフォルト構成:
 
@@ -127,7 +127,7 @@ cat > /tmp/pr-body.md <<'EOF'
 - [ ] <Testing steps>
 
 ---
-Generated with Claude Code
+Generated with <実行中のエージェント名>
 EOF
 gh pr create --draft --title "<conventional commit style title>" --body-file /tmp/pr-body.md
 ```

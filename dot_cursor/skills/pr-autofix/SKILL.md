@@ -59,7 +59,7 @@ mkdir -p /tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-1
 #### Subagent B: SonarCloud指摘
 - `subagent_type`: `general-purpose`
 - プロンプト例:
-  > `~/.claude/skills/sonarcloud-issues/SKILL.md` を読み、PR `<owner/repo>#<PR>` に対してそのスキルを実行してください。
+  > `~/.cursor/skills/sonarcloud-issues/SKILL.md` が存在すれば読み、PR `<owner/repo>#<PR>` に対してそのスキルを実行してください。存在しなければ、空の `issues: []` と「SonarCloud スキル未配備」の理由をJSONに記録してください。
   > 結果を `/tmp/pr-autofix/.../iteration-N/sonarcloud.json` にJSONとして保存し、サマリを返してください。
   > `SONAR_TOKEN` 未設定や Sonar コメント不在で取得できなければ、空の `issues: []` と理由をJSONに記録してください。
 
@@ -70,7 +70,7 @@ mkdir -p /tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-1
   > ```
   > bun <skill-dir>/scripts/collect-review-comments.ts <owner/repo> <PR>
   > ```
-  > その後、`~/.claude/plugins/cache/superpowers-marketplace/superpowers/*/skills/receiving-code-review/SKILL.md` を読み、その原則に沿って各コメントスレッドを以下の3つに分類してください:
+  > その後、利用可能なら `superpowers:receiving-code-review` を読み、その原則に沿って各コメントスレッドを以下の3つに分類してください:
   > - `actionable`: 意図が明確で、技術的に妥当
   > - `needs_clarification`: 意図が不明、または前提が不明
   > - `pushback`: 技術的に間違っているかYAGNI違反で、反論したい
@@ -209,7 +209,7 @@ mkdir -p /tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-1
      sha=$(git rev-parse --short HEAD)
      cat > /tmp/pr-reply.md <<EOF
      <details>
-     <summary>🤖 Claude Code</summary>
+     <summary>🤖 <実行中のエージェント名></summary>
 
      修正しました ($sha)
 
@@ -256,7 +256,7 @@ mkdir -p /tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-1
 - `problems.json`
 - `plan.md`
 
-反復ごとに `iteration-N` でディレクトリを切る。永続化が必要なら `~/.claude/skills/pr-autofix-workspace/...` に移動する。
+反復ごとに `iteration-N` でディレクトリを切る。永続化が必要なら `~/.cursor/skills/pr-autofix-workspace/...` に移動する。
 
 ## なぜこの構造か
 

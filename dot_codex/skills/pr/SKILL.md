@@ -52,13 +52,15 @@ gh pr view --json number,title,body 2>/dev/null
 
 - type: `feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore` / `perf` / `ci` / `build`
 - scope: コードベースのセクションを表す名詞（`auth` / `api` / `ui` / `config` 等）
-- description は「何をなぜ変えたか」を自己完結的に。「レビュー対応」「フィードバック反映」のようなトリガーをメッセージにしない（詳細は `~/.Codex/rules/commit-message.md`）
+- description は「何をなぜ変えたか」を自己完結的に。「レビュー対応」「フィードバック反映」のようなトリガーをメッセージにしない（詳細は `~/.codex/rules/commit-message.md`）
 
-コミット本文に以下を含める:
+コミット本文の末尾に Co-Authored-By トレーラを入れる。
 
 ```
-Co-Authored-By: Codex <noreply@openai.com>
+Co-Authored-By: <実行中のモデル名> <モデル提供元のnoreplyアドレス>
 ```
+
+モデル名は **実際に動いているモデル** を書く。バージョン番号を固定で書かない。アドレスも提供元に合わせる。OpenAI のモデルなら `<noreply@openai.com>`。
 
 ### 5. push
 
@@ -103,7 +105,7 @@ find . -maxdepth 3 \( -iname '*pull_request_template*' \) 2>/dev/null | head -20
 
 #### 6c. PR を作成
 
-シェル引数に `#` を含む複数行テキストを直接埋め込むと権限プロンプトが余計に出るため、**本文は一時ファイルに書き出して `--body-file` で渡す**（詳細は `~/.Codex/rules/shell-command-style.md`）。
+シェル引数に `#` を含む複数行テキストを直接埋め込むと権限プロンプトが余計に出るため、**本文は一時ファイルに書き出して `--body-file` で渡す**（詳細は `~/.codex/rules/shell-command-style.md`）。
 
 テンプレートが無い場合のデフォルト構成:
 
@@ -126,7 +128,7 @@ cat > /tmp/pr-body.md <<'EOF'
 - [ ] <Testing steps>
 
 ---
-Generated with Codex
+Generated with <実行中のエージェント名>
 EOF
 gh pr create --draft --title "<conventional commit style title>" --body-file /tmp/pr-body.md
 ```
