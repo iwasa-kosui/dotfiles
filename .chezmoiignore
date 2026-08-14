@@ -16,6 +16,9 @@ dot_cursor/rules/local.mdc
 dot_config/nvim/LICENSE
 dot_config/nvim/README.md
 
+# textlint は install-claude-textlint フックが bun install で復元する。
+.claude/node_modules
+
 # rpt dependencies are restored by the install hook and build caches regenerate locally.
 .local/lib/rpt/node_modules
 .local/lib/rpt/template/.astro

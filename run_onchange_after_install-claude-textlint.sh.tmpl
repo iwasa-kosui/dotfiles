@@ -1,0 +1,11 @@
+{{ if eq .chezmoi.os "darwin" -}}
+#!/bin/zsh
+# claude textlint package.json hash: {{ include "dot_claude/package.json" | sha256sum }}
+# claude textlint bun.lock hash: {{ include "dot_claude/bun.lock" | sha256sum }}
+set -euo pipefail
+
+if command -v bun &> /dev/null; then
+  cd "{{ .chezmoi.homeDir }}/.claude"
+  bun install --frozen-lockfile --force
+fi
+{{ end -}}
