@@ -1,0 +1,8 @@
+{
+  "name": "claude-config",
+  "private": true,
+  "description": "~/.claude で使う textlint。communication-style.md の語彙検査を lint-outgoing-body hook から実行する",
+  "devDependencies": {
+    "textlint": "15.7.1"
+  }
+}
