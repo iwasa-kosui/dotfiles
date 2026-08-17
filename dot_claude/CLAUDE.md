@@ -49,7 +49,7 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 
 `~/.claude/agents/` に配置。
 
-- `gh-collector` — PR の基本情報、CI 失敗ログ、SonarCloud 指摘、レビューコメント、ブランチのコミット群と差分の要約
+- `gh-collector` — PR の基本情報、CI 失敗ログ、レビューコメント、ブランチのコミット群と差分の要約
 - `fact-checker` — 主張を一次情報と照合し、判定・根拠 URL・原文引用を返す
 - `doc-style-checker` — 日本語の長文ドキュメントを `communication-style.md` の検査項目に照らして検査
 - `atlassian-collector` — Jira 課題と Confluence ページの取得・検索・要約

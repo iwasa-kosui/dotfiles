@@ -2,7 +2,7 @@
 name: gh-collector
 description: >-
   PR にまつわるデータを gh / git CLI で収集し、構造化して返す専門エージェント。PR の基本情報、CI 失敗ログ、
-  SonarCloud 指摘、レビューコメント、ブランチ上のコミット群と差分の要約を担当する。
+  レビューコメント、ブランチ上のコミット群と差分の要約を担当する。
   生ログや diff 全文は返さず、エラー本文と file:line に絞って要約する。
   PR の状態を知りたいとき、CI 失敗の原因を特定したいとき、未解決レビューコメントを一覧したいとき、
   gh run view --log-failed の出力を解析したいときは proactively このエージェントに委譲すること。
@@ -39,10 +39,6 @@ gh api repos/<owner>/<repo>/pulls/<PR>/comments --paginate
 ```
 
 解決済み判定は REST では取れないので、GraphQL で `reviewThreads` の `isResolved` / `isOutdated` を確認する。`isResolved: true` または `isOutdated: true` のスレッドは除外し、除外件数だけ報告する。
-
-### SonarCloud
-
-PR コメントに SonarCloud の bot 投稿があれば、そこから issue を辿る。`SONAR_TOKEN` 未設定や bot コメント不在で取得できない場合は、空の結果と取得できなかった理由を明記して返す。推測で埋めない。
 
 ### ブランチの変更内容
 
