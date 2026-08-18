@@ -5,246 +5,121 @@ description: 関連するPRからCI失敗・レビューコメントを並列で
 
 # PR Autofix
 
-関連するPRに対して、CI失敗・レビューコメントを並列で収集し、構造化した修正計画を立て、すべて解決するまで自律的に反復するスキル。
+CI 失敗とレビューコメントを収集し、修正計画を立て、すべて解決するまでコミット・push・再チェックを反復します。
 
-## いつ使うか
+## Step 0: モードとPRの確定
 
-- PR上で複数の問題（CI失敗・レビューコメント）が同時に存在し、横断的に対応したいとき
-- 「PRを直して」「CI直して」「レビュー対応して」のような漠然とした依頼を受けたとき
-- 修正→push→再チェックの反復が必要なとき
+- 対象PR: 引数に PR 番号か URL があればそれ。なければ現在ブランチの PR
+- モード: 「計画だけ」「dry-run」「見せて」なら dry-run。「直して」「適用して」なら適用モード。曖昧なら確認する
 
-## 設計思想
-
-1. **並列収集が必須**: CI・レビューコメントは独立した情報源なので、必ず並列で取得する。直列にすると時間が無駄
-2. **構造化を挟む**: 収集した生データを即修正に流すのではなく、一度問題リストに正規化することで、依存関係・重複・優先順位が見える
-3. **計画を先に立てる**: コミット分割は計画段階で確定させる。`commit-message.md` の「What/Whyを本質的に説明」「トリガー文言禁止」を計画時点で担保する
-4. **レビュー指摘は鵜呑みにしない**: `superpowers:receiving-code-review` の原則を適用し、不明な指摘は質問、技術的に違う指摘は反論する
-5. **dry-runと適用を明示的に分ける**: 副作用の大きい操作（コミット/push）の前に必ずユーザー確認を取る
-
-## ワークフロー
-
-### Step 0: モードとPRの確定
-
-ユーザー指示を読み、以下を確定する:
-
-- **対象PR**: 引数でPR番号/URLが指定されていればそれ。なければ現在ブランチのPR
-- **モード**: 「計画だけ」「dry-run」「見せて」等の意図があれば dry-run。「直して」「適用して」等なら適用モード。曖昧なら明示的に確認する
+## Step 1: 収集
 
 ```bash
-# 現在ブランチのPRを取得
-gh pr view --json number,url,headRefName,baseRefName,mergeable,state,headRepository,headRepositoryOwner
+bun ~/.claude/skills/pr-autofix/scripts/collect.ts [<PR番号|URL>]
 ```
 
-`owner/repo` と `prNumber` を抽出する。マージコンフリクト（`mergeable: CONFLICTING`）が発生していたら、その時点でユーザーに通知し、コンフリクト解消を依頼してから次に進む（自動解決はしない）。
+PR の基本情報、CI 失敗、レビュースレッド、issue コメントを1プロセスで並列に取得し、要約だけを標準出力に返します。JSON 全文は標準出力の先頭に出る workspace 配下の `ci-failures.json` と `review-comments.json` にあります。**司令塔はこの JSON を直接読みません**。読む必要が出たらサブエージェントに委譲します。
 
-ワークスペースを準備:
+- `mergeable: CONFLICTING` の場合はここで中断し、コンフリクト解消をユーザーに依頼する。自動解決はしない
+- 「エラー行を抽出できず」と出た失敗ジョブがあれば、そのジョブだけ `gh-collector` に `ci-failures.json` の該当 `log_excerpt` を読ませ、エラー本文と `file:line` を要約させる
+- 反復2回目以降も同じコマンドを実行する。workspace の `iteration-N` は自動で繰り上がる
 
-```bash
-mkdir -p /tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-1
-```
+## Step 2: レビュー指摘の分類（サブエージェントに委譲）
 
-### Step 1: 問題収集（並列）
+active スレッドが1件以上あるときだけ起動します。0件ならスキップします。
 
-**2つのサブエージェントを同一メッセージで並列に起動する**。直列起動は禁止（並列性の保証が崩れる）。
+`gh-collector` に渡すプロンプト:
 
-#### Subagent A: CI失敗ログ
-- `subagent_type`: `gh-collector`
-- プロンプト例:
-  > 次のスクリプトを実行してCI失敗を収集してください:
-  > ```
-  > bun <skill-dir>/scripts/collect-ci-failures.ts <owner/repo> <PR>
-  > ```
-  > 標準出力に出力されるJSONをそのまま `/tmp/pr-autofix/.../iteration-N/ci-failures.json` に保存し、簡潔なサマリを返してください。
+> `<workspace>/review-comments.json` を読み、`resolved: false` かつ `outdated: false` のスレッドを次の3つに分類してください。
+>
+> - `actionable`: 意図が明確で、技術的に妥当
+> - `needs_clarification`: 意図または前提が不明
+> - `pushback`: 技術的に誤っている、または YAGNI 違反
+>
+> 判定の原則:
+>
+> - bot の指摘は事実ではなく仮説として扱う。内容を検証せずに `actionable` にしない
+> - 識別子・テーブル名・カラム名・環境変数名の綴り修正の指摘は、既存の綴りを Grep してから分類する。複数箇所でヒットする綴りは稼働中の名前である可能性が高く、単独では変更できない。この場合は `needs_clarification` にして影響範囲を添える
+> - 既に修正済みの内容を指している指摘は分類対象から外し、件数だけ報告する
+>
+> 結果を `<workspace>/classified.json` に保存し、スレッドごとに `thread_id`、`file:line`、分類、1行の理由だけを返してください。コメント本文は返さないでください。
 
-#### Subagent B: レビューコメント（収集＋受け止め）
-- `subagent_type`: `gh-collector`
-- プロンプト例:
-  > 次のスクリプトを実行してPRのレビューコメントを収集してください:
-  > ```
-  > bun <skill-dir>/scripts/collect-review-comments.ts <owner/repo> <PR>
-  > ```
-  > その後、`~/.claude/plugins/cache/superpowers-marketplace/superpowers/*/skills/receiving-code-review/SKILL.md` を読み、その原則に沿って各コメントスレッドを以下の3つに分類してください:
-  > - `actionable`: 意図が明確で、技術的に妥当
-  > - `needs_clarification`: 意図が不明、または前提が不明
-  > - `pushback`: 技術的に間違っているかYAGNI違反で、反論したい
-  > 分類結果を `/tmp/pr-autofix/.../iteration-N/review-comments.json` に保存し、サマリを返してください。
-  > なお、`outdated` なコメントや `[bot]` 以外でも既に修正済みの内容のコメントは `resolved` カテゴリに入れて除外してください。
+## Step 3: 修正計画
 
-並列起動後、2つの完了を待ってから次へ進む。
-
-### Step 2: 構造化
-
-2つのJSONを統合し、`/tmp/pr-autofix/.../iteration-N/problems.json` を生成する:
-
-```json
-{
-  "pr": {
-    "owner": "kkhs",
-    "repo": "platform-domain-app",
-    "number": 6186,
-    "head": "feat/...",
-    "base": "main",
-    "mergeable": true
-  },
-  "problems": [
-    {
-      "id": "P001",
-      "source": "ci",
-      "severity": "blocker",
-      "title": "test failure in UserService",
-      "detail": "ログ抜粋...",
-      "file": "src/user-service.ts",
-      "line": 42
-    },
-    {
-      "id": "P002",
-      "source": "review",
-      "severity": "major",
-      "category": "actionable",
-      "author": "alice",
-      "comment_id": 123456,
-      "thread_id": 123456,
-      "file": "src/foo.ts",
-      "line": 10,
-      "detail": "本文",
-      "depends_on": []
-    }
-  ]
-}
-```
-
-重大度の判断基準:
-- **blocker**: マージを阻害する（CI failure、required reviewer change request）
-- **major**: 機能的・品質的に直すべき（major review comment）
-- **minor**: nit、style
-
-依存関係: 「レビュー指摘の対象がCI failureの根本原因」のような関連が明らかなら `depends_on` で繋ぐ。不明なら空配列。
-
-### Step 3: 修正計画
-
-`/tmp/pr-autofix/.../iteration-N/plan.md` を以下のテンプレートで生成する:
+`<workspace>/plan.md` を次のテンプレートで書きます。問題一覧は plan.md の中に持ち、別の JSON には起こしません。
 
 ```markdown
 # 修正計画 — <owner/repo>#<PR>
 
-## サマリ
-- 問題数: {count}（blocker {n} / major {n} / minor {n}）
-- 推定コミット数: {n}
-- マージ可能: {true|false}
+## 問題一覧
+| ID | 出典 | 重大度 | 場所 | 内容 |
+|---|---|---|---|---|
+| P001 | ci | blocker | src/user-service.ts:42 | test failure: ... |
+| P002 | review T123456 | major | src/foo.ts:10 | @alice の指摘: ... |
 
 ## コミット分割
 ### Commit 1: <type>(<scope>): <description>
 - 解決する問題: P001, P003
-- 変更点:
-  - `src/foo.ts:10` — ...
+- 変更点: `src/foo.ts:10` — ...
 - Why: なぜこの変更が必要か（1〜2文）
 
-### Commit 2: <type>(<scope>): <description>
-- 解決する問題: P002
-- ...
-
-## 質問・反論が必要な指摘 (受信時に receiving-code-review を適用)
-- P00X (reviewer @foo): 意図が不明
-  - **対応方針**: 「<質問内容>」を返信し、回答が得られるまで保留
-- P00Y (reviewer @bar): 技術的に異論あり
-  - **反論内容**: 「<根拠と代替案>」
+## 質問・反論が必要な指摘
+- P00X (@foo, T123456): 意図が不明 → 「<質問内容>」を返信し、回答まで保留
+- P00Y (@bar, T123457): 技術的に異論あり → 「<根拠と代替案>」で反論
 ```
 
-コミット分割のルール（`commit-message.md` 準拠）:
-- 1コミット1論理変更
-- メッセージは `<type>(<scope>): <description>` 形式
-- ❌ 「レビュー対応」「フィードバック反映」「指摘を反映」のようなトリガー文言は禁止
-- 各コミットメッセージは独立して What と Why を説明できること
+重大度は、マージを阻害するものを blocker、機能や品質として直すべきものを major、nit や style を minor とします。
 
-### Step 4a: Dry-runモード
+コミット分割は1コミット1論理変更にし、メッセージは `<type>(<scope>): <description>` 形式で What と Why を自己完結的に書きます。「レビュー対応」「フィードバック反映」のようなトリガー文言は使いません。
 
-ここで終了。以下をユーザーに伝える:
-- `problems.json` と `plan.md` のパス
-- 問題数のサマリ（blocker/major/minorの内訳）
-- 質問・反論が必要な指摘の有無
-- 「適用しますか？」の確認
+## Step 4a: dry-run モード
 
-### Step 4b: 適用モード
+ここで終了し、`plan.md` のパス、問題数の内訳、質問・反論が必要な指摘の有無、適用してよいかの確認をユーザーに伝えます。
 
-「質問・反論が必要な指摘」が1件でもあれば、適用前に必ずユーザーに方針を仰ぐ。ユーザーが回答するまでpushしない。
+## Step 4b: 適用モード
 
-承認後、計画の各コミットを順に実行:
+「質問・反論が必要な指摘」が1件でもあれば、適用前にユーザーの方針を仰ぎます。回答を得るまで push しません。
 
-1. **修正をコード変更として適用**（Edit/Write）
-2. **コミット作成**:
-   - 1論理変更につき1コミット
-   - メッセージは計画通り（What/Why準拠、トリガー文言禁止）
-   - `--amend` は使わない。間違えたら新しいコミットで対応する
-3. **push**:
-   ```bash
-   git push
-   ```
-4. **CI待機**:
-   ```bash
-   gh pr checks --watch --interval 30 <PR>
-   ```
-   タイムアウトを30分とし、超えたらユーザーに状況を確認する。
-5. **レビューコメントへの返信**（該当する場合のみ）:
-   - 解決した `actionable` なinline review commentにスレッド返信
-   - 書式: 本文全体を details ブロックで囲む（`~/.claude/rules/github-review.md`）。囲まないと `gh-comment-format-guard.ts` hook にブロックされる
-   - コミットハッシュを本文に含める場合は **半角括弧 `()`** で囲む。全角括弧 `（）` は使わない（例: `修正しました (e4dcbb406)`）
-   - API:
-     ```bash
-     sha=$(git rev-parse --short HEAD)
-     cat > /tmp/pr-reply.md <<EOF
-     <details>
-     <summary>🤖 <実行中のエージェント名></summary>
+承認後、計画のコミットを順に実行します。
 
-     修正しました ($sha)
+1. 修正をコード変更として適用する
+2. コミットする。`--amend` は使わない。間違えたら新しいコミットで直す
+3. `git push`
+4. `gh pr checks --watch --interval 30 <PR>` で CI を待つ。30分を超えたらユーザーに状況を確認する
+5. 解決した `actionable` なスレッドに返信する
 
-     </details>
-     EOF
-     gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies \
-       -F body=@/tmp/pr-reply.md
-     ```
+返信は本文全体を details ブロックで囲みます（`~/.claude/rules/github-review.md`）。囲まないと `gh-comment-format-guard.ts` hook にブロックされます。コミットハッシュは半角括弧で囲みます。
 
-全コミット完了後、Step 1 に戻って再収集（`iteration-2` ディレクトリで実行）。
+```bash
+sha=$(git rev-parse --short HEAD)
+cat > /tmp/pr-reply.md <<EOF
+<details>
+<summary>🤖 <実行中のエージェント名></summary>
 
-### Step 5: 終了判定
+修正しました ($sha)
 
-**成功終了** (以下を全て満たす):
-- CI 全 green
-- 未解決の `actionable` レビューコメントゼロ
-- 未対応のbot指摘ゼロ
+</details>
+EOF
+gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies -F body=@/tmp/pr-reply.md
+```
 
-→ 完了報告:
-- 解決した問題リスト（P001-P00N）
-- 作成したコミットのSHAリスト
-- 残った `needs_clarification` / `pushback` があれば、その後のユーザー対応案
+全コミット完了後、Step 1 に戻って再収集します。
 
-**エスカレーション** (以下のいずれかで停止):
-- 同じCIエラー（同一checkの同一step）が2回連続で再発 → 修正方針が誤っている可能性。原因の仮説と代替案を提示してユーザーに判断を仰ぐ
-- レビュー指摘で意図不明・反論あり → ユーザーに方針確認
-- 反復回数が **5回** に到達 → 進捗サマリと未解決問題リストを示して中断
-- マージコンフリクト発生 → 自動解決はせずユーザーに依頼
-- 環境要因で収集不能 → 部分的に処理してその旨を報告
+## Step 5: 終了判定
 
-## バンドルスクリプト
+成功終了の条件は、CI が全て green、未解決の `actionable` スレッドがゼロ、未対応の bot 指摘がゼロを全て満たすことです。満たしたら、解決した問題 ID、作成したコミットの SHA、残った `needs_clarification` と `pushback` への対応案を報告します。
 
-- `scripts/collect-ci-failures.ts` — `gh pr checks` で失敗ジョブを抽出し、`gh run view --log-failed` でログを取得して構造化JSONを返す
-- `scripts/collect-review-comments.ts` — inline review comments + general PR comments を取得し、bot/人間・active/outdatedで分類してJSONを返す
+次のいずれかに当たったら停止してユーザーの判断を仰ぎます。
 
-両スクリプトとも `bun <skill-dir>/scripts/<name>.ts <owner/repo> <PR>` で呼び出す。
+- 同一 check の同一 step が2回連続で失敗する。修正方針が誤っている可能性があるので、原因の仮説と代替案を示す
+- レビュー指摘に意図不明または反論ありのものが残っている
+- 反復が5回に到達する。進捗サマリと未解決問題を示して中断する
+- マージコンフリクトが発生する
+- 収集自体が環境要因で失敗する。部分的に処理してその旨を報告する
 
-## ワークスペース
+## この構造の理由
 
-`/tmp/pr-autofix/<owner>-<repo>-<pr>/iteration-<N>/` に保存:
-- `ci-failures.json`
-- `review-comments.json`
-- `problems.json`
-- `plan.md`
-
-反復ごとに `iteration-N` でディレクトリを切る。永続化が必要なら `~/.claude/skills/pr-autofix-workspace/...` に移動する。
-
-## なぜこの構造か
-
-- **並列収集**: 2つの情報源に依存がない。直列にする理由がない。サブエージェントを分けるのは、それぞれが大量のログ・コメントを読むため、メイン文脈を汚染しないためでもある
-- **`problems.json` という中間表現**: 修正計画を立てる前に「全部で何件あるか」「優先順位はどうか」が一覧で見えると、不必要なコミットを増やさずに済む。出典が異なる問題（CI/レビュー）を統一スキーマで扱うことで、同じファイル・同じ行への重複指摘を発見できる
-- **`plan.md` を先に書く**: コミット分割を計画段階で決めることで、`commit-message.md` の「1コミット1論理変更」と「What/Why本質説明」を実装中に再考しなくて済む
-- **receiving-code-reviewの分類フェーズ**: レビュー指摘を3カテゴリに分けることで、`actionable` だけ自動適用し、`needs_clarification`/`pushback` はユーザー判断に回せる。「全部直す」と言われても、技術的に間違った指摘まで盲従しない
-- **dry-run分離**: pushという不可逆操作の前にユーザーが計画を確認できる。CIが回り出してから「やっぱり違った」を防ぐ
+- 収集は決定論的な処理なので、サブエージェントではなくスクリプト1本の `Promise.all` で並列化する。標準出力を要約に絞ることで、司令塔は1回の Bash 実行で計画に必要な材料を得る
+- 分類だけをサブエージェントに残すのは、判定にコメント本文の全文が必要で、その本文を司令塔の文脈に入れたくないため
+- 中間表現を `plan.md` 1枚に統合しているのは、同じ問題一覧を JSON と Markdown に二度書く費用を避けるため。コミット分割を先に確定させることで、実装中に分割方針を再考しなくて済む
+- dry-run を分けているのは、push という不可逆操作の前にユーザーが計画を確認できるようにするため
