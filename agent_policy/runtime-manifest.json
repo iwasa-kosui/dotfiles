@@ -84,6 +84,11 @@
         "subagents": "Agent ツールと設定済み実行モデルを使って独立した調査や診断を委譲する"
       },
       "hookRoles": {
+        "context-guard": {
+          "path": "dot_claude/hooks/executable_context-guard.ts",
+          "status": "active",
+          "responsibility": "コンテキスト量が閾値を超えたことをプロンプト送信時に知らせる"
+        },
         "force-push-guard": {
           "path": "dot_claude/hooks/executable_force-push-guard.ts",
           "status": "active",
@@ -93,6 +98,11 @@
           "path": "dot_claude/hooks/executable_gh-comment-format-guard.ts",
           "status": "active",
           "responsibility": "GitHub コメントの必須書式を検査する"
+        },
+        "lint-outgoing-body": {
+          "path": "dot_claude/hooks/executable_lint-outgoing-body.ts",
+          "status": "active",
+          "responsibility": "外部サービスへ送る本文を textlint で検査する"
         },
         "main-branch-guard": {
           "path": "dot_claude/hooks/executable_main-branch-guard.ts",
