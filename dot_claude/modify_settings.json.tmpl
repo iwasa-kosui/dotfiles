@@ -1,6 +1,10 @@
 #!/bin/bash
-# modify script: 管理対象フィールド(effortLevel, env, permissions, hooks, statusLine, language)を
-# ソースから上書きし、それ以外(enabledPlugins等)は既存の値を保持する。
+# modify script: 管理対象フィールド(autoCompactWindow, effortLevel, env, permissions, hooks,
+# statusLine, language)をソースから上書きし、それ以外(enabledPlugins等)は既存の値を保持する。
+#
+# autoCompactWindow を明示するのは、1M コンテキストのモデルを使うと自動圧縮の発火点も 1M 基準まで
+# 上がるためである。未指定のままだと数十万トークンまで膨らんだ履歴が圧縮されず、ツール実行のたびに
+# その全量が cache_read として再送される。20万は 200k モデルと同等の挙動になる値。
 
 set -euo pipefail
 
@@ -11,6 +15,7 @@ fi
 
 managed='
 {
+  "autoCompactWindow": 200000,
   "effortLevel": "high",
   "env": {
     "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"{{- if eq .profile "work" }},
@@ -461,6 +466,16 @@ managed='
             "command": "bun ~/.claude/hooks/session-init.ts",
             "timeout": 15,
             "statusMessage": "Jira課題・GitHub PR・ワークツリー情報を取得中..."
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun ~/.claude/hooks/context-guard.ts"
           }
         ]
       }
