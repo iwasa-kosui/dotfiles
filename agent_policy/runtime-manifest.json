@@ -99,6 +99,11 @@
           "status": "active",
           "responsibility": "GitHub コメントの必須書式を検査する"
         },
+        "lint-outgoing-body": {
+          "path": "dot_claude/hooks/executable_lint-outgoing-body.ts",
+          "status": "active",
+          "responsibility": "外部サービスへ送る本文を textlint で検査する"
+        },
         "main-branch-guard": {
           "path": "dot_claude/hooks/executable_main-branch-guard.ts",
           "status": "active",
