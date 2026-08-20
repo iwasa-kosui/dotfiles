@@ -1,6 +1,13 @@
 export PATH="/opt/homebrew/bin:$PATH"
 export PATH="$HOME/.local/bin:$PATH"
 
+# Claude Code の PowerShell ツールを読み込ませない。
+# 組織配信の ~/.claude/remote-settings.json は "0" を設定しているが、判定は値ではなく
+# 「空でないか」なので "0" でも有効になる。空文字にするとツールごと出なくなる。
+# このマシンに pwsh は入っていないため、有効なままだと Windows 前提の説明文だけが
+# プロンプトに載り、zsh に PowerShell の記法が持ち込まれる。
+export CLAUDE_CODE_USE_POWERSHELL_TOOL=""
+
 # OpenSpec shell completions
 fpath=("$HOME/.zsh/completions" $fpath)
 fpath+=~/.zfunc
