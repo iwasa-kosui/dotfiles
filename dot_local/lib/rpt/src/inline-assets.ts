@@ -14,6 +14,7 @@ import {
 } from "parse5";
 import { detectImageMimeType } from "./image.ts";
 import type { FinalDomPolicy } from "./final-dom-policy.ts";
+import { hoistRootDeclarations } from "./hoist-root-declarations.ts";
 import { ariaIdReferenceAttributes } from "./safe-html.ts";
 import { safeStyleViolation } from "./safe-style.ts";
 import { isAllowedNavigationUrl } from "./safe-url.ts";
@@ -100,10 +101,12 @@ async function processElement(
   }
 
   if (tagName === "style") {
-    const validation = validateCss(textContent(element));
+    const css = textContent(element);
+    const validation = validateCss(css);
     if (!validation.ok) {
       return validation;
     }
+    setTextContent(element, hoistRootDeclarations(css));
   }
 
   if (tagName === "img" || tagName === "source") {
@@ -181,7 +184,7 @@ async function inlineStylesheet(
   if (!validation.ok) {
     return validation;
   }
-  const fragment = parseFragment(`<style>${css}</style>`, {
+  const fragment = parseFragment(`<style>${hoistRootDeclarations(css)}</style>`, {
     scriptingEnabled: false,
   });
   const style = fragment.childNodes[0];
@@ -844,6 +847,12 @@ function textContent(element: Element): string {
     )
     .map((node) => node.value)
     .join("");
+}
+
+function setTextContent(element: Element, value: string): void {
+  element.childNodes = [
+    { nodeName: "#text", value, parentNode: element } satisfies DefaultTreeAdapterTypes.TextNode,
+  ];
 }
 
 function isTemplate(
