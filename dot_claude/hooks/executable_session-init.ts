@@ -1,12 +1,45 @@
 #!/usr/bin/env bun
-// SessionStart hook: Worktree情報・Jira課題・GitHub PR情報を取得
+// SessionStart hook: Worktree情報・Jira課題・GitHub PR情報・引き継ぎドキュメントを取得
 
+import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { readInput, run, runSafe } from "./lib.ts";
 
 const input = await readInput<{ cwd?: string }>();
 const cwd = input.cwd ?? ".";
+
+// handoff スキルが書き出したドキュメントのうち、同じリポジトリ・ブランチの最新1件を探す。
+// 本文は読み込まない。自動圧縮を切って handoff で区切る運用だと件数が増えるため、
+// 全文を毎回 SessionStart に載せるとコンテキストを節約する目的と矛盾する。
+async function latestHandoff(
+  commonDir: string,
+  branch: string,
+): Promise<{ path: string; mtime: Date } | null> {
+  // commonDir は worktree でもメインリポジトリの .git を指すため、worktree 内から
+  // 起動しても引き継ぎ先はメインリポジトリ名で揃う
+  const repo = basename(dirname(commonDir));
+  const dir = join(
+    homedir(),
+    ".claude",
+    "handoffs",
+    repo,
+    branch.replaceAll("/", "-"),
+  );
+  let entries: string[];
+  try {
+    entries = await readdir(dir);
+  } catch {
+    return null;
+  }
+  const latest = entries
+    .filter((e) => e.endsWith(".md"))
+    .sort()
+    .pop();
+  if (!latest) return null;
+  const path = join(dir, latest);
+  return { path, mtime: (await stat(path)).mtime };
+}
 
 let output = "";
 
@@ -63,6 +96,26 @@ if (isGitRepo) {
       .split("\n")
       .map((l) => `  ${l}`)
       .join("\n")}\n`;
+  }
+
+  // --- 引き継ぎドキュメント ---
+  const commonDir = await runSafe([
+    "git",
+    "-C",
+    cwd,
+    "rev-parse",
+    "--path-format=absolute",
+    "--git-common-dir",
+  ]);
+  if (commonDir && branch) {
+    const handoff = await latestHandoff(commonDir, branch);
+    if (handoff) {
+      output += `\n## 引き継ぎドキュメント
+- パス: ${handoff.path}
+- 更新: ${handoff.mtime.toISOString()}
+- 前回のセッションが handoff を残しています。作業を再開する場合は Read で読んでください（本文は自動では読み込まれません）
+`;
+    }
   }
 
   // --- GitHub PR情報 ---
