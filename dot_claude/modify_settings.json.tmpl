@@ -1,10 +1,14 @@
 #!/bin/bash
-# modify script: 管理対象フィールド(autoCompactWindow, effortLevel, env, permissions, hooks,
+# modify script: 管理対象フィールド(autoCompactEnabled, effortLevel, env, permissions, hooks,
 # statusLine, language)をソースから上書きし、それ以外(enabledPlugins等)は既存の値を保持する。
 #
-# autoCompactWindow を明示するのは、1M コンテキストのモデルを使うと自動圧縮の発火点も 1M 基準まで
-# 上がるためである。未指定のままだと数十万トークンまで膨らんだ履歴が圧縮されず、ツール実行のたびに
-# その全量が cache_read として再送される。20万は 200k モデルと同等の挙動になる値。
+# autoCompactEnabled を false にするのは、自動圧縮が履歴を要約に置き換えてしまい、何が失われたかを
+# こちらから把握できないためである。代わりに handoff スキルで結論だけを書き出し、新しいセッションで
+# 続ける運用にする。圧縮の発火点を下げる autoCompactWindow は無効化すると効かないので置かない。
+#
+# 引き換えに、上限に達したときの安全網は無くなる。公式ドキュメントは無効時の挙動を明記していないが、
+# リクエストが Prompt is too long で失敗する報告がある。上限より十分手前で区切る必要があるため、
+# context-guard.ts が 5万トークンで handoff を促す。
 
 set -euo pipefail
 
@@ -15,7 +19,7 @@ fi
 
 managed='
 {
-  "autoCompactWindow": 200000,
+  "autoCompactEnabled": false,
   "effortLevel": "high",
   "env": {
     "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"{{- if eq .profile "work" }},
@@ -602,4 +606,7 @@ managed='
 }
 '
 
-echo "$current" | jq --argjson managed "$managed" '. * $managed'
+# autoCompactWindow は自動圧縮を無効にすると効かない。管理対象から外すだけでは既存の
+# settings.json に残った値が消えないため、明示的に削除する。/autocompact で書き戻されても
+# 次の chezmoi apply で再び消える。
+echo "$current" | jq --argjson managed "$managed" '(. * $managed) | del(.autoCompactWindow)'
