@@ -7,6 +7,7 @@ description: >-
   検証したいとき、複数の代替案を公平に比較したいときは proactively このエージェントに委譲すること。
   記憶に頼った回答を避けるための裏取り専任で、コードの変更は行わない。
 tools: WebSearch, WebFetch, Read
+model: sonnet
 effort: high
 ---
 

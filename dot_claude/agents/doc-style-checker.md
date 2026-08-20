@@ -8,6 +8,7 @@ description: >-
   proactively このエージェントに委譲すること。検査は機械的な照合なので毎回やるほうが確実で、司令塔が
   自分でやると忘れがちになる。ファイルの修正は行わず、指摘だけを返す。
 tools: Read, Grep, Glob
+model: sonnet
 effort: low
 ---
 

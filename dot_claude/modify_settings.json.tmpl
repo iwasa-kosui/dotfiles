@@ -9,6 +9,11 @@
 # 引き換えに、上限に達したときの安全網は無くなる。公式ドキュメントは無効時の挙動を明記していないが、
 # リクエストが Prompt is too long で失敗する報告がある。上限より十分手前で区切る必要があるため、
 # context-guard.ts が 5万トークンで handoff を促す。
+#
+# CLAUDE_CODE_SUBAGENT_MODEL に具体的なモデル名を入れると、それがモデル解決の最優先になり、
+# サブエージェント定義の model frontmatter と Agent 呼び出しの model パラメータの両方を上書きする。
+# エージェントごとにモデルを変えられなくなるため inherit にして、frontmatter 側で指定する。
+# inherit を未設定と同じ扱いにする挙動は v2.1.196 以降。
 
 set -euo pipefail
 
@@ -22,7 +27,7 @@ managed='
   "autoCompactEnabled": false,
   "effortLevel": "high",
   "env": {
-    "CLAUDE_CODE_SUBAGENT_MODEL": "sonnet"{{- if eq .profile "work" }},
+    "CLAUDE_CODE_SUBAGENT_MODEL": "inherit"{{- if eq .profile "work" }},
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",
     "DISABLE_TELEMETRY": "1"
 {{- end }}

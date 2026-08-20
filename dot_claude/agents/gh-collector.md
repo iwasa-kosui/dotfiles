@@ -8,6 +8,7 @@ description: >-
   gh run view --log-failed の出力を解析したいときは proactively このエージェントに委譲すること。
   CI ログは数万トークンになるため、メインの会話で直接読ませてはならない。コード修正・commit・push は行わない。
 tools: Bash, Read, Grep, Glob
+model: sonnet
 effort: medium
 ---
 

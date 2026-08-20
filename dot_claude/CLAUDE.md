@@ -47,13 +47,17 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 
 ## コマンド/スキル設計原則: サブエージェント駆動
 
-コマンドやスキルを設計する際は、Opus（司令塔）と Sonnet（実行者）の役割を分離する。
+コマンドやスキルを設計する際は、Opus（司令塔）と、より安価なモデル（実行者）の役割を分離する。実行者は既定で Sonnet、整形や書き出しのように判断を伴わない作業は Haiku にする。
 
 ### モデルと effort の決まり方
 
-`CLAUDE_CODE_SUBAGENT_MODEL` に `sonnet` を設定しているため、Agent ツールで起動したサブエージェントは Sonnet で動作する。この環境変数はモデル解決の最優先で、サブエージェント定義の `model` frontmatter と Agent 呼び出し時の `model` パラメータの両方を上書きする。したがって `~/.claude/agents/*.md` に `model:` を書いても効かない。誤解を招くので書かない。
+`CLAUDE_CODE_SUBAGENT_MODEL` に具体的なモデル名を入れると、それがモデル解決の最優先になり、サブエージェント定義の `model` frontmatter と Agent 呼び出し時の `model` パラメータの両方を上書きする。エージェントごとにモデルを選べなくなるので、この変数は `inherit` にしている。`inherit` を未設定と同じ扱いにする挙動は v2.1.196 以降。
 
-一方 `effort` frontmatter は有効で、セッションの `effortLevel` を上書きする。サブエージェントは既定でセッションの effort を継承するため、機械的な収集作業には `effort: low` / `medium` を明示してコストを抑える。判断を伴う照合には `high` を残す。
+したがってモデルは `~/.claude/agents/*.md` の `model:` frontmatter で決まる。収集・診断系は `sonnet`、整形と書き出しだけの `handoff-writer` は `haiku` を指定している。
+
+**builtin の `Explore` / `Plan` / `general-purpose` は frontmatter を持たない。** 指定しないとセッションのモデル（Opus）を継承するので、Agent 呼び出し時に `model: "sonnet"` を明示する。
+
+`effort` frontmatter はセッションの `effortLevel` を上書きする。サブエージェントは既定でセッションの effort を継承するため、機械的な収集作業には `effort: low` / `medium` を明示してコストを抑える。判断を伴う照合には `high` を残す。
 
 ### 定義済みサブエージェント
 
@@ -63,6 +67,7 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 - `fact-checker` — 主張を一次情報と照合し、判定・根拠 URL・原文引用を返す
 - `doc-style-checker` — 日本語の長文ドキュメントを `communication-style.md` の検査項目に照らして検査
 - `atlassian-collector` — Jira 課題と Confluence ページの取得・検索・要約
+- `handoff-writer` — 司令塔が確定した handoff のブリーフを、メタデータを補完してテンプレートに整形し書き出す
 
 これで足りない場合は builtin の `Explore`（コード探索）と `Plan`（実装方針の設計）を使う。
 
@@ -72,10 +77,11 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 - サブエージェントのディスパッチ（プロンプト組み立て + Agent tool 呼び出し）
 - サブエージェントの結果を統合して最終成果物を組み立てる
 
-### サブエージェント（Sonnet）の責務
+### サブエージェント（Sonnet / Haiku）の責務
 
 - 調査・診断・データ収集を実行し、構造化された結果を返す
 - gh コマンド実行、ファイル探索、コード解析など I/O が多い作業
+- 司令塔が確定した内容の整形とファイルへの書き出し。判断が要らないので Haiku で足りる
 
 ### 委譲するかどうかの判定基準
 
