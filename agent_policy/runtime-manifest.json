@@ -84,6 +84,11 @@
         "subagents": "Agent ツールと設定済み実行モデルを使って独立した調査や診断を委譲する"
       },
       "hookRoles": {
+        "commit-message-guard": {
+          "path": "dot_claude/hooks/executable_commit-message-guard.ts",
+          "status": "active",
+          "responsibility": "`@` で始まるコミットメッセージを拒否する"
+        },
         "context-guard": {
           "path": "dot_claude/hooks/executable_context-guard.ts",
           "status": "active",
