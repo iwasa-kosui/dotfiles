@@ -29,7 +29,7 @@
 
 組織配信の `~/.claude/remote-settings.json` が `CLAUDE_CODE_USE_POWERSHELL_TOOL` を有効にしているため、macOS でも PowerShell ツールとその説明文が読み込まれています。この環境のシェルは zsh なので、ツール説明にある Windows 前提の記法・制約は当てはまりません。コマンドは Bash ツールで実行します。
 
-- 複数行のコミットメッセージを here-string `@'...'@` で渡さない。zsh はこれを here-string と解釈せず、単なるクォート連結として扱うため、本文の先頭と末尾に `@` が残る。一時ファイルに書いて `git commit -F <file>` で渡す
+- 複数行のコミットメッセージを here-string `@'...'@` で渡さない。zsh はこれを here-string と解釈せず、単なるクォート連結として扱うため、本文の先頭と末尾に `@` が残る。一時ファイルに書いて `git commit -F <file>` で渡す。`commit-message-guard.ts` hook が `@` で始まるコミットメッセージをブロックする
 - `&&` `||` `??` `?.` は使える。「PowerShell 5.1 では parser error になる」という制約は当てはまらない
 - 環境変数の読み書き、パス区切り、`Get-ChildItem` 系 cmdlet の代替も zsh の記法を使う
 
