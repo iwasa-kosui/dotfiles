@@ -1,6 +1,5 @@
 ---
 description: JIRA課題の記法
-alwaysApply: false
 ---
 
 # JIRA課題の記法

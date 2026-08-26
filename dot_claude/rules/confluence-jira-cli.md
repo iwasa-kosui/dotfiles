@@ -1,6 +1,5 @@
 ---
 description: Confluence/Jira CLIのエラーハンドリング
-alwaysApply: false
 ---
 
 # Confluence/Jira CLI

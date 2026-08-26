@@ -1,6 +1,5 @@
 ---
 description: 新機能・アーキテクチャ変更時のドキュメント駆動開発ルール
-alwaysApply: false
 ---
 
 # ドキュメント駆動
