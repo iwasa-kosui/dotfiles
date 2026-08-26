@@ -18,7 +18,6 @@
 - `doc-driven.md` — ドキュメント駆動開発
 - `jira-markdown.md` — JIRA課題の記法
 - `confluence-jira-cli.md` — Confluence/Jira CLIのエラーハンドリング
-- `local.md` — リポジトリ一覧（ローカル専用。chezmoi 未管理）
 
 ## paths で絞っているもの
 
@@ -125,5 +124,3 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 - 期待する出力形式を明記する（構造化テキストや JSON）
 - 1つの診断フェーズは原則 1 サブエージェントにまとめる。タスクが独立している場合のみ並列化する
 - コマンドの `allowed-tools` に `Agent` を含める。`Agent` は既定で承認プロンプトの対象外なので、`permissions.allow` への追加は不要
-
-@RTK.md
