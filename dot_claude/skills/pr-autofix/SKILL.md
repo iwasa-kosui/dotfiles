@@ -44,6 +44,10 @@ active スレッドが1件以上あるときだけ起動します。0件なら�
 >
 > 結果を `<workspace>/classified.json` に保存し、スレッドごとに `thread_id`、`file:line`、分類、1行の理由だけを返してください。コメント本文は返さないでください。
 
+綴り修正を慎重に扱うのは、過去に検証せず本番テーブル名の綴りを直して revert が必要になったためです。DB のテーブル名・カラム名、外部 API のフィールド名、永続化されたデータのキーは、綴りが誤っていても単独では変更できません。稼働中の名前は誤っていても正しい状態として扱います。綴りを変える場合は、マイグレーション・既存データ・他リポジトリからの参照への影響を示してユーザーに確認します。
+
+`pushback` に分類した指摘には具体的な根拠を添えて反論します。指摘を受けたという理由だけで変更しません。受け止め方の詳細は `superpowers:receiving-code-review` スキルに従います。
+
 ## Step 3: 修正計画
 
 `<workspace>/plan.md` を次のテンプレートで書きます。問題一覧は plan.md の中に持ち、別の JSON には起こしません。
@@ -88,7 +92,7 @@ active スレッドが1件以上あるときだけ起動します。0件なら�
 4. `gh pr checks --watch --interval 30 <PR>` で CI を待つ。30分を超えたらユーザーに状況を確認する
 5. 解決した `actionable` なスレッドに返信する
 
-返信は本文全体を details ブロックで囲みます（`~/.claude/rules/github-review.md`）。囲まないと `gh-comment-format-guard.ts` hook にブロックされます。コミットハッシュは半角括弧で囲みます。
+返信は本文全体を details ブロックで囲みます。囲まないと `gh-comment-format-guard.ts` hook にブロックされます。`<summary>` 行の後と `</details>` の前には空行を入れます。空行がないと GitHub が中身を Markdown として解釈せず、リストや見出しが素のテキストで表示されます。コミットハッシュは半角括弧で囲みます。
 
 ```bash
 sha=$(git rev-parse --short HEAD)

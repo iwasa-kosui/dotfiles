@@ -54,7 +54,31 @@ gh pr view --json number,title,body 2>/dev/null
 
 - type: `feat` / `fix` / `docs` / `style` / `refactor` / `test` / `chore` / `perf` / `ci` / `build`
 - scope: コードベースのセクションを表す名詞（`auth` / `api` / `ui` / `config` 等）
-- description は「何をなぜ変えたか」を自己完結的に。「レビュー対応」「フィードバック反映」のようなトリガーをメッセージにしない（詳細は `~/.claude/rules/commit-message.md`）
+- description は「何をなぜ変えたか」を自己完結的に書く
+
+#### コミットメッセージに書くこと
+
+変更の What と Why を書きます。きっかけになった出来事は書きません。
+
+次のようなトリガーをメッセージにしたコミットは禁止です。変更の内容も理由も伝わりません。
+
+- 「レビューコメントに基づき」「指摘を反映」「フィードバック対応」
+- 「レビュー対応」「レビューコメント修正」
+- 「PR修正」「フィードバック反映」
+
+レビューコメントへの対応であっても、各コミットは独立した意味のある Why / What を持たせます。複数の指摘に対応する場合、論理的に異なる変更は別々のコミットに分けます。各メッセージはレビューという文脈がなくても意味が通る必要があります。
+
+良い例:
+
+- `fix(ogas): descriptionからトリガーワード説明を削除し disable-model-invocation との矛盾を解消`
+- 2つの指摘に対し別々のコミット: `fix(auth): トークン検証でexpiry未チェックだった問題を修正` と `refactor(auth): ユーザー取得ロジックをrepositoryに移動`
+
+悪い例:
+
+- `fix: レビューコメントに基づくrunbookスキルと手順書の修正`
+- `fix: レビューコメント対応` で全指摘を1コミットにまとめる
+
+**amend + force push は絶対にしない。** メッセージを間違えても新しいコミットで対応します。
 
 コミット本文の末尾に Co-Authored-By トレーラを入れる。
 
@@ -163,7 +187,7 @@ gh pr edit --title "<更新後のタイトル>" --body-file /tmp/pr-body.md
 - 並列実行可能なステップ（`git status` と `gh pr view` の確認など）は並列で投げる
 - 変更内容の要約は `gh-collector` に委譲し、diff 全文をメインの文脈に持ち込まない
 - 本文を書き終えたら `doc-style-checker` に渡して検査する。PR description も成果物テキストなので `~/.claude/rules/communication-style.md` の検査対象
-- PR は **必ず draft で作成**。Ready for review への移行は別ステップ
+- PR は **必ず draft で作成**。Ready for review へ移すのは、自己レビューが済んでいることと CI が全てグリーンであることの **両方** を満たしてからにする。CI が赤いまま Ready にしない。CI の完了を待たずに Ready にしたい事情がある場合はユーザーに確認する
 - PRテンプレートがある場合は **その構造を厳守**
 - 本文は「背景／内容／論点」の3点に絞る。論点が無いなら論点セクションは省略する
 - diff から読み取れる事実（追加・削除・リネームしたシンボル、採用した API/ライブラリ名、変更ファイル一覧）は本文に書かない
