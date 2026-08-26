@@ -2,28 +2,45 @@
 
 各種ルールは `~/.claude/rules/` 配下に配置。詳細は各ファイルを参照。
 
-## 常時適用 (alwaysApply: true)
+**`~/.claude/rules/` のファイルは、既定で全文が毎コール読み込まれます。** `alwaysApply` は Claude Code が解釈しないフィールドなので、`false` にしても読み込みは止まりません。読み込みを絞れるのは `paths` frontmatter だけで、指定したグロブに一致するファイルを触るときだけ本文が入ります。
 
-- `communication-style.md` — 言葉遣い・文章スタイル（対話および成果物テキスト）
-- `shell-command-style.md` — シェルコマンドの書き方（権限プロンプト回避）
-- `subagent-tool-usage.md` — サブエージェントでのBash使用制限
-- `secret-file-access.md` — 秘密情報ファイルへのアクセス禁止
+したがって rules にファイルを足すと、全セッションの全コールに乗ります。追加するときは常時必要かを判断し、発動条件がファイルパスで表せるなら `paths` を付け、操作のタイミングで決まるなら skill か hook に置きます。
+
+## 常時読み込まれるもの
+
+- `communication-style.md` — 対話と文体・用語の共通ルール
 - `scope-discipline.md` — 設計判断の確認とスコープの絞り込み
-
-## オンデマンド適用 (alwaysApply: false)
-
-- `commit-message.md` — コミットメッセージとコミット分割
-- `confluence-jira-cli.md` — Confluence/Jira CLIのエラーハンドリング
+- `shell-command-style.md` — シェルコマンドの書き方（権限プロンプト回避）
+- `subagent-tool-usage.md` — 専用ツールを優先し Bash パイプラインを避ける
+- `secret-file-access.md` — 秘密情報ファイルへのアクセス禁止
 - `worktree-workflow.md` — git worktreeの運用ルール
-- `doc-driven.md` — ドキュメント駆動開発
-- `github-review.md` — GitHub PRレビューコメント書式
-- `external-review-feedback.md` — botレビュー指摘の検証手順
-- `pr-creation.md` — PR作成ワークフロー
-- `jira-markdown.md` — JIRA課題の記法
 - `repo-account-scope.md` — 変更が別リポジトリに属すると結論する前の確認
+- `doc-driven.md` — ドキュメント駆動開発
+- `jira-markdown.md` — JIRA課題の記法
+- `confluence-jira-cli.md` — Confluence/Jira CLIのエラーハンドリング
 - `local.md` — リポジトリ一覧（ローカル専用。chezmoi 未管理）
-- `pdf-post-processing.md` — PDF→Markdown変換後の後処理
-- `typescript-discriminated-union.md` — TypeScript判別共用体
+
+## paths で絞っているもの
+
+- `writing-artifacts.md` — 成果物テキストの構成と事実確認。`**/*.md` `**/*.mdx`
+- `typescript-discriminated-union.md` — TypeScript判別共用体。`**/*.ts` `**/*.tsx`
+
+## skill と hook に移したもの
+
+固定文脈から外すため、発動条件が操作タイミングで決まるものは移しました。
+
+- コミットメッセージと分割、PR の Ready 化条件 → `pr` スキル
+- bot レビュー指摘の検証手順、GitHub コメントの details 書式 → `pr-autofix` スキルと `gh-comment-format-guard.ts` hook
+
+## コンテキスト予算
+
+コストの過半は「同じ履歴の読み直し」です。読み直しの費用はその時点の文脈量にほぼ比例し、ツールを叩くたびに1回発生します。文脈を太らせないことが最も効きます。
+
+- **固定文脈だけで毎コール約 50k tok を払っています。** 会話を切るとこれを払い直すので、話題が続いているなら `/clear` より `/compact <残したい話題>` を先に使います。話題が完全に変わったときだけ新しい会話にします
+- メインの文脈は 200k tok を目安に畳みます。実測では 100コールを超えた会話が文脈 300k まで伸び、1コールあたりの費用が短い会話の約1.4倍になっています
+- **メインに入るツール出力の8割が Read と Bash です。** Read は `offset` / `limit` で範囲を絞り、全文を通す必要がある調査は `Explore` に委譲します。ファイル内容をメインに持ち込まずに済むなら持ち込みません
+- `grep` や `cat` を Bash で実行しません。Grep / Read ツールは出力が絞られるぶん文脈に残る量が少なく、権限プロンプトも出ません
+- 自動 compact は無効にしています（`autoCompactEnabled: false`）。畳むのは手動なので、`context-guard` hook の警告か statusline の文脈量を見て自分で判断します
 
 ## シェルは zsh。PowerShell ツールを使わない
 
@@ -103,7 +120,8 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 ### プロンプトの書き方
 
 - サブエージェントにメインの会話履歴は渡らない。起動時に読まれるのはシステムプロンプト、タスクメッセージ、CLAUDE.md 階層、git status、プリロードした skills だけ
-- `rules/*.md` は CLAUDE.md からパス参照されているだけで本文は展開されない。守らせたいルールはプロンプトに書くか、サブエージェント定義に埋め込む
+- サブエージェントの固定文脈は実測で 20〜32k tok。メインの 42〜62k より軽いのは、skills の一覧・MCP の定義・SessionStart hook の出力が入らないため。委譲が安いのは主にこの差から来る
+- `rules/*.md` がサブエージェントで展開されるかは未確認。守らせたいルールはプロンプトに書くか、サブエージェント定義に埋め込む
 - 期待する出力形式を明記する（構造化テキストや JSON）
 - 1つの診断フェーズは原則 1 サブエージェントにまとめる。タスクが独立している場合のみ並列化する
 - コマンドの `allowed-tools` に `Agent` を含める。`Agent` は既定で承認プロンプトの対象外なので、`permissions.allow` への追加は不要
