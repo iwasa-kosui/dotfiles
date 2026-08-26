@@ -45,9 +45,11 @@
 
 ## シェルは zsh。PowerShell ツールを使わない
 
-`CLAUDE_CODE_USE_POWERSHELL_TOOL` が空でない値だと、macOS でも PowerShell ツールとその説明文が読み込まれます。組織配信の `~/.claude/remote-settings.json` はこの変数に `"0"` を設定していますが、判定は値ではなく空かどうかなので、`"0"` でも有効になります。`dot_zshrc` で空文字を export して打ち消しています。
+`CLAUDE_CODE_USE_POWERSHELL_TOOL` が空でない値だと、macOS でも PowerShell ツールとその説明文が読み込まれます。組織配信の `~/.claude/remote-settings.json` はこの変数に `"0"` を設定していますが、判定は値ではなく空かどうかなので、`"0"` でも有効になります。
 
-それでもツールが出ているセッションでは使いません。このマシンに `pwsh` は入っておらず実行できないうえ、シェルは zsh なので、ツール説明にある Windows 前提の記法・制約は当てはまりません。コマンドは Bash ツールで実行します。
+この設定はユーザー側から打ち消せません。[設定の優先順位](https://code.claude.com/docs/en/settings.md)は managed settings が最上位で、組織配信の `env` はユーザーの `~/.claude/settings.json` の `env` より強く効きます。settings の `env` はシェルから継承した環境変数も上書きするため、`~/.zshrc` で空文字を export しても届きません。実測でも子プロセスに渡る値は `1` になります。
+
+したがって PowerShell ツールは出続けます。出ていても使いません。このマシンに `pwsh` は入っておらず実行できないうえ、シェルは zsh なので、ツール説明にある Windows 前提の記法・制約は当てはまりません。コマンドは Bash ツールで実行します。
 
 - 複数行のコミットメッセージを here-string `@'...'@` で渡さない。zsh はこれを here-string と解釈せず、単なるクォート連結として扱うため、本文の先頭と末尾に `@` が残る。一時ファイルに書いて `git commit -F <file>` で渡す。`commit-message-guard.ts` hook が `@` で始まるコミットメッセージをブロックする
 - `&&` `||` `??` `?.` は使える。「PowerShell 5.1 では parser error になる」という制約は当てはまらない
