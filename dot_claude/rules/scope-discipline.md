@@ -1,6 +1,5 @@
 ---
 description: 設計判断の確認とスコープの絞り込み
-alwaysApply: true
 ---
 
 # 設計判断とスコープ

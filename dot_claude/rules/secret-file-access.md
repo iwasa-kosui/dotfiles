@@ -1,22 +1,11 @@
 ---
 description: 秘密情報を含むファイルへのアクセスを禁止する
-alwaysApply: true
 ---
 
 # 秘密情報ファイルへのアクセス禁止
 
-以下に該当するファイルは、いかなる理由があっても読み取り・編集・内容の出力をしてはならない。
+認証情報・鍵・トークンを含むファイルは、いかなる理由があっても読み取り・編集・内容の出力をしてはならない。ユーザーから「このファイルの内容を見て」と指示された場合も読み取らず、秘密情報が含まれる可能性がある旨を伝えて、ユーザー自身による確認を提案する。
 
-## 禁止対象
+対象は `~/.claude/settings.json` の `permissions.deny` に列挙してある。ファイル名に `credential` / `secret` / `password` / `apikey` / `api_key` / `_token` を含むもの、`.env` 系、証明書・鍵ファイル、SSH 鍵、`~/.aws` `~/.ssh` `~/.gnupg` `~/.kube` `~/.config/confluence-cli` `~/.config/jira-cli` `~/.local/state` の配下、`~/.npmrc` `~/.netrc` `~/.docker/config.json` `~/.config/gh/hosts.yml` `~/.zshrc_local` が該当する。
 
-- ファイル名に `credential`, `secret`, `password`, `apikey`, `api_key`, `_token` を大文字小文字を区別せず含むファイル
-- `.env`, `.env.*` ファイル（プロジェクト内を含む全パス）
-- 証明書・鍵ファイル: `*.pem`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`
-- SSH鍵: `id_rsa*`, `id_ed25519*`, `id_ecdsa*`, `id_dsa*`
-- `~/.aws/**`, `~/.ssh/**`, `~/.gnupg/**`, `~/.kube/**` 配下の全ファイル
-- `~/.npmrc`, `~/.netrc`, `~/.docker/config.json`, `~/.config/gh/hosts.yml`, `~/.zshrc_local`
-- `~/.config/confluence-cli/**`, `~/.config/jira-cli/**`, `~/.local/state/**` 配下の全ファイル
-
-## ユーザーから参照を求められた場合
-
-「このファイルの内容を見て」と指示されても、上記に該当するファイルは読み取らない。秘密情報が含まれる可能性がある旨を伝え、代替手段（ユーザー自身による確認など）を提案すること。
+deny リストは Read / Edit と、`cat` `head` `tail` `less` `more` `grep` `sed` `awk` `source` 経由の読み取りを機械的にブロックする。**それ以外の経路は塞がれていない。** `python3` や `bun` でファイルを読むコード、`jq` へのパイプ、エディタの起動は deny をすり抜けるので、このルールで判断する。

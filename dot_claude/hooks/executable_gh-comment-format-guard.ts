@@ -10,14 +10,16 @@ import { readInput } from "./lib.ts";
 
 const SUMMARY_LINE = "<summary>🤖 Claude Code</summary>";
 
-const REASON = `GitHub の PR/Issue コメント本文は details ブロックで囲む必要があります（github-review.md ルール）。次の形式にしてください。
+const REASON = `GitHub の PR/Issue コメント本文は details ブロックで囲む必要があります。次の形式にしてください。
 
 <details>
 <summary>🤖 Claude Code</summary>
 
 本文
 
-</details>`;
+</details>
+
+<summary> 行の後と </details> の前の空行は必須です。空行がないと GitHub が中身を Markdown として解釈せず、リストや見出しが素のテキストで表示されます。`;
 
 const input = await readInput<{
   cwd?: string;

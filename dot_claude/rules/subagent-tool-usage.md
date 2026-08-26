@@ -1,6 +1,5 @@
 ---
 description: サブエージェントでのBash使用制限
-alwaysApply: true
 ---
 
 # サブエージェント（Agent）での Bash 使用制限

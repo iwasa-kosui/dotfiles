@@ -1,6 +1,5 @@
 ---
 description: Bashツールでシェルコマンドを実行する際の書き方ルール
-alwaysApply: true
 ---
 
 # シェルコマンドの書き方

@@ -1,6 +1,5 @@
 ---
 description: git worktreeの運用ルール
-alwaysApply: false
 ---
 
 # Worktree Workflow
