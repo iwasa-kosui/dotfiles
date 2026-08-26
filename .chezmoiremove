@@ -1,0 +1,9 @@
+# chezmoi apply は管理対象から外れただけのファイルを削除しない。
+# ソースから消したうえで配置済みの実体も消したいものをここに列挙する。
+
+# skill と hook へ移した rules。~/.claude/rules/ に残ると毎コール読み込まれる。
+# 内容は pr スキルと pr-autofix スキル、gh-comment-format-guard.ts hook が持つ。
+.claude/rules/commit-message.md
+.claude/rules/pr-creation.md
+.claude/rules/external-review-feedback.md
+.claude/rules/github-review.md
