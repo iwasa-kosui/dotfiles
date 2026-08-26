@@ -18,7 +18,6 @@
 - `doc-driven.md` — ドキュメント駆動開発
 - `jira-markdown.md` — JIRA課題の記法
 - `confluence-jira-cli.md` — Confluence/Jira CLIのエラーハンドリング
-- `local.md` — リポジトリ一覧（ローカル専用。chezmoi 未管理）
 
 ## paths で絞っているもの
 
@@ -32,6 +31,8 @@
 - コミットメッセージと分割、PR の Ready 化条件 → `pr` スキル
 - bot レビュー指摘の検証手順、GitHub コメントの details 書式 → `pr-autofix` スキルと `gh-comment-format-guard.ts` hook
 
+移動元のファイルはリポジトリの `.chezmoiremove` に列挙します。`chezmoi apply` は管理対象から外れただけのファイルを削除しないため、ソースから消しても `~/.claude/rules/` に実体が残り、読み込まれ続けます。
+
 ## コンテキスト予算
 
 コストの過半は「同じ履歴の読み直し」です。読み直しの費用はその時点の文脈量にほぼ比例し、ツールを叩くたびに1回発生します。文脈を太らせないことが最も効きます。
@@ -44,9 +45,11 @@
 
 ## シェルは zsh。PowerShell ツールを使わない
 
-`CLAUDE_CODE_USE_POWERSHELL_TOOL` が空でない値だと、macOS でも PowerShell ツールとその説明文が読み込まれます。組織配信の `~/.claude/remote-settings.json` はこの変数に `"0"` を設定していますが、判定は値ではなく空かどうかなので、`"0"` でも有効になります。`dot_zshrc` で空文字を export して打ち消しています。
+`CLAUDE_CODE_USE_POWERSHELL_TOOL` が空でない値だと、macOS でも PowerShell ツールとその説明文が読み込まれます。組織配信の `~/.claude/remote-settings.json` はこの変数に `"0"` を設定していますが、判定は値ではなく空かどうかなので、`"0"` でも有効になります。
 
-それでもツールが出ているセッションでは使いません。このマシンに `pwsh` は入っておらず実行できないうえ、シェルは zsh なので、ツール説明にある Windows 前提の記法・制約は当てはまりません。コマンドは Bash ツールで実行します。
+この設定はユーザー側から打ち消せません。[設定の優先順位](https://code.claude.com/docs/en/settings.md)は managed settings が最上位で、組織配信の `env` はユーザーの `~/.claude/settings.json` の `env` より強く効きます。settings の `env` はシェルから継承した環境変数も上書きするため、`~/.zshrc` で空文字を export しても届きません。実測でも子プロセスに渡る値は `1` になります。
+
+したがって PowerShell ツールは出続けます。出ていても使いません。このマシンに `pwsh` は入っておらず実行できないうえ、シェルは zsh なので、ツール説明にある Windows 前提の記法・制約は当てはまりません。コマンドは Bash ツールで実行します。
 
 - 複数行のコミットメッセージを here-string `@'...'@` で渡さない。zsh はこれを here-string と解釈せず、単なるクォート連結として扱うため、本文の先頭と末尾に `@` が残る。一時ファイルに書いて `git commit -F <file>` で渡す。`commit-message-guard.ts` hook が `@` で始まるコミットメッセージをブロックする
 - `&&` `||` `??` `?.` は使える。「PowerShell 5.1 では parser error になる」という制約は当てはまらない
@@ -125,5 +128,3 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 - 期待する出力形式を明記する（構造化テキストや JSON）
 - 1つの診断フェーズは原則 1 サブエージェントにまとめる。タスクが独立している場合のみ並列化する
 - コマンドの `allowed-tools` に `Agent` を含める。`Agent` は既定で承認プロンプトの対象外なので、`permissions.allow` への追加は不要
-
-@RTK.md
