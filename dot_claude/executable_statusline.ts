@@ -22,6 +22,8 @@ interface StdinInput {
       cache_read_input_tokens?: number;
     };
   };
+  effort?: { level?: string };
+  pr?: { number?: number; url?: string };
 }
 
 // Tokyo Night: claude-powerline の tokyo-night テーマに合わせた配色
@@ -41,6 +43,8 @@ const CAP_LEFT = "\ue0b6"; // nf-pl-left_half_circle_thick
 const CAP_RIGHT = "\ue0b4"; // nf-pl-right_half_circle_thick
 const WORKTREE_ICON = "\uf1bb"; // nf-fa-tree
 const WARN_ICON = "\uf071"; // nf-fa-warning
+const EFFORT_ICON = "\uf0e4"; // nf-fa-dashboard
+const PR_ICON = "\uf407"; // nf-oct-git_pull_request
 
 const capsule = (
   bg: readonly number[],
@@ -52,10 +56,22 @@ const capsule = (
   `${bgC(bg)}${fgC(fg)}${attr} ${text} ${RESET}` +
   `${fgC(bg)}${CAP_RIGHT}${RESET}`;
 
-const formatTokens = (n: number) =>
-  n >= 1_000_000
-    ? `${(n / 1_000_000).toFixed(2)}M`
-    : `${(n / 1_000).toFixed(1)}k`;
+// 3桁区切りの K / M は4桁区切りの日本語だと量が掴みにくいので、万・億に置き換える
+const jaCount = (n: number) => {
+  const trim = (s: string) => s.replace(/\.0$/, "");
+  if (n >= 100_000_000) return `${trim((n / 100_000_000).toFixed(1))}億`;
+  if (n >= 10_000) {
+    const man = n / 10_000;
+    return man >= 100 ? `${Math.round(man)}万` : `${trim(man.toFixed(1))}万`;
+  }
+  return `${Math.round(n)}`;
+};
+
+const jaTokens = (n: number) => `${jaCount(n)}トークン`;
+
+// OSC 8。対応端末では text がクリック可能になる
+const link = (url: string, text: string) =>
+  `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
 
 const raw = await Bun.stdin.text();
 
@@ -74,7 +90,18 @@ const proc = Bun.spawn(["claude-powerline"], {
 const out = await new Response(proc.stdout).text();
 await proc.exited;
 
-process.stdout.write(out);
+// claude-powerline の session セグメント（`§ 3.4M tokens`）だけを日本語表記にする。
+// `§ ` を含めてマッチさせることで today など他セグメントの tokens 表記には触らない
+const localizeSessionTokens = (s: string) =>
+  s.replace(
+    /§ (\d+(?:\.\d+)?)([KM])? tokens/,
+    (_, num: string, unit?: string) => {
+      const scale = unit === "M" ? 1_000_000 : unit === "K" ? 1_000 : 1;
+      return `§ ${jaTokens(Number(num) * scale)}`;
+    },
+  );
+
+process.stdout.write(localizeSessionTokens(out));
 
 const cwd = input.workspace?.current_dir ?? input.cwd ?? "";
 const worktreeName = cwd ? await getWorktreeName(cwd) : null;
@@ -87,10 +114,22 @@ const contextTokens = usage
     (usage.cache_read_input_tokens ?? 0)
   : null;
 
+const effortLevel = input.effort?.level ?? null;
+const prNumber = input.pr?.number ?? null;
+const prUrl = input.pr?.url ?? null;
+
 const extras: string[] = [];
 
 if (worktreeName) {
   extras.push(capsule(BG, FG, `${WORKTREE_ICON} ${worktreeName}`, DIM));
+}
+
+if (prNumber !== null && prUrl) {
+  extras.push(link(prUrl, capsule(BG, FG, `${PR_ICON} #${prNumber}`, DIM)));
+}
+
+if (effortLevel) {
+  extras.push(capsule(BG, FG, `${EFFORT_ICON} ${effortLevel}`, DIM));
 }
 
 if (contextTokens !== null && contextTokens > CONTEXT_WARN_TOKENS) {
@@ -98,7 +137,7 @@ if (contextTokens !== null && contextTokens > CONTEXT_WARN_TOKENS) {
     capsule(
       WARN_BG,
       WARN_FG,
-      `${WARN_ICON} CONTEXT ${formatTokens(contextTokens)}`,
+      `${WARN_ICON} CONTEXT ${jaCount(contextTokens)}`,
       BOLD,
     ),
   );
