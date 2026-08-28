@@ -25,6 +25,9 @@ dot_config/nvim/README.md
 .local/lib/rpt/template/.astro-cache
 .local/lib/rpt/template/.vite-cache
 
+# web-fetch dependencies are restored by `bun install` and regenerate locally.
+.local/lib/web-fetch/node_modules
+
 # macOS artifacts
 **/.DS_Store
 
