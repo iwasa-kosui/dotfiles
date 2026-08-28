@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
 // Claude Code statusline
-// claude-powerline に描画を任せ、worktree名とコンテキスト超過警告を capsule として追記する。
-// claude-powerline には worktree名の segment がなく、context segment の色は
-// コンテキストウィンドウに対する残り割合の固定閾値でしか変わらないため、
-// 1Mコンテキストで0.2Mを超えたことを絶対トークン数で警告できない。
-
-import { getWorktreeName } from "./hooks/lib.ts";
+// claude-powerline を子プロセスとして実行し、出力をラップする薄いスクリプト。
+// claude-powerline には無い PR番号・effort level・コンテキスト超過警告の3つを
+// capsule として追記する。PR番号は OSC 8 でリンクし、PR番号と effort level は
+// stdin の JSON に該当フィールドがあるときだけ出す。コンテキスト警告は、
+// context segment の色が残り割合の固定閾値でしか変わらず、1Mコンテキストで
+// 0.2Mを超えたことを絶対トークン数で警告できないため自前で持つ。
+// さらに session segment のトークン数を、後処理で万・億表記に置き換える。
 
 // 1Mコンテキストのセッションでも0.2Mを超えたら警告する。
 // 割合ではなく絶対トークン数で判定するのは、1Mでは0.2Mが20%にすぎず
@@ -13,8 +14,6 @@ import { getWorktreeName } from "./hooks/lib.ts";
 const CONTEXT_WARN_TOKENS = 200_000;
 
 interface StdinInput {
-  cwd?: string;
-  workspace?: { current_dir?: string };
   context_window?: {
     current_usage?: {
       input_tokens?: number;
@@ -41,7 +40,6 @@ const BOLD = "\x1b[1m";
 // Nerd Font の Private Use Area はエディタやツールを通すと欠落しやすいためエスケープで書く
 const CAP_LEFT = "\ue0b6"; // nf-pl-left_half_circle_thick
 const CAP_RIGHT = "\ue0b4"; // nf-pl-right_half_circle_thick
-const WORKTREE_ICON = "\uf1bb"; // nf-fa-tree
 const WARN_ICON = "\uf071"; // nf-fa-warning
 const EFFORT_ICON = "\uf0e4"; // nf-fa-dashboard
 const PR_ICON = "\uf407"; // nf-oct-git_pull_request
@@ -103,9 +101,6 @@ const localizeSessionTokens = (s: string) =>
 
 process.stdout.write(localizeSessionTokens(out));
 
-const cwd = input.workspace?.current_dir ?? input.cwd ?? "";
-const worktreeName = cwd ? await getWorktreeName(cwd) : null;
-
 // current_usage は Claude Code 2.0.70+ でのみ渡ってくる。無い場合は警告を出さない。
 const usage = input.context_window?.current_usage;
 const contextTokens = usage
@@ -119,10 +114,6 @@ const prNumber = input.pr?.number ?? null;
 const prUrl = input.pr?.url ?? null;
 
 const extras: string[] = [];
-
-if (worktreeName) {
-  extras.push(capsule(BG, FG, `${WORKTREE_ICON} ${worktreeName}`, DIM));
-}
 
 if (prNumber !== null && prUrl) {
   extras.push(link(prUrl, capsule(BG, FG, `${PR_ICON} #${prNumber}`, DIM)));

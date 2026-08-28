@@ -10,7 +10,7 @@
       {
         "segments": {
           "directory": {
-            "enabled": true,
+            "enabled": false,
             "style": "basename"
           },
           "git": {
