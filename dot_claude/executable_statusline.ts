@@ -1,11 +1,12 @@
 #!/usr/bin/env bun
 // Claude Code statusline
-// claude-powerline に描画を任せ、worktree名とコンテキスト超過警告を capsule として追記する。
-// claude-powerline には worktree名の segment がなく、context segment の色は
-// コンテキストウィンドウに対する残り割合の固定閾値でしか変わらないため、
-// 1Mコンテキストで0.2Mを超えたことを絶対トークン数で警告できない。
-
-import { getWorktreeName } from "./hooks/lib.ts";
+// claude-powerline を子プロセスとして実行し、出力をラップする薄いスクリプト。
+// claude-powerline には無い PR番号・effort level・コンテキスト超過警告の3つを
+// capsule として追記する。PR番号は OSC 8 でリンクし、PR番号と effort level は
+// stdin の JSON に該当フィールドがあるときだけ出す。コンテキスト警告は、
+// context segment の色が残り割合の固定閾値でしか変わらず、1Mコンテキストで
+// 0.2Mを超えたことを絶対トークン数で警告できないため自前で持つ。
+// さらに session segment のトークン数を、後処理で万・億表記に置き換える。
 
 // 1Mコンテキストのセッションでも0.2Mを超えたら警告する。
 // 割合ではなく絶対トークン数で判定するのは、1Mでは0.2Mが20%にすぎず
@@ -13,8 +14,6 @@ import { getWorktreeName } from "./hooks/lib.ts";
 const CONTEXT_WARN_TOKENS = 200_000;
 
 interface StdinInput {
-  cwd?: string;
-  workspace?: { current_dir?: string };
   context_window?: {
     current_usage?: {
       input_tokens?: number;
@@ -22,6 +21,8 @@ interface StdinInput {
       cache_read_input_tokens?: number;
     };
   };
+  effort?: { level?: string };
+  pr?: { number?: number; url?: string };
 }
 
 // Tokyo Night: claude-powerline の tokyo-night テーマに合わせた配色
@@ -39,8 +40,9 @@ const BOLD = "\x1b[1m";
 // Nerd Font の Private Use Area はエディタやツールを通すと欠落しやすいためエスケープで書く
 const CAP_LEFT = "\ue0b6"; // nf-pl-left_half_circle_thick
 const CAP_RIGHT = "\ue0b4"; // nf-pl-right_half_circle_thick
-const WORKTREE_ICON = "\uf1bb"; // nf-fa-tree
 const WARN_ICON = "\uf071"; // nf-fa-warning
+const EFFORT_ICON = "\uf0e4"; // nf-fa-dashboard
+const PR_ICON = "\uf407"; // nf-oct-git_pull_request
 
 const capsule = (
   bg: readonly number[],
@@ -52,10 +54,22 @@ const capsule = (
   `${bgC(bg)}${fgC(fg)}${attr} ${text} ${RESET}` +
   `${fgC(bg)}${CAP_RIGHT}${RESET}`;
 
-const formatTokens = (n: number) =>
-  n >= 1_000_000
-    ? `${(n / 1_000_000).toFixed(2)}M`
-    : `${(n / 1_000).toFixed(1)}k`;
+// 3桁区切りの K / M は4桁区切りの日本語だと量が掴みにくいので、万・億に置き換える
+const jaCount = (n: number) => {
+  const trim = (s: string) => s.replace(/\.0$/, "");
+  if (n >= 100_000_000) return `${trim((n / 100_000_000).toFixed(1))}億`;
+  if (n >= 10_000) {
+    const man = n / 10_000;
+    return man >= 100 ? `${Math.round(man)}万` : `${trim(man.toFixed(1))}万`;
+  }
+  return `${Math.round(n)}`;
+};
+
+const jaTokens = (n: number) => `${jaCount(n)}トークン`;
+
+// OSC 8。対応端末では text がクリック可能になる
+const link = (url: string, text: string) =>
+  `\x1b]8;;${url}\x1b\\${text}\x1b]8;;\x1b\\`;
 
 const raw = await Bun.stdin.text();
 
@@ -74,10 +88,18 @@ const proc = Bun.spawn(["claude-powerline"], {
 const out = await new Response(proc.stdout).text();
 await proc.exited;
 
-process.stdout.write(out);
+// claude-powerline の session セグメント（`§ 3.4M tokens`）だけを日本語表記にする。
+// `§ ` を含めてマッチさせることで today など他セグメントの tokens 表記には触らない
+const localizeSessionTokens = (s: string) =>
+  s.replace(
+    /§ (\d+(?:\.\d+)?)([KM])? tokens/,
+    (_, num: string, unit?: string) => {
+      const scale = unit === "M" ? 1_000_000 : unit === "K" ? 1_000 : 1;
+      return `§ ${jaTokens(Number(num) * scale)}`;
+    },
+  );
 
-const cwd = input.workspace?.current_dir ?? input.cwd ?? "";
-const worktreeName = cwd ? await getWorktreeName(cwd) : null;
+process.stdout.write(localizeSessionTokens(out));
 
 // current_usage は Claude Code 2.0.70+ でのみ渡ってくる。無い場合は警告を出さない。
 const usage = input.context_window?.current_usage;
@@ -87,10 +109,18 @@ const contextTokens = usage
     (usage.cache_read_input_tokens ?? 0)
   : null;
 
+const effortLevel = input.effort?.level ?? null;
+const prNumber = input.pr?.number ?? null;
+const prUrl = input.pr?.url ?? null;
+
 const extras: string[] = [];
 
-if (worktreeName) {
-  extras.push(capsule(BG, FG, `${WORKTREE_ICON} ${worktreeName}`, DIM));
+if (prNumber !== null && prUrl) {
+  extras.push(link(prUrl, capsule(BG, FG, `${PR_ICON} #${prNumber}`, DIM)));
+}
+
+if (effortLevel) {
+  extras.push(capsule(BG, FG, `${EFFORT_ICON} ${effortLevel}`, DIM));
 }
 
 if (contextTokens !== null && contextTokens > CONTEXT_WARN_TOKENS) {
@@ -98,7 +128,7 @@ if (contextTokens !== null && contextTokens > CONTEXT_WARN_TOKENS) {
     capsule(
       WARN_BG,
       WARN_FG,
-      `${WARN_ICON} CONTEXT ${formatTokens(contextTokens)}`,
+      `${WARN_ICON} CONTEXT ${jaCount(contextTokens)}`,
       BOLD,
     ),
   );
