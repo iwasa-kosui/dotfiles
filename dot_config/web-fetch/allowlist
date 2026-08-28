@@ -1,0 +1,15 @@
+# web-fetch が取得を許可するドメイン。1行1ドメイン。
+# 先頭が . の行はそのドメインとサブドメインの両方に一致する。
+code.claude.com
+docs.anthropic.com
+www.anthropic.com
+.github.com
+raw.githubusercontent.com
+developer.mozilla.org
+nodejs.org
+bun.sh
+www.typescriptlang.org
+registry.npmjs.org
+cybozu.dev
+developer.atlassian.com
+support.atlassian.com

@@ -1,0 +1,11 @@
+{{ if eq .chezmoi.os "darwin" -}}
+#!/bin/zsh
+# web-fetch package.json hash: {{ include "dot_local/lib/web-fetch/package.json" | sha256sum }}
+# web-fetch bun.lock hash: {{ include "dot_local/lib/web-fetch/bun.lock" | sha256sum }}
+set -euo pipefail
+
+if command -v bun &> /dev/null; then
+  cd "{{ .chezmoi.homeDir }}/.local/lib/web-fetch"
+  bun install --frozen-lockfile --force
+fi
+{{ end -}}
