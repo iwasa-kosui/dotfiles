@@ -55,7 +55,18 @@ if (event === "WorktreeCreate") {
     process.exit(0);
   }
 
-  await run(["git", "-C", repoRoot, "worktree", "add", wtPath, "-b", name]);
+  await run(["git", "-C", repoRoot, "fetch", "origin", "main"]);
+  await run([
+    "git",
+    "-C",
+    repoRoot,
+    "worktree",
+    "add",
+    wtPath,
+    "-b",
+    name,
+    "origin/main",
+  ]);
   console.log(wtPath);
 } else if (event === "WorktreeRemove") {
   if (!name) {
