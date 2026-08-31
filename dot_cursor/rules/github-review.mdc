@@ -5,17 +5,14 @@ alwaysApply: false
 
 # GitHub レビュー
 
-レビューコメント・PRコメントを送信する時は、本文全体を details ブロックで囲む。
+レビューコメント・PRコメントを送信する時は、エージェントの発言全体を引用記法で囲む。
 
-````markdown
-<details>
-<summary>🤖 Claude Code</summary>
+```markdown
+> 🤖 Claude Code
+>
+> 本文
+```
 
-本文
-
-</details>
-````
-
-`<summary>` 行の後と `</details>` の前には空行を入れる。空行がないとGitHubが中身をMarkdownとして解釈せず、リストや見出しが素のテキストとして表示される。
+署名行より上は引用の外に置ける。ユーザーが自分のコメントを書く場所になる。`> 🤖 Claude Code` の行以降は、空行を含めてすべて行頭を `>` にする。
 
 `gh-comment-format-guard.ts` hook がこの書式を強制するため、囲まずに送信しようとするとブロックされる。

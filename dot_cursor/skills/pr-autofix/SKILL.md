@@ -88,17 +88,14 @@ active スレッドが1件以上あるときだけ起動します。0件なら�
 4. `gh pr checks --watch --interval 30 <PR>` で CI を待つ。30分を超えたらユーザーに状況を確認する
 5. 解決した `actionable` なスレッドに返信する
 
-返信は本文全体を details ブロックで囲みます（`~/.cursor/rules/github-review.mdc`）。囲まないと `gh-comment-format-guard.ts` hook にブロックされます。コミットハッシュは半角括弧で囲みます。
+返信はエージェントの発言を引用記法で囲みます（`~/.cursor/rules/github-review.mdc`）。囲まないと `gh-comment-format-guard.ts` hook にブロックされます。署名行以降はすべて行頭を `>` で始めます。コミットハッシュは半角括弧で囲みます。
 
 ```bash
 sha=$(git rev-parse --short HEAD)
 cat > /tmp/pr-reply.md <<EOF
-<details>
-<summary>🤖 <実行中のエージェント名></summary>
-
-修正しました ($sha)
-
-</details>
+> 🤖 <実行中のエージェント名>
+>
+> 修正しました ($sha)
 EOF
 gh api repos/{owner}/{repo}/pulls/{pr}/comments/{comment_id}/replies -F body=@/tmp/pr-reply.md
 ```
