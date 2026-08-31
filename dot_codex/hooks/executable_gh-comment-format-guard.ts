@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 // PreToolUse hook: gh コマンドで PR/Issue のコメントを投稿・更新するとき、
-// 本文全体を <details><summary>🤖 Codex</summary> … </details> で
+// エージェントの発言を `> 🤖 Codex` の署名行以降、引用記法で
 // 囲むことを強制する
 
 import { homedir } from "node:os";
@@ -8,16 +8,15 @@ import { isAbsolute, resolve } from "node:path";
 
 import { readInput } from "./lib.ts";
 
-const SUMMARY_LINE = "<summary>🤖 Codex</summary>";
+const SIGNATURE_LINE = "> 🤖 Codex";
 
-const REASON = `GitHub の PR/Issue コメント本文は details ブロックで囲む必要があります（github-review.md ルール）。次の形式にしてください。
+const REASON = `GitHub の PR/Issue コメント本文は、エージェントの発言を引用記法で囲む必要があります（github-review.md ルール）。次の形式にしてください。
 
-<details>
-<summary>🤖 Codex</summary>
+> 🤖 Codex
+>
+> 修正しました (e4dcbb406)
 
-本文
-
-</details>`;
+\`> 🤖 Codex\` の行以降は、空行を含めてすべて行頭を \`>\` にします。署名行より上は引用の外に置けるので、ユーザーの追記はそこに入ります。`;
 
 const input = await readInput<{
   cwd?: string;
@@ -132,13 +131,17 @@ function extractJsonBody(text: string): string | null {
   }
 }
 
-function isWrapped(text: string): boolean {
-  const trimmed = text.trim();
-  return (
-    trimmed.startsWith("<details>") &&
-    trimmed.endsWith("</details>") &&
-    trimmed.includes(SUMMARY_LINE)
+function isQuoted(text: string): boolean {
+  const lines = text.split("\n");
+  const signatureIndex = lines.findIndex(
+    (line) => line.trim() === SIGNATURE_LINE,
   );
+  if (signatureIndex === -1) return false;
+
+  return lines.slice(signatureIndex).every((line) => {
+    const trimmed = line.trim();
+    return trimmed === "" || trimmed.startsWith(">");
+  });
 }
 
 const source = detectBody();
@@ -148,14 +151,14 @@ if (source.kind === "none") {
 }
 
 if (source.kind === "literal") {
-  if (isWrapped(source.text)) allow();
+  if (isQuoted(source.text)) allow();
   block();
 }
 
 if (source.kind === "opaque") {
-  // 展開前の値しか見えないので、コマンド全体に details ブロックが
+  // 展開前の値しか見えないので、コマンド全体に署名行が
   // 書かれているかで判定する
-  if (command.includes(SUMMARY_LINE)) allow();
+  if (command.includes(SIGNATURE_LINE)) allow();
   block();
 }
 
@@ -167,13 +170,13 @@ const bodyText =
       ? extractJsonBody(fileText)
       : fileText;
 
-if (bodyText !== null && isWrapped(bodyText)) {
+if (bodyText !== null && isQuoted(bodyText)) {
   allow();
 }
 
 // 同じコマンド内のヒアドキュメントでこれから書き込む場合、
 // ファイルはまだ存在しないか古い内容のままになる
-if (command.includes(SUMMARY_LINE)) {
+if (command.includes(SIGNATURE_LINE)) {
   allow();
 }
 
