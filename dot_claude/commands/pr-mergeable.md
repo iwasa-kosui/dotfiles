@@ -15,7 +15,7 @@ PR を診断し、マージ可能にするための完了条件プロンプト�
 ### ステップ1: 診断
 
 ```bash
-bun ~/.claude/skills/pr-autofix/scripts/collect.ts $ARGUMENTS
+pr-autofix collect $ARGUMENTS
 ```
 
 引数に PR 番号か URL があればそれを、なければ現在ブランチの PR を対象にします。PR が見つからずコマンドが失敗した場合は、その旨を報告して終了します。

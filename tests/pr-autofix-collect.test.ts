@@ -6,13 +6,7 @@ import {
   isFailedCheck,
   oneLine,
   truncate,
-} from "../dot_claude/skills/pr-autofix/scripts/collect";
-
-const RUNTIME_SCRIPTS = [
-  "dot_claude/skills/pr-autofix/scripts/collect.ts",
-  "dot_codex/skills/pr-autofix/scripts/collect.ts",
-  "dot_cursor/skills/pr-autofix/scripts/collect.ts",
-];
+} from "../dot_local/lib/agent-cli/pr-autofix";
 
 describe("pr-autofix collect", () => {
   test("strips the gh run view log prefix from error lines", () => {
@@ -79,12 +73,4 @@ describe("pr-autofix collect", () => {
     expect(isFailedCheck({})).toBe(false);
   });
 
-  test("every runtime ships the same collect script", async () => {
-    const [claude, ...others] = await Promise.all(
-      RUNTIME_SCRIPTS.map((path) => Bun.file(path).text()),
-    );
-    for (const [index, text] of others.entries()) {
-      expect(text, RUNTIME_SCRIPTS[index + 1]).toBe(claude!);
-    }
-  });
 });

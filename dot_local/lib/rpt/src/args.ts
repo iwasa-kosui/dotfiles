@@ -16,10 +16,15 @@ export const usage = `rpt — AI-native HTML report builder
 Turn AI-authored, restricted MDX into a self-contained HTML report.
 
 Usage: rpt build <input.mdx|-> -o <output.html>
+       rpt preview <report.html> [--port <port>]
 
 Quick start:
   rpt build report.mdx -o report.html
   cat report.mdx | rpt build - -o report.html
+  rpt preview report.html
+
+Preview serves only the selected HTML on 0.0.0.0 and prints a verified Meshnet URL.
+It chooses an available port by default. Keep the process running until finished.
 
 AI authoring contract:
   Required frontmatter:

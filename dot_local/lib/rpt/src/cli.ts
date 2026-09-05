@@ -1,15 +1,16 @@
 import { resolve } from "node:path";
 import { parseArgs, usage } from "./args.ts";
-import { buildReport } from "./build.ts";
-import { inlineAssets } from "./inline-assets.ts";
 import { readInput } from "./input.ts";
 import { checkOutput, writeOutput } from "./output.ts";
 import type { Failure } from "./result.ts";
-import { validateReport } from "./validate.ts";
 
 const version = "0.1.0";
 
 export async function runCli(argv: readonly string[]): Promise<number> {
+  if (argv[0] === "preview") {
+    const { runPreview } = await import("./preview.ts");
+    return runPreview(argv.slice(1));
+  }
   const command = parseArgs(argv);
   if (!command.ok) {
     writeFailure(command.error);
@@ -24,6 +25,9 @@ export async function runCli(argv: readonly string[]): Promise<number> {
       console.log(version);
       return 0;
     case "build": {
+      const [{ buildReport }, { inlineAssets }, { validateReport }] = await Promise.all([
+        import("./build.ts"), import("./inline-assets.ts"), import("./validate.ts"),
+      ]);
       const outputPath = resolve(process.cwd(), command.value.output);
       const outputCheck = await checkOutput(outputPath, command.value.force);
       if (!outputCheck.ok) {

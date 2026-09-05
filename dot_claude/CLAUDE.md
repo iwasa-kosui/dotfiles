@@ -1,37 +1,4 @@
-# ルールファイルへのリファレンス
-
-各種ルールは `~/.claude/rules/` 配下に配置。詳細は各ファイルを参照。
-
-**`~/.claude/rules/` のファイルは、既定で全文が毎コール読み込まれます。** `alwaysApply` は Claude Code が解釈しないフィールドなので、`false` にしても読み込みは止まりません。読み込みを絞れるのは `paths` frontmatter だけで、指定したグロブに一致するファイルを触るときだけ本文が入ります。
-
-したがって rules にファイルを足すと、全セッションの全コールに乗ります。追加するときは常時必要かを判断し、発動条件がファイルパスで表せるなら `paths` を付け、操作のタイミングで決まるなら skill か hook に置きます。
-
-## 常時読み込まれるもの
-
-- `communication-style.md` — 対話と文体・用語の共通ルール
-- `scope-discipline.md` — 設計判断の確認とスコープの絞り込み
-- `shell-command-style.md` — シェルコマンドの書き方（権限プロンプト回避）
-- `subagent-tool-usage.md` — 専用ツールを優先し Bash パイプラインを避ける
-- `secret-file-access.md` — 秘密情報ファイルへのアクセス禁止
-- `worktree-workflow.md` — git worktreeの運用ルール
-- `repo-account-scope.md` — 変更が別リポジトリに属すると結論する前の確認
-- `doc-driven.md` — ドキュメント駆動開発
-- `jira-markdown.md` — JIRA課題の記法
-- `confluence-jira-cli.md` — Confluence/Jira CLIのエラーハンドリング
-
-## paths で絞っているもの
-
-- `writing-artifacts.md` — 成果物テキストの構成と事実確認。`**/*.md` `**/*.mdx`
-- `typescript-discriminated-union.md` — TypeScript判別共用体。`**/*.ts` `**/*.tsx`
-
-## skill と hook に移したもの
-
-固定文脈から外すため、発動条件が操作タイミングで決まるものは移しました。
-
-- コミットメッセージと分割、PR の Ready 化条件 → `pr` スキル
-- bot レビュー指摘の検証手順、GitHub コメントの details 書式 → `pr-autofix` スキルと `gh-comment-format-guard.ts` hook
-
-移動元のファイルはリポジトリの `.chezmoiremove` に列挙します。`chezmoi apply` は管理対象から外れただけのファイルを削除しないため、ソースから消しても `~/.claude/rules/` に実体が残り、読み込まれ続けます。
+# Claude Code
 
 ## コンテキスト予算
 
@@ -73,7 +40,7 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 
 `CLAUDE_CODE_SUBAGENT_MODEL` に具体的なモデル名を入れると、それがモデル解決の最優先になり、サブエージェント定義の `model` frontmatter と Agent 呼び出し時の `model` パラメータの両方を上書きする。エージェントごとにモデルを選べなくなるので、この変数は `inherit` にしている。`inherit` を未設定と同じ扱いにする挙動は v2.1.196 以降。
 
-したがってモデルは `~/.claude/agents/*.md` の `model:` frontmatter で決まる。収集・診断系は `sonnet`、整形と書き出しだけの `handoff-writer` は `haiku` を指定している。
+したがってモデルは `~/.claude/agents/*.md` の `model:` frontmatter で決まる。収集・診断系は各エージェント定義のモデルを使う。
 
 **builtin の `Explore` / `Plan` / `general-purpose` は frontmatter を持たない。** 指定しないとセッションのモデル（Opus）を継承するので、builtin を使う場合は Agent 呼び出し時に `model: "sonnet"` を明示する。役割別の専用エージェントを定義してあるのは、この明示を忘れる余地を消すためでもある。
 
@@ -88,15 +55,13 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 - `doc-reader` — ドキュメント・設定ファイル・ログの読み取りと要約。結論と `file:line` の根拠だけを返す。Haiku
 - `code-analyzer` — コードの調査と分析。定義箇所の特定、呼び出し関係の追跡、条件分岐の洗い出し、不具合の原因箇所の絞り込み
 - `code-editor` — コードと設定ファイルの編集・新規作成。適用した変更を `file:line` と変更後の該当行の引用で返す
-- `doc-editor` — Markdown の編集・新規作成。文体ルールを定義本文に埋め込んであるため、司令塔が毎回指示しなくてよい
+- `doc-editor` — Markdown の編集・新規作成。指定された内容を文書に反映する
 
 ドメイン特化。
 
 - `gh-collector` — PR の基本情報、CI 失敗ログ、レビューコメント、ブランチのコミット群と差分の要約
 - `fact-checker` — 主張を一次情報と照合し、判定・根拠 URL・原文引用を返す
-- `doc-style-checker` — 日本語の長文ドキュメントを `communication-style.md` の検査項目に照らして検査
 - `atlassian-collector` — Jira 課題と Confluence ページの取得・検索・要約
-- `handoff-writer` — 司令塔が確定した handoff のブリーフを、メタデータを補完してテンプレートに整形し書き出す
 
 builtin で使うのは `Plan`（実装方針の設計）だけ。コード探索は `Explore` ではなく `code-analyzer`、雑多な作業も `general-purpose` ではなく役割別のエージェントに振る。
 
@@ -127,7 +92,6 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - PR、CI、レビューコメントの状況を知る → `gh-collector`
 - Jira 課題と Confluence ページを読む → `atlassian-collector`
 - 主張の裏取り → `fact-checker`
-- 長文ドキュメントの文体検査 → `doc-style-checker`
 
 独立した複数の作業は、同一メッセージで並列に起動する。
 
@@ -139,7 +103,6 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 
 - サブエージェントにメインの会話履歴は渡らない。起動時に読まれるのはシステムプロンプト、タスクメッセージ、CLAUDE.md 階層、git status、プリロードした skills だけ
 - サブエージェントの固定文脈は実測で 20〜32k tok。メインの 42〜62k より軽いのは、skills の一覧・MCP の定義・SessionStart hook の出力が入らないため。委譲が安いのは主にこの差から来る
-- `rules/*.md` がサブエージェントで展開されるかは未確認。守らせたいルールはプロンプトに書くか、サブエージェント定義に埋め込む
 - 期待する出力形式を明記する（構造化テキストや JSON）
 - 1つの診断フェーズは原則 1 サブエージェントにまとめる。タスクが独立している場合のみ並列化する
 - コマンドの `allowed-tools` に `Agent` を含める。`Agent` は既定で承認プロンプトの対象外なので、`permissions.allow` への追加は不要
