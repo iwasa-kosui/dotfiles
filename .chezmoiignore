@@ -8,10 +8,6 @@ docs/
 tests/
 LICENSE
 
-# ローカル専用ルール（~/.claude/rules/ に手動配置。chezmoi 管理外）
-dot_claude/rules/local.md
-dot_cursor/rules/local.mdc
-
 # Neovim starter template remnants
 dot_config/nvim/LICENSE
 dot_config/nvim/README.md
@@ -35,3 +31,6 @@ dot_config/nvim/README.md
 {{ if ne .chezmoi.os "darwin" -}}
 Library/LaunchAgents/me.kosui.ollama-keep-alive.plist
 {{ end -}}
+
+# 共通CLIの依存はインストールフックで復元します。
+.local/lib/x-dm/node_modules

@@ -1,9 +1,40 @@
-# chezmoi apply は管理対象から外れただけのファイルを削除しない。
-# ソースから消したうえで配置済みの実体も消したいものをここに列挙する。
+# rules は管理対象外の追加分を含め、ディレクトリごと削除します。
+.claude/rules
+.codex/rules
+.cursor/rules
 
-# skill と hook へ移した rules。~/.claude/rules/ に残ると毎コール読み込まれる。
-# 内容は pr スキルと pr-autofix スキル、gh-comment-format-guard.ts hook が持つ。
-.claude/rules/commit-message.md
-.claude/rules/pr-creation.md
-.claude/rules/external-review-feedback.md
-.claude/rules/github-review.md
+# 旧製品別コピーと、CLIへ移したスクリプトを削除します。
+.codex/skills/pr
+.codex/skills/pr-autofix
+.codex/skills/rpt
+.codex/skills/x-dm
+.cursor/skills/pr
+.cursor/skills/pr-autofix
+.cursor/skills/rpt
+.cursor/skills/x-dm
+.agents/skills/pr/scripts
+.agents/skills/pr/node_modules
+.agents/skills/pr/package.json
+.agents/skills/pr/bun.lock
+.agents/skills/pr-autofix/scripts
+.agents/skills/pr-autofix/node_modules
+.agents/skills/pr-autofix/package.json
+.agents/skills/pr-autofix/bun.lock
+.agents/skills/handoff/scripts
+.agents/skills/handoff/node_modules
+.agents/skills/handoff/package.json
+.agents/skills/handoff/bun.lock
+.agents/skills/x-dm/scripts
+.agents/skills/x-dm/node_modules
+.agents/skills/x-dm/package.json
+.agents/skills/x-dm/bun.lock
+.agents/skills/rpt/scripts
+.agents/skills/rpt/node_modules
+.agents/skills/rpt/package.json
+.agents/skills/rpt/bun.lock
+.agents/skills/web-fetch/scripts
+.agents/skills/web-fetch/node_modules
+.agents/skills/web-fetch/package.json
+.agents/skills/web-fetch/bun.lock
+.claude/agents/handoff-writer.md
+.claude/agents/doc-style-checker.md

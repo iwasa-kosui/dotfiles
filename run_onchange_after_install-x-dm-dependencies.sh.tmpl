@@ -1,0 +1,11 @@
+{{ if eq .chezmoi.os "darwin" -}}
+#!/bin/zsh
+# x-dm package.json hash: {{ include "dot_local/lib/x-dm/package.json" | sha256sum }}
+# x-dm bun.lock hash: {{ include "dot_local/lib/x-dm/bun.lock" | sha256sum }}
+set -euo pipefail
+
+if command -v bun &> /dev/null; then
+  cd "{{ .chezmoi.homeDir }}/.local/lib/x-dm"
+  bun install --frozen-lockfile
+fi
+{{ end -}}

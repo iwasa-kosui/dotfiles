@@ -1,0 +1,3 @@
+#!/usr/bin/env bun
+import { runCli } from "../lib/agent-cli/pr-autofix.ts";
+process.exitCode = await runCli(Bun.argv.slice(2));

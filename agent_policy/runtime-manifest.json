@@ -2,12 +2,10 @@
   "runtimes": {
     "codex": {
       "home": "~/.codex",
-      "rules": "dot_codex/rules",
-      "skills": "dot_codex/skills",
+      "skills": "dot_agents/skills",
       "hooks": "dot_codex/hooks.json",
       "responsibilities": {
         "hooks": "hooks.json に登録した Codex のイベント境界で、ツール実行を検査する",
-        "rules": "Codex が常時または必要時に適用する運用・安全ポリシーを提示する",
         "subagents": "独立した調査や診断を Codex の利用可能なサブエージェントへ委譲する"
       },
       "hookRoles": {
@@ -63,24 +61,14 @@
           "owner": "Codex configuration maintainer",
           "reason": "Codex hooks.json に worktree イベントが未登録で、対応 matcher の仕様も未確認のため"
         }
-      },
-      "requiredRules": [
-        "communication-style.md",
-        "shell-command-style.md",
-        "subagent-tool-usage.md",
-        "secret-file-access.md",
-        "commit-message.md",
-        "worktree-workflow.md"
-      ]
+      }
     },
     "claude": {
       "home": "~/.claude",
-      "rules": "dot_claude/rules",
-      "skills": "dot_claude/skills",
+      "skills": "dot_agents/skills",
       "hooks": "dot_claude/modify_settings.json.tmpl",
       "responsibilities": {
         "hooks": "Claude Code の hook イベントでツール実行と worktree lifecycle を検査する",
-        "rules": "Claude Code が常時または必要時に適用する運用・安全ポリシーを提示する",
         "subagents": "Agent ツールと設定済み実行モデルを使って独立した調査や診断を委譲する"
       },
       "hookRoles": {
@@ -143,12 +131,10 @@
     },
     "cursor": {
       "home": "~/.cursor",
-      "rules": "dot_cursor/rules",
-      "skills": "dot_cursor/skills",
+      "skills": "dot_agents/skills",
       "hooks": "dot_cursor/hooks.json",
       "responsibilities": {
         "hooks": "Cursor の hook イベントでファイル・シェル・Web 操作を検査する",
-        "rules": "Cursor が常時または必要時に適用する運用・安全ポリシーを提示する",
         "subagents": "Cursor で利用可能な委譲機能がある場合に独立した調査や診断を分離する"
       },
       "hookRoles": {

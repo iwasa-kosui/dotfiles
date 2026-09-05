@@ -1,18 +1,4 @@
-# Codex の管理ルール
-
-各種ルールは `~/.codex/rules/` 配下にあります。詳細は各ファイルを参照してください。
-
-## 常時適用
-
-- `~/.codex/rules/communication-style.md` — 言葉遣い・文章スタイル
-- `~/.codex/rules/shell-command-style.md` — シェルコマンドの書き方
-- `~/.codex/rules/subagent-tool-usage.md` — サブエージェントでのツール利用
-- `~/.codex/rules/secret-file-access.md` — 秘密情報ファイルへのアクセス禁止
-
-## 必要時に適用
-
-- `~/.codex/rules/commit-message.md` — コミットメッセージとコミット分割
-- `~/.codex/rules/worktree-workflow.md` — Git worktree の運用
+# Codex
 
 ## Ship 境界
 

@@ -38,7 +38,9 @@ chezmoi diff
 | Zsh | `dot_zshrc`, `dot_config/zsh/` |
 | Git | `dot_gitconfig`, `dot_config/git/` |
 | Codex | `dot_codex/` |
-| Cursor | `dot_cursor/` → `~/.cursor/`（rules, hooks, skills, cli-config） |
+| Cursor | `dot_cursor/` → `~/.cursor/`（hooks, CLI連携, cli-config） |
+| 共通スキル | `dot_agents/skills/` → `~/.agents/skills/`（Claude はシンボリックリンクで参照） |
+| スキル用CLI | `dot_local/bin/` と `dot_local/lib/`（Bun） |
 | Tmux | `dot_tmux.conf` |
 | cmux | `dot_config/cmux/` |
 
@@ -105,7 +107,7 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 
 - **Use Japanese** when communicating with the user
 - PR commits follow Conventional Commits format: `<type>(<scope>): <description>`
-- PRs are created as drafts with a `Co-Authored-By` trailer naming the model that is actually running. Do not hardcode a version (see `dot_codex/skills/pr/SKILL.md`)
+- PRs are created as drafts with a `Co-Authored-By` trailer naming the model that is actually running. Do not hardcode a version (see `dot_agents/skills/pr/SKILL.md`)
 
 ## GitHub CLI Usage
 

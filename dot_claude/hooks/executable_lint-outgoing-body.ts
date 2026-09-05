@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // PreToolUse hook: PR・Confluence・Jira へ本文を送る直前に textlint にかける。
 //
-// 判断基準は ~/.claude/rules/communication-style.md、検査語彙は
+// 判断基準は textlint の診断、検査語彙は
 // ~/.claude/textlint-rules/no-prohibited-expression.js。
 //
 // 想定外のエラーでは通す。品質ゲートであってセキュリティ境界ではないため、
@@ -201,7 +201,7 @@ async function main() {
   if (!reason) return;
 
   deny(
-    `${resolved.label} を止めました。\n\n${reason}\n\n判断基準は ~/.claude/rules/communication-style.md です。`,
+    `${resolved.label} を止めました。\n\n${reason}\n\n判断基準は textlint の診断 です。`,
   );
 }
 
