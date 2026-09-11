@@ -112,6 +112,11 @@
           "status": "active",
           "responsibility": "計画終了時の成果物を Claude Code の状態領域へ保存する"
         },
+        "pr-delegation-guard": {
+          "path": "dot_claude/hooks/executable_pr-delegation-guard.ts",
+          "status": "active",
+          "responsibility": "メインの会話からの PR 操作（commit / push / PR 作成・更新 / コメント投稿）を拒否し、pr・pr-autofix スキル経由に誘導する"
+        },
         "session-init": {
           "path": "dot_claude/hooks/executable_session-init.ts",
           "status": "active",
