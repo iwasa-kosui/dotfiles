@@ -13,10 +13,11 @@ import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 
+// force-push-guard は executable_bash-guard.ts に統合済み。
 const hookPath = join(
   import.meta.dir,
   "..",
-  "dot_claude/hooks/executable_force-push-guard.ts",
+  "dot_claude/hooks/executable_bash-guard.ts",
 );
 
 // hook 本体を実行して permissionDecision を取り出す
@@ -25,7 +26,14 @@ function runHook(command: string): {
   reason: string | null;
 } {
   const stdout = execFileSync("bun", [hookPath], {
-    input: JSON.stringify({ cwd: "/tmp", tool_input: { command } }),
+    // agent_id を渡し pr-delegation-guard を allow にすることで、検査対象の
+    // force-push-guard 単体の挙動だけを見る（agent_id が無いと git push が
+    // pr-delegation-guard にも deny される）。
+    input: JSON.stringify({
+      cwd: "/tmp",
+      agent_id: "test-subagent",
+      tool_input: { command },
+    }),
     encoding: "utf8",
   });
   if (stdout.trim() === "") return { decision: null, reason: null };

@@ -14,10 +14,11 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+// gh-comment-format-guard は executable_bash-guard.ts に統合済み。
 const hookPath = join(
   import.meta.dir,
   "..",
-  "dot_claude/hooks/executable_gh-comment-format-guard.ts",
+  "dot_claude/hooks/executable_bash-guard.ts",
 );
 
 // 引用記法の規約を満たす body。署名行以降は空行を含めすべて `>` で始まる
@@ -31,7 +32,14 @@ function runHook(
   cwd = "/tmp",
 ): { decision: string | null; reason: string | null } {
   const stdout = execFileSync("bun", [hookPath], {
-    input: JSON.stringify({ cwd, tool_input: { command } }),
+    // agent_id を渡し pr-delegation-guard を allow にすることで、検査対象の
+    // gh-comment-format-guard 単体の挙動だけを見る（agent_id が無いと
+    // gh pr comment が pr-delegation-guard にも deny される）。
+    input: JSON.stringify({
+      cwd,
+      agent_id: "test-subagent",
+      tool_input: { command },
+    }),
     encoding: "utf8",
   });
   if (stdout.trim() === "") return { decision: null, reason: null };

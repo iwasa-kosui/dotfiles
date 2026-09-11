@@ -72,35 +72,15 @@
         "subagents": "Agent ツールと設定済み実行モデルを使って独立した調査や診断を委譲する"
       },
       "hookRoles": {
-        "commit-message-guard": {
-          "path": "dot_claude/hooks/executable_commit-message-guard.ts",
+        "bash-guard": {
+          "path": "dot_claude/hooks/executable_bash-guard.ts",
           "status": "active",
-          "responsibility": "`@` で始まるコミットメッセージを拒否する"
+          "responsibility": "Bash の PreToolUse を1プロセスに集約し、保護ブランチ・force push・コミットメッセージ・ghコメントの引用記法・送信文面のlint・メインの会話からのPR操作を順に検査する"
         },
         "context-guard": {
           "path": "dot_claude/hooks/executable_context-guard.ts",
           "status": "active",
           "responsibility": "コンテキスト量が閾値を超えたことをプロンプト送信時に知らせる"
-        },
-        "force-push-guard": {
-          "path": "dot_claude/hooks/executable_force-push-guard.ts",
-          "status": "active",
-          "responsibility": "force push を拒否する"
-        },
-        "gh-comment-format-guard": {
-          "path": "dot_claude/hooks/executable_gh-comment-format-guard.ts",
-          "status": "active",
-          "responsibility": "GitHub コメントの必須書式を検査する"
-        },
-        "lint-outgoing-body": {
-          "path": "dot_claude/hooks/executable_lint-outgoing-body.ts",
-          "status": "active",
-          "responsibility": "外部サービスへ送る本文を textlint で検査する"
-        },
-        "main-branch-guard": {
-          "path": "dot_claude/hooks/executable_main-branch-guard.ts",
-          "status": "active",
-          "responsibility": "保護ブランチでの変更コマンドを拒否する"
         },
         "main-repo-guard": {
           "path": "dot_claude/hooks/executable_main-repo-guard.ts",
@@ -111,11 +91,6 @@
           "path": "dot_claude/hooks/executable_plan-export.ts",
           "status": "active",
           "responsibility": "計画終了時の成果物を Claude Code の状態領域へ保存する"
-        },
-        "pr-delegation-guard": {
-          "path": "dot_claude/hooks/executable_pr-delegation-guard.ts",
-          "status": "active",
-          "responsibility": "メインの会話からの PR 操作（commit / push / PR 作成・更新 / コメント投稿）を拒否し、pr・pr-autofix スキル経由に誘導する"
         },
         "session-init": {
           "path": "dot_claude/hooks/executable_session-init.ts",

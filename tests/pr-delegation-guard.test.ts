@@ -14,10 +14,12 @@ import {
   isMainConversation,
 } from "../dot_claude/hooks/pr-delegation-guard-lib.ts";
 
+// pr-delegation-guard は executable_bash-guard.ts に統合済み。
+// agent_id の有無で deny / allow が切り替わることを見るテストなので agent_id は変更しない。
 const hookPath = join(
   import.meta.dir,
   "..",
-  "dot_claude/hooks/executable_pr-delegation-guard.ts",
+  "dot_claude/hooks/executable_bash-guard.ts",
 );
 
 // hook 本体を実行して permissionDecision を取り出す

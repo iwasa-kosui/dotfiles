@@ -6,6 +6,11 @@
 // zsh はこれを here-string と解釈せず「リテラルの @ + シングルクォート文字列 + リテラルの @」
 // として連結するので、コミットメッセージの先頭と末尾に `@` が残る。
 
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
+import { isAbsolute, resolve } from "node:path";
+
+import { allow, deny, type GuardInput, type GuardResult } from "./guard-lib.ts";
 import { GIT_PREFIX } from "./shell-hook-lib.ts";
 
 export type CommitMessageSource =
@@ -62,4 +67,25 @@ export function extractCommitMessageSources(
 
 export function startsWithAtSign(text: string): boolean {
   return /^\s*@/.test(text);
+}
+
+function readFileText(path: string, cwd: string): string | null {
+  // シェル変数やコマンド置換を含むパスは展開前なので読めない
+  if (/[$`]/.test(path)) return null;
+  const expanded = path.replace(/^~(?=\/|$)/, homedir());
+  const resolved = isAbsolute(expanded) ? expanded : resolve(cwd, expanded);
+  return existsSync(resolved) ? readFileSync(resolved, "utf8") : null;
+}
+
+export function checkCommitMessage(input: GuardInput): GuardResult {
+  // パターンマッチのみなので正規化済みのコマンドを使う。
+  for (const source of extractCommitMessageSources(input.normalizedCommand)) {
+    if (source.kind === "inline") {
+      if (startsWithAtSign(source.value)) return deny(REASON);
+      continue;
+    }
+    const text = readFileText(source.path, input.cwd);
+    if (text !== null && startsWithAtSign(text)) return deny(REASON);
+  }
+  return allow;
 }
