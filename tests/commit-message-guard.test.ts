@@ -40,14 +40,20 @@ function filePaths(command: string): string[] {
     .map((source) => source.path);
 }
 
-// hook 本体を実行して decision を取り出す
+// hook 本体を実行して permissionDecision を取り出す
 function runHook(command: string, cwd: string): string | null {
   const stdout = execFileSync("bun", [hookPath], {
     input: JSON.stringify({ cwd, tool_input: { command } }),
     encoding: "utf8",
   });
   if (stdout.trim() === "") return null;
-  return (JSON.parse(stdout) as { decision?: string }).decision ?? null;
+  return (
+    (
+      JSON.parse(stdout) as {
+        hookSpecificOutput?: { permissionDecision?: string };
+      }
+    ).hookSpecificOutput?.permissionDecision ?? null
+  );
 }
 
 describe("here-string の混入をブロックする", () => {
@@ -99,7 +105,7 @@ describe("メッセージファイルの抽出", () => {
 
 describe("hook 本体", () => {
   test("here-string を渡したコミットをブロックする", () => {
-    expect(runHook("git commit -m @'\nfeat: 要約\n'@", tmpdir())).toBe("block");
+    expect(runHook("git commit -m @'\nfeat: 要約\n'@", tmpdir())).toBe("deny");
   });
 
   test("通常のコミットは許可する", () => {
@@ -110,7 +116,7 @@ describe("hook 本体", () => {
     const dir = mkdtempSync(join(tmpdir(), "commit-message-guard-"));
     try {
       writeFileSync(join(dir, "msg.txt"), "@\nfeat: 要約\n@\n");
-      expect(runHook("git commit -F msg.txt", dir)).toBe("block");
+      expect(runHook("git commit -F msg.txt", dir)).toBe("deny");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

@@ -25,8 +25,18 @@ const input = await readInput<{
 const command = normalizeShellCommand(input);
 const cwd = resolveShellHookCwd(input);
 
+// PreToolUse はトップレベルの decision ではなく hookSpecificOutput.permissionDecision を読む。
+// 何も出力せず終了した場合は通常のパーミッションフローに委ねられる。
 function block(): never {
-  console.log(JSON.stringify({ decision: "block", reason: REASON }));
+  console.log(
+    JSON.stringify({
+      hookSpecificOutput: {
+        hookEventName: "PreToolUse",
+        permissionDecision: "deny",
+        permissionDecisionReason: REASON,
+      },
+    }),
+  );
   process.exit(0);
 }
 

@@ -20,10 +20,15 @@ if (!forceFlag.test(command) && !forceRefspec.test(command)) {
   process.exit(0);
 }
 
+// PreToolUse はトップレベルの decision ではなく hookSpecificOutput.permissionDecision を読む。
+// 何も出力せず終了した場合は通常のパーミッションフローに委ねられる。
 console.log(
   JSON.stringify({
-    decision: "block",
-    reason:
-      "force push（--force, --force-with-lease, -f, +refspec）は禁止されています。履歴の書き換えではなく、新しいコミットで対応してください。",
+    hookSpecificOutput: {
+      hookEventName: "PreToolUse",
+      permissionDecision: "deny",
+      permissionDecisionReason:
+        "force push（--force, --force-with-lease, -f, +refspec）は禁止されています。履歴の書き換えではなく、新しいコミットで対応してください。",
+    },
   }),
 );
