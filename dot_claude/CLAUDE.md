@@ -63,6 +63,12 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 - `fact-checker` — 主張を一次情報と照合し、判定・根拠 URL・原文引用を返す
 - `atlassian-collector` — Jira 課題と Confluence ページの取得・検索・要約
 
+PR スキル用。`pr` / `pr-autofix` スキルが `context: fork` で起動するため、Agent tool 呼び出しで直接指名するものではない。
+
+- `pr-runner` — `pr` スキルの統括役。`agent-pr` CLI の呼び出しと変更内容の判断。Sonnet / effort: medium
+- `pr-autofix-runner` — `pr-autofix` スキルの統括役。CI 失敗とレビュー指摘の収集・判断。修正は `code-editor` / `doc-editor` に再委譲する。Sonnet / effort: high
+- `pr-writer` — コミットメッセージ・PR タイトルと本文・レビュー返信文の執筆とファイル書き出し。判断はしない。Haiku / effort: low
+
 builtin で使うのは `Plan`（実装方針の設計）だけ。コード探索は `Explore` ではなく `code-analyzer`、雑多な作業も `general-purpose` ではなく役割別のエージェントに振る。
 
 ### 司令塔（Opus）の責務
@@ -72,7 +78,7 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - ユーザーとの対話。ヒアリング、確認、承認
 - サブエージェントのディスパッチ。プロンプトの組み立てと Agent tool 呼び出し
 - サブエージェントの結果を統合して最終成果物を組み立てる
-- git / gh / chezmoi の実行。commit、push、PR 操作、`chezmoi apply` はサブエージェントに任せない
+- 単発の git / gh コマンドと `chezmoi apply` の実行。`git status`、`git diff --stat`、`gh pr view` などの状況確認や適用作業はサブエージェントに任せない。一方、commit から Draft PR までの一連の流れは `pr` スキルに、CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。これらは `context: fork` によって統括エージェントへ自動的に委譲されるので、司令塔はスキルを呼ぶだけでよく、`agent-pr commit` や `agent-pr publish` を自分で直接叩かない
 
 ### サブエージェント（Sonnet / Haiku）の責務
 
@@ -92,6 +98,10 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - PR、CI、レビューコメントの状況を知る → `gh-collector`
 - Jira 課題と Confluence ページを読む → `atlassian-collector`
 - 主張の裏取り → `fact-checker`
+- コミットして Draft PR を作る、既存 PR を更新する → `pr` スキル
+- PR の CI 失敗とレビュー指摘に対応する → `pr-autofix` スキル
+
+`pr` / `pr-autofix` はスキルが `context: fork` で統括エージェントへ自動的に委譲するため、司令塔は Agent tool を直接呼ばずスキルを起動する。
 
 独立した複数の作業は、同一メッセージで並列に起動する。
 
