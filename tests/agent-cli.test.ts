@@ -63,6 +63,19 @@ test("agent-pr commit preserves literal message text and commits only explicit p
   expect(run(["git", "status", "--porcelain"], dir).out).toContain("?? unrelated.txt");
 });
 
+test("agent-pr commit is idempotent when the message already has a Co-Authored-By line", () => {
+  const dir = repo();
+  writeFileSync(join(dir, "tracked.txt"), "after\n");
+  const message = join(dir, "message.md");
+  writeFileSync(message, "refactor(cli): keep existing trailer\n\nCo-Authored-By: Existing Author <existing@example.test>\n");
+  const result = cli("agent-pr", ["commit", "--message-file", message, "--model", "Test Model", "--email", "noreply@example.test", "--", "tracked.txt"], dir);
+  expect(result.code, result.err).toBe(0);
+  const log = run(["git", "log", "-1", "--format=%B"], dir).out;
+  expect(log.match(/Co-Authored-By/g)?.length).toBe(1);
+  expect(log).toContain("Co-Authored-By: Existing Author <existing@example.test>");
+  expect(log).not.toContain("Co-Authored-By: Test Model <noreply@example.test>");
+});
+
 test("agent-pr refuses to include an unrelated staged file", () => {
   const dir = repo();
   writeFileSync(join(dir, "other.txt"), "other");

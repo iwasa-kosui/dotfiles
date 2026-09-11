@@ -85,7 +85,8 @@ async function commit(argv: string[]) {
   if (values.model && values.email) {
     if (/[\r\n<>]/.test(values.model) || !/^[^\s<>]+@[^\s<>]+$/.test(values.email)) throw new CliError("Invalid co-author");
     const trailer = `Co-Authored-By: ${values.model} <${values.email}>`;
-    if (!message.split("\n").includes(trailer)) message = `${message.trimEnd()}\n\n${trailer}\n`;
+    const hasCoAuthor = message.split("\n").some((line) => /^Co-Authored-By:/i.test(line.trim()));
+    if (!hasCoAuthor) message = `${message.trimEnd()}\n\n${trailer}\n`;
   }
   const staged = checked(["git", "diff", "--cached", "--name-only", "--no-renames", "-z"], root).split("\0").filter(Boolean);
   if (staged.some((name) => !names.includes(name))) throw new CliError("Unrelated staged paths exist; review the index before committing");
