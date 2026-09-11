@@ -33,7 +33,7 @@ effort: low
 - 「レビューコメントに基づき」「指摘を反映」「フィードバック対応」のような**トリガー（きっかけ）を書いてはならない**。これらは変更の内容も理由も伝えない
   - 良い例: `fix(ogas): descriptionからトリガーワード説明を削除し disable-model-invocation との矛盾を解消`
   - 悪い例: `fix: レビューコメントに基づくrunbookスキルと手順書の修正`
-- 先頭を `@` で始めてはならない。`commit-message-guard` hook が `@` で始まるコミットメッセージをブロックする
+- 先頭を `@` で始めてはならない。`bash-guard.ts` hook の commit-message-guard 判定が `@` で始まるコミットメッセージをブロックする
 
 ## PR タイトルと本文の規約
 
