@@ -1,38 +1,21 @@
-#!/usr/bin/env bun
-// PreToolUse hook: gh コマンドで PR/Issue のコメントを投稿・更新するとき、
-// エージェントの発言を `> 🤖 Claude Code` の署名行以降、引用記法で
-// 囲むことを強制する
+// gh コマンドで PR/Issue のコメントを投稿・更新するとき、エージェントの発言を
+// `> 🤖 Claude Code` の署名行以降、引用記法で囲むことを強制する判定ロジック。
 
+import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 
-import { readInput } from "./lib.ts";
+import { allow, deny, type GuardInput, type GuardResult } from "./guard-lib.ts";
 
 const SIGNATURE_LINE = "> 🤖 Claude Code";
 
-const REASON = `GitHub の PR/Issue コメント本文は、エージェントの発言を引用記法で囲む必要があります。次の形式にしてください。
+export const REASON = `GitHub の PR/Issue コメント本文は、エージェントの発言を引用記法で囲む必要があります。次の形式にしてください。
 
 > 🤖 Claude Code
 >
 > 修正しました (e4dcbb406)
 
 \`> 🤖 Claude Code\` の行以降は、空行を含めてすべて行頭を \`>\` にします。署名行より上は引用の外に置けるので、ユーザーの追記はそこに入ります。`;
-
-const input = await readInput<{
-  cwd?: string;
-  tool_input?: { command?: string };
-}>();
-const command = input.tool_input?.command ?? "";
-const cwd = input.cwd ?? process.cwd();
-
-function allow(): never {
-  process.exit(0);
-}
-
-function block(): never {
-  console.log(JSON.stringify({ decision: "block", reason: REASON }));
-  process.exit(0);
-}
 
 // --- 対象コマンドの判定 ---------------------------------------------------
 
@@ -41,27 +24,17 @@ function block(): never {
 //   pulls/*/comments  : review comment の新規作成・返信
 //   pulls/*/reviews   : review の submit
 //   issues/*/comments : PR / Issue の通常コメント
-const GH_API_COMMENT =
+export const GH_API_COMMENT =
   /\bgh\s+api\b[\s\S]*?\b(?:pulls\/\d*\/?comments|pulls\/\d+\/reviews|issues\/\d+\/comments)\b/;
-const GH_SUBCOMMAND_COMMENT =
+export const GH_SUBCOMMAND_COMMENT =
   /\bgh\s+(?:pr\s+(?:comment|review)|issue\s+comment)\b/;
-
-const isApi = GH_API_COMMENT.test(command);
-if (!isApi && !GH_SUBCOMMAND_COMMENT.test(command)) {
-  allow();
-}
-
-// 削除・取得は本文を伴わないため対象外
-if (/(?:--method|-X)\s+(?:DELETE|GET)\b/i.test(command)) {
-  allow();
-}
 
 // --- body の取得元を特定 --------------------------------------------------
 
 // シェルの引用を考慮した値のパターン。__V__ の位置に差し込んで使う
 const VALUE = String.raw`"((?:[^"\\]|\\.)*)"|'([^']*)'|([^\s;|&]+)`;
 
-function matchValue(pattern: string): string | null {
+export function matchValue(command: string, pattern: string): string | null {
   const matched = command.match(new RegExp(pattern.replace("__V__", VALUE)));
   if (!matched) return null;
   return matched[1] ?? matched[2] ?? matched[3] ?? null;
@@ -87,14 +60,18 @@ function classifyValue(value: string): BodySource {
   return { kind: "literal", text: value };
 }
 
-function detectBody(): BodySource {
+export function detectBody(command: string, isApi: boolean): BodySource {
   if (isApi) {
     const field = matchValue(
+      command,
       String.raw`(?:^|\s)(?:-f|-F|--field|--raw-field)\s+body=(?:__V__)`,
     );
     if (field !== null) return classifyValue(field);
 
-    const inputPath = matchValue(String.raw`(?:^|\s)--input(?:\s+|=)(?:__V__)`);
+    const inputPath = matchValue(
+      command,
+      String.raw`(?:^|\s)--input(?:\s+|=)(?:__V__)`,
+    );
     if (inputPath !== null) return classifyPath(inputPath, "jsonFile");
 
     return { kind: "none" };
@@ -102,11 +79,15 @@ function detectBody(): BodySource {
 
   // gh pr comment / gh pr review / gh issue comment は -F が --body-file の短縮形
   const bodyFile = matchValue(
+    command,
     String.raw`(?:^|\s)(?:--body-file|-F)(?:\s+|=)(?:__V__)`,
   );
   if (bodyFile !== null) return classifyPath(bodyFile, "file");
 
-  const body = matchValue(String.raw`(?:^|\s)(?:--body|-b)(?:\s+|=)(?:__V__)`);
+  const body = matchValue(
+    command,
+    String.raw`(?:^|\s)(?:--body|-b)(?:\s+|=)(?:__V__)`,
+  );
   if (body !== null) return classifyValue(body);
 
   return { kind: "none" };
@@ -114,12 +95,10 @@ function detectBody(): BodySource {
 
 // --- 判定 -----------------------------------------------------------------
 
-async function readFileText(path: string): Promise<string | null> {
+export function readFileText(path: string, cwd: string): string | null {
   const expanded = path.replace(/^~(?=\/|$)/, homedir());
-  const file = Bun.file(
-    isAbsolute(expanded) ? expanded : resolve(cwd, expanded),
-  );
-  return (await file.exists()) ? await file.text() : null;
+  const resolved = isAbsolute(expanded) ? expanded : resolve(cwd, expanded);
+  return existsSync(resolved) ? readFileSync(resolved, "utf8") : null;
 }
 
 function extractJsonBody(text: string): string | null {
@@ -131,7 +110,7 @@ function extractJsonBody(text: string): string | null {
   }
 }
 
-function isQuoted(text: string): boolean {
+export function isQuoted(text: string): boolean {
   const lines = text.split("\n");
   const signatureIndex = lines.findIndex(
     (line) => line.trim() === SIGNATURE_LINE,
@@ -144,40 +123,54 @@ function isQuoted(text: string): boolean {
   });
 }
 
-const source = detectBody();
+export function checkGhCommentFormat(input: GuardInput): GuardResult {
+  // isQuoted は body 内の改行で行頭を判定するため、正規化前の生のコマンドを使う。
+  // 正規化すると改行が空白に潰れ、判定が反転する。
+  const { command, cwd } = input;
 
-if (source.kind === "none") {
-  allow();
+  const isApi = GH_API_COMMENT.test(command);
+  if (!isApi && !GH_SUBCOMMAND_COMMENT.test(command)) {
+    return allow;
+  }
+
+  // 削除・取得は本文を伴わないため対象外
+  if (/(?:--method|-X)\s+(?:DELETE|GET)\b/i.test(command)) {
+    return allow;
+  }
+
+  const source = detectBody(command, isApi);
+
+  if (source.kind === "none") {
+    return allow;
+  }
+
+  if (source.kind === "literal") {
+    return isQuoted(source.text) ? allow : deny(REASON);
+  }
+
+  if (source.kind === "opaque") {
+    // 展開前の値しか見えないので、コマンド全体に署名行が
+    // 書かれているかで判定する
+    return command.includes(SIGNATURE_LINE) ? allow : deny(REASON);
+  }
+
+  const fileText = readFileText(source.path, cwd);
+  const bodyText =
+    fileText === null
+      ? null
+      : source.kind === "jsonFile"
+        ? extractJsonBody(fileText)
+        : fileText;
+
+  if (bodyText !== null && isQuoted(bodyText)) {
+    return allow;
+  }
+
+  // 同じコマンド内のヒアドキュメントでこれから書き込む場合、
+  // ファイルはまだ存在しないか古い内容のままになる
+  if (command.includes(SIGNATURE_LINE)) {
+    return allow;
+  }
+
+  return deny(REASON);
 }
-
-if (source.kind === "literal") {
-  if (isQuoted(source.text)) allow();
-  block();
-}
-
-if (source.kind === "opaque") {
-  // 展開前の値しか見えないので、コマンド全体に署名行が
-  // 書かれているかで判定する
-  if (command.includes(SIGNATURE_LINE)) allow();
-  block();
-}
-
-const fileText = await readFileText(source.path);
-const bodyText =
-  fileText === null
-    ? null
-    : source.kind === "jsonFile"
-      ? extractJsonBody(fileText)
-      : fileText;
-
-if (bodyText !== null && isQuoted(bodyText)) {
-  allow();
-}
-
-// 同じコマンド内のヒアドキュメントでこれから書き込む場合、
-// ファイルはまだ存在しないか古い内容のままになる
-if (command.includes(SIGNATURE_LINE)) {
-  allow();
-}
-
-block();

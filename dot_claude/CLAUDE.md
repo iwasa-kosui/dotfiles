@@ -18,7 +18,7 @@
 
 したがって PowerShell ツールは出続けます。出ていても使いません。このマシンに `pwsh` は入っておらず実行できないうえ、シェルは zsh なので、ツール説明にある Windows 前提の記法・制約は当てはまりません。コマンドは Bash ツールで実行します。
 
-- 複数行のコミットメッセージを here-string `@'...'@` で渡さない。zsh はこれを here-string と解釈せず、単なるクォート連結として扱うため、本文の先頭と末尾に `@` が残る。一時ファイルに書いて `git commit -F <file>` で渡す。`commit-message-guard.ts` hook が `@` で始まるコミットメッセージをブロックする
+- 複数行のコミットメッセージを here-string `@'...'@` で渡さない。zsh はこれを here-string と解釈せず、単なるクォート連結として扱うため、本文の先頭と末尾に `@` が残る。一時ファイルに書いて `git commit -F <file>` で渡す。`bash-guard.ts` hook の commit-message-guard 判定が `@` で始まるコミットメッセージをブロックする
 - `&&` `||` `??` `?.` は使える。「PowerShell 5.1 では parser error になる」という制約は当てはまらない
 - 環境変数の読み書き、パス区切り、`Get-ChildItem` 系 cmdlet の代替も zsh の記法を使う
 
@@ -78,7 +78,7 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - ユーザーとの対話。ヒアリング、確認、承認
 - サブエージェントのディスパッチ。プロンプトの組み立てと Agent tool 呼び出し
 - サブエージェントの結果を統合して最終成果物を組み立てる
-- 単発の git / gh コマンドと `chezmoi apply` の実行。`git status`、`git diff --stat`、`gh pr view` などの状況確認や適用作業はサブエージェントに任せない。一方、commit から Draft PR までの一連の流れは `pr` スキルに、CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。これらは `context: fork` によって統括エージェントへ自動的に委譲されるので、司令塔はスキルを呼ぶだけでよく、`agent-pr commit` や `agent-pr publish` を自分で直接叩かない
+- 読み取り系の git / gh コマンド、`chezmoi apply`、`git commit` の実行。`git status`、`git diff --stat`、`gh pr view` などの状況確認や `git commit` はサブエージェントに任せない。一方、`git push` や PR の作成・更新・Ready 化・merge、PR コメントの投稿はメインの会話から実行すると `bash-guard` hook が deny するため、commit から Draft PR までの一連の流れは `pr` スキルに、CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。これらは `context: fork` によって統括エージェントへ自動的に委譲されるので、司令塔はスキルを呼ぶだけでよく、`agent-pr commit` や `agent-pr publish` を自分で直接叩かない
 
 ### サブエージェント（Sonnet / Haiku）の責務
 
@@ -99,7 +99,7 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - Jira 課題と Confluence ページを読む → `atlassian-collector`
 - 主張の裏取り → `fact-checker`
 - コミットして Draft PR を作る、既存 PR を更新する → `pr` スキル
-- PR の CI 失敗とレビュー指摘に対応する → `pr-autofix` スキル
+- PR の CI 失敗とレビュー指摘の修正、レビューコメントへの返信 → `pr-autofix` スキル
 
 `pr` / `pr-autofix` はスキルが `context: fork` で統括エージェントへ自動的に委譲するため、司令塔は Agent tool を直接呼ばずスキルを起動する。
 

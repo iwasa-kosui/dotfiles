@@ -18,10 +18,11 @@ import {
 } from "../dot_claude/hooks/commit-message-guard-lib.ts";
 import { normalizeShellCommand } from "../dot_claude/hooks/shell-hook-lib.ts";
 
+// commit-message-guard は executable_bash-guard.ts に統合済み。
 const hookPath = join(
   import.meta.dir,
   "..",
-  "dot_claude/hooks/executable_commit-message-guard.ts",
+  "dot_claude/hooks/executable_bash-guard.ts",
 );
 
 function sources(command: string) {
@@ -40,14 +41,26 @@ function filePaths(command: string): string[] {
     .map((source) => source.path);
 }
 
-// hook 本体を実行して decision を取り出す
+// hook 本体を実行して permissionDecision を取り出す
 function runHook(command: string, cwd: string): string | null {
   const stdout = execFileSync("bun", [hookPath], {
-    input: JSON.stringify({ cwd, tool_input: { command } }),
+    // agent_id を渡し pr-delegation-guard を allow にすることで、検査対象の
+    // commit-message-guard 単体の挙動だけを見る。
+    input: JSON.stringify({
+      cwd,
+      agent_id: "test-subagent",
+      tool_input: { command },
+    }),
     encoding: "utf8",
   });
   if (stdout.trim() === "") return null;
-  return (JSON.parse(stdout) as { decision?: string }).decision ?? null;
+  return (
+    (
+      JSON.parse(stdout) as {
+        hookSpecificOutput?: { permissionDecision?: string };
+      }
+    ).hookSpecificOutput?.permissionDecision ?? null
+  );
 }
 
 describe("here-string の混入をブロックする", () => {
@@ -99,7 +112,7 @@ describe("メッセージファイルの抽出", () => {
 
 describe("hook 本体", () => {
   test("here-string を渡したコミットをブロックする", () => {
-    expect(runHook("git commit -m @'\nfeat: 要約\n'@", tmpdir())).toBe("block");
+    expect(runHook("git commit -m @'\nfeat: 要約\n'@", tmpdir())).toBe("deny");
   });
 
   test("通常のコミットは許可する", () => {
@@ -110,7 +123,7 @@ describe("hook 本体", () => {
     const dir = mkdtempSync(join(tmpdir(), "commit-message-guard-"));
     try {
       writeFileSync(join(dir, "msg.txt"), "@\nfeat: 要約\n@\n");
-      expect(runHook("git commit -F msg.txt", dir)).toBe("block");
+      expect(runHook("git commit -F msg.txt", dir)).toBe("deny");
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

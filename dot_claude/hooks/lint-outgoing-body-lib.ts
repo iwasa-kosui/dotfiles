@@ -1,5 +1,4 @@
-#!/usr/bin/env bun
-// PreToolUse hook: PR・Confluence・Jira へ本文を送る直前に textlint にかける。
+// PreToolUse hook: PR・Confluence・Jira へ本文を送る直前に textlint にかける判定ロジック。
 //
 // 判断基準は textlint の診断、検査語彙は
 // ~/.claude/textlint-rules/no-prohibited-expression.js。
@@ -10,7 +9,7 @@
 import { homedir } from "node:os";
 import { isAbsolute, join, resolve } from "node:path";
 
-import { readInput } from "./lib.ts";
+import { allow, deny, type GuardInput, type GuardResult } from "./guard-lib.ts";
 
 const CLAUDE_DIR = join(homedir(), ".claude");
 
@@ -53,21 +52,6 @@ const TARGETS: { re: RegExp; label: string; flags: Flag[] }[] = [
 ];
 
 const HEREDOC = /([^\n]*)<<-?\s*(['"]?)(\w+)\2([^\n]*)\r?\n([\s\S]*?)\r?\n\3(?=\s|$)/g;
-
-// PreToolUse はトップレベルの decision ではなく hookSpecificOutput.permissionDecision を読む。
-// 何も出力せず終了した場合は通常のパーミッションフローに委ねられる。
-function deny(reason: string): never {
-  console.log(
-    JSON.stringify({
-      hookSpecificOutput: {
-        hookEventName: "PreToolUse",
-        permissionDecision: "deny",
-        permissionDecisionReason: reason,
-      },
-    }),
-  );
-  process.exit(0);
-}
 
 /**
  * ヒアドキュメントを解析する。本文はコマンドではないので判定用の文字列から取り除く。
@@ -187,27 +171,20 @@ async function lint(text: string): Promise<string | null> {
   return stdout.trim() || null;
 }
 
-async function main() {
-  const input = await readInput<{ cwd?: string; tool_input?: { command?: string } }>();
-  const raw = input.tool_input?.command ?? "";
-  if (!raw) return;
+export async function checkOutgoingBody(input: GuardInput): Promise<GuardResult> {
+  // parseHeredocs がヒアドキュメント本文を改行で切り出すため、正規化前の生のコマンドを使う。
+  const raw = input.command;
+  if (!raw) return allow;
 
-  const cwd = input.cwd ?? process.cwd();
+  const cwd = input.cwd;
   const { bodies, stripped } = parseHeredocs(raw, cwd);
   const resolved = await resolveBody(stripped, bodies, cwd);
-  if (!resolved) return;
+  if (!resolved) return allow;
 
   const reason = resolved.blockedReason ?? (await lint(resolved.text));
-  if (!reason) return;
+  if (!reason) return allow;
 
-  deny(
+  return deny(
     `${resolved.label} を止めました。\n\n${reason}\n\n判断基準は textlint の診断 です。`,
   );
-}
-
-try {
-  await main();
-} catch (error) {
-  console.error(`lint-outgoing-body hook: ${(error as Error).message}`);
-  process.exit(0);
 }
