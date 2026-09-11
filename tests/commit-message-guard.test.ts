@@ -18,10 +18,11 @@ import {
 } from "../dot_claude/hooks/commit-message-guard-lib.ts";
 import { normalizeShellCommand } from "../dot_claude/hooks/shell-hook-lib.ts";
 
+// commit-message-guard は executable_bash-guard.ts に統合済み。
 const hookPath = join(
   import.meta.dir,
   "..",
-  "dot_claude/hooks/executable_commit-message-guard.ts",
+  "dot_claude/hooks/executable_bash-guard.ts",
 );
 
 function sources(command: string) {
@@ -43,7 +44,13 @@ function filePaths(command: string): string[] {
 // hook 本体を実行して permissionDecision を取り出す
 function runHook(command: string, cwd: string): string | null {
   const stdout = execFileSync("bun", [hookPath], {
-    input: JSON.stringify({ cwd, tool_input: { command } }),
+    // agent_id を渡し pr-delegation-guard を allow にすることで、検査対象の
+    // commit-message-guard 単体の挙動だけを見る。
+    input: JSON.stringify({
+      cwd,
+      agent_id: "test-subagent",
+      tool_input: { command },
+    }),
     encoding: "utf8",
   });
   if (stdout.trim() === "") return null;

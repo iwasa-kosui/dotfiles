@@ -4,6 +4,7 @@
 // PR 操作は pr / pr-autofix スキル経由でサブエージェントに実行させる方針のため、
 // メインの会話から agent-pr / gh / git push が直接呼ばれたら拒否する。
 
+import { allow, deny, type GuardInput, type GuardResult } from "./guard-lib.ts";
 import { GIT_PREFIX } from "./shell-hook-lib.ts";
 
 export type BlockedPrOperation = {
@@ -76,4 +77,18 @@ PR 操作はスキル経由でサブエージェントに実行させること�
 - CI 失敗とレビュー指摘の修正 / レビューコメントへの返信 → pr-autofix スキルを起動する
 
 どちらのスキルも frontmatter の context: fork で専用のサブエージェントにフォークされる。サブエージェント内ではこの hook は発火しないため、同じコマンドがそのまま実行できる。`;
+}
+
+export function checkPrDelegation(input: GuardInput): GuardResult {
+  if (!isMainConversation({ agent_id: input.agentId })) {
+    return allow;
+  }
+
+  // パターンマッチのみなので正規化済みのコマンドを使う。
+  const blocked = findBlockedPrOperation(input.normalizedCommand);
+  if (!blocked) {
+    return allow;
+  }
+
+  return deny(reasonFor(blocked.name));
 }
