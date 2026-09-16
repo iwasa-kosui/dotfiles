@@ -63,10 +63,11 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 - `fact-checker` — 主張を一次情報と照合し、判定・根拠 URL・原文引用を返す
 - `atlassian-collector` — Jira 課題と Confluence ページの取得・検索・要約
 
-PR スキル用。`pr-runner` は `pr` スキルが Agent tool で指名し、`pr-autofix-runner` は `pr-autofix` スキルが `context: fork` で起動する。いずれも司令塔が直接指名するものではない。
+PR スキル用。`pr-runner` は `pr` スキルが Agent tool で指名し、`pr-autofix-runner` は `pr-autofix` スキルが `context: fork` で起動する。いずれも司令塔が直接指名するものではない。`pr-shipper` も同様で、司令塔からではなく `pr-runner` / `pr-autofix-runner` から再委譲される。
 
-- `pr-runner` — `pr` スキルの統括役。`agent-pr` CLI の呼び出しと変更内容の判断、コミットメッセージと PR 本文の執筆。Sonnet / effort: medium
-- `pr-autofix-runner` — `pr-autofix` スキルの統括役。CI 失敗とレビュー指摘の収集・判断とレビュー返信文の執筆。コードとドキュメントの修正は `code-editor` / `doc-editor` に再委譲する。Sonnet / effort: high
+- `pr-runner` — `pr` スキルの統括役。変更内容の判断、コミットメッセージと PR 本文の執筆。`agent-pr` CLI の実行は `pr-shipper` に委譲する。Sonnet / effort: medium
+- `pr-autofix-runner` — `pr-autofix` スキルの統括役。CI 失敗とレビュー指摘の収集・判断とレビュー返信文の執筆。コードとドキュメントの修正は `code-editor` / `doc-editor` に、`agent-pr` CLI の実行は `pr-shipper` に再委譲する。Sonnet / effort: high
+- `pr-shipper` — `pr-runner` / `pr-autofix-runner` から指名される commit と push の実行役。`agent-pr commit` / `agent-pr publish` を渡された引数のまま叩く。Haiku / effort: low
 
 builtin で使うのは `Plan`（実装方針の設計）だけ。コード探索は `Explore` ではなく `code-analyzer`、雑多な作業も `general-purpose` ではなく役割別のエージェントに振る。
 
