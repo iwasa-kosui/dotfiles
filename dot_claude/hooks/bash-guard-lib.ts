@@ -1,6 +1,7 @@
 // executable_bash-guard.ts が順に実行するガードの一覧。
 // 各 guard lib の check 関数は ./guard-lib.ts の GuardInput を受け取り GuardResult を返す。
 
+import { checkAwsCli } from "./aws-cli-guard-lib.ts";
 import { checkMainBranchGuard } from "./branch-guard-lib.ts";
 import { checkCommitMessage } from "./commit-message-guard-lib.ts";
 import { checkForcePush } from "./force-push-guard-lib.ts";
@@ -23,4 +24,5 @@ export const guards: readonly Guard[] = [
   { name: "gh-comment-format-guard", check: checkGhCommentFormat },
   { name: "lint-outgoing-body", check: checkOutgoingBody },
   { name: "pr-delegation-guard", check: checkPrDelegation },
+  { name: "aws-cli-guard", check: checkAwsCli },
 ];
