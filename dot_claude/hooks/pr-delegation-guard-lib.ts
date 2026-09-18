@@ -15,6 +15,7 @@ export type BlockedPrOperation = {
 const blockedOperations: BlockedPrOperation[] = [
   { name: "agent-pr commit", pattern: /\bagent-pr\s+commit\b/ },
   { name: "agent-pr publish", pattern: /\bagent-pr\s+publish\b/ },
+  { name: "agent-pr push", pattern: /\bagent-pr\s+push\b/ },
   { name: "gh pr create", pattern: /\bgh\s+pr\s+create\b/ },
   { name: "gh pr edit", pattern: /\bgh\s+pr\s+edit\b/ },
   { name: "gh pr ready", pattern: /\bgh\s+pr\s+ready\b/ },
@@ -70,13 +71,17 @@ export function isMainConversation(input: { agent_id?: unknown }): boolean {
 }
 
 export function reasonFor(name: string): string {
+  const isPushOnly = name === "git push" || name === "agent-pr push";
+  const pushLine = isPushOnly
+    ? "- コミットして push するだけなら（PR は作らない） → commit-pusher サブエージェントに委譲する\n"
+    : "";
   return `メインの会話から PR 操作を直接実行することはできません（検出: ${name}）。
 
 PR 操作はスキル経由でサブエージェントに実行させること。
-- コミット / push / PR の作成・更新 → pr スキルを起動する
-- CI 失敗とレビュー指摘の修正 / レビューコメントへの返信 → pr-autofix スキルを起動する
+- PR まで作るなら → pr スキルを起動する
+${pushLine}- CI 失敗とレビュー指摘の修正 / レビューコメントへの返信 → pr-autofix スキルを起動する
 
-どちらのスキルも frontmatter の context: fork で専用のサブエージェントにフォークされる。サブエージェント内ではこの hook は発火しないため、同じコマンドがそのまま実行できる。`;
+いずれもサブエージェント内ではこの hook は発火しないため、同じコマンドがそのまま実行できる。`;
 }
 
 export function checkPrDelegation(input: GuardInput): GuardResult {
