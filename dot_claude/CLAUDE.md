@@ -56,6 +56,7 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 - `code-analyzer` — コードの調査と分析。定義箇所の特定、呼び出し関係の追跡、条件分岐の洗い出し、不具合の原因箇所の絞り込み
 - `code-editor` — コードと設定ファイルの編集・新規作成。適用した変更を `file:line` と変更後の該当行の引用で返す
 - `doc-editor` — Markdown の編集・新規作成。指定された内容を文書に反映する
+- `commit-pusher` — 変更をコミットして push する。PR の作成・更新とその要否判定は行わない。差分から Conventional Commits 形式のメッセージを執筆し、`agent-pr commit` と `agent-pr push` を実行する。Sonnet / effort: medium
 
 ドメイン特化。
 
@@ -77,7 +78,7 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - ユーザーとの対話。ヒアリング、確認、承認
 - サブエージェントのディスパッチ。プロンプトの組み立てと Agent tool 呼び出し
 - サブエージェントの結果を統合して最終成果物を組み立てる
-- 読み取り系の git / gh コマンド、`chezmoi apply`、`git commit` の実行。`git status`、`git diff --stat`、`gh pr view` などの状況確認や `git commit` はサブエージェントに任せない。一方、`git push` や PR の作成・更新・Ready 化・merge、PR コメントの投稿はメインの会話から実行すると `bash-guard` hook が deny するため、commit から Draft PR までの一連の流れは `pr` スキルに、CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。`pr` スキルは Agent tool で `pr-runner` を起動し、`pr-autofix` スキルは `context: fork` で `pr-autofix-runner` に委譲される。どちらも司令塔はスキルを呼ぶだけでよく、`agent-pr commit` や `agent-pr publish` を自分で直接叩かない
+- 読み取り系の git / gh コマンド、`chezmoi apply`、`git commit` の実行。`git status`、`git diff --stat`、`gh pr view` などの状況確認や `git commit` はサブエージェントに任せない。一方、`git push` や PR の作成・更新・Ready 化・merge、PR コメントの投稿はメインの会話から実行すると `bash-guard` hook が deny するため、commit から Draft PR までの一連の流れは `pr` スキルに、CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。`pr` スキルは Agent tool で `pr-runner` を起動し、`pr-autofix` スキルは `context: fork` で `pr-autofix-runner` に委譲される。どちらも司令塔はスキルを呼ぶだけでよく、`agent-pr commit` や `agent-pr publish` を自分で直接叩かない。PR まで作る・更新する必要があるなら `pr` スキルを使い、PR には触れずコミットして push するだけでよいときは `commit-pusher` を Agent tool で直接呼ぶ
 
 ### サブエージェント（Sonnet / Haiku）の責務
 
@@ -97,10 +98,11 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - PR、CI、レビューコメントの状況を知る → `gh-collector`
 - Jira 課題と Confluence ページを読む → `atlassian-collector`
 - 主張の裏取り → `fact-checker`
+- PR を作らずコミットして push するだけ → `commit-pusher`（Agent tool で直接呼ぶ）
 - コミットして Draft PR を作る、既存 PR を更新する → `pr` スキル
 - PR の CI 失敗とレビュー指摘の修正、レビューコメントへの返信 → `pr-autofix` スキル
 
-`pr` は Agent tool で `pr-runner` を起動し、`pr-autofix` は `context: fork` で統括エージェントへ委譲するため、司令塔は Agent tool を直接呼ばずスキルを起動する。
+`pr` は Agent tool で `pr-runner` を起動し、`pr-autofix` は `context: fork` で統括エージェントへ委譲するため、司令塔は Agent tool を直接呼ばずスキルを起動する。`commit-pusher` は PR に触れない単発の作業なのでスキルを介さず、司令塔が Agent tool で直接呼ぶ例外である。
 
 独立した複数の作業は、同一メッセージで並列に起動する。
 

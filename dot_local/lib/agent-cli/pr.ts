@@ -12,9 +12,12 @@ const HELP = `Usage: agent-pr <command> [options]
     Commit only the explicit paths. Message is read literally from the file.
   publish --title <title> --body-file <file> [--base <branch>] [--repo <owner/repo>]
     Push the current branch, then create a Draft PR or update its open PR.
+  push
+    Push the current branch to origin. Nothing else.
 
 Run in the target Git checkout. gh and git must be installed.
 context does not access GitHub. publish does not merge or mark a PR ready.
+push only pushes; it never creates or updates a PR, and never decides whether one is needed.
 publish derives the GitHub repository from origin. For a fork PR, pass its base --repo.
 GH_REPO and gh's default repository never select the publication target.
 Exit codes: 0 success, 1 command failure, 2 invalid input.
@@ -104,6 +107,24 @@ async function commit(argv: string[]) {
   } finally { rmSync(dir, { recursive: true, force: true }); }
 }
 
+function verifiedOrigin() {
+  const origin = parseRemote(checked(["git", "config", "--get", "remote.origin.url"]));
+  const pushUrls = checked(["git", "remote", "get-url", "--push", "--all", "origin"]).split("\n");
+  if (pushUrls.length !== 1 || parseRemote(pushUrls[0]).id.toLowerCase() !== origin.id.toLowerCase()) {
+    throw new CliError("The effective origin push URL must identify the same single GitHub repository as origin");
+  }
+  return origin;
+}
+
+async function push(argv: string[]) {
+  const { positionals } = parseArgs({ args: argv, allowPositionals: true, strict: true });
+  if (positionals.length) throw new CliError("push takes no arguments");
+  const name = writableBranch();
+  verifiedOrigin();
+  checked(["git", "push", "--set-upstream", "origin", name]);
+  console.log(`Pushed ${name} to origin/${name}`);
+}
+
 async function publish(argv: string[]) {
   const { values } = parseArgs({ args: argv, strict: true, options: {
     title: { type: "string" }, "body-file": { type: "string" }, base: { type: "string" }, repo: { type: "string" },
@@ -112,11 +133,7 @@ async function publish(argv: string[]) {
   if (values.base?.startsWith("-")) throw new CliError("Invalid base branch");
   await nonemptyFile(values["body-file"], "--body-file");
   const name = writableBranch();
-  const origin = parseRemote(checked(["git", "config", "--get", "remote.origin.url"]));
-  const pushUrls = checked(["git", "remote", "get-url", "--push", "--all", "origin"]).split("\n");
-  if (pushUrls.length !== 1 || parseRemote(pushUrls[0]).id.toLowerCase() !== origin.id.toLowerCase()) {
-    throw new CliError("The effective origin push URL must identify the same single GitHub repository as origin");
-  }
+  const origin = verifiedOrigin();
   const repo = values.repo ? parseRemote(`https://${values.repo.split("/").length === 2 ? `${origin.host}/` : ""}${values.repo}`) : origin;
   if (repo.host !== origin.host) throw new CliError("The base repository and origin must use the same GitHub host");
   const repoFlag = ["--repo", repo.id];
@@ -159,6 +176,7 @@ export async function runCli(argv: string[]): Promise<number> {
     if (name === "context") await context(rest);
     else if (name === "commit") await commit(rest);
     else if (name === "publish") await publish(rest);
+    else if (name === "push") await push(rest);
     else throw new CliError(`Unknown command: ${name}`);
     return 0;
   } catch (error) {

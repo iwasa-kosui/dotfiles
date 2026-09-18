@@ -58,6 +58,7 @@ describe("PR操作をブロックする", () => {
     ["agent-pr commit", 'agent-pr commit -m "feat: x"'],
     ["agent-pr publish", "agent-pr publish"],
     ["agent-pr publish フルパス", "~/.local/bin/agent-pr publish --draft"],
+    ["agent-pr push", "agent-pr push"],
     ["gh pr create", "gh pr create --draft --title x"],
     ["gh pr edit", "gh pr edit 164 --add-label x"],
     ["gh pr ready", "gh pr ready 164"],
@@ -158,5 +159,49 @@ describe("hook 本体", () => {
     const reason = reasonOf({ tool_input: { command: "git push" } });
     expect(reason).toContain("pr スキル");
     expect(reason).toContain("pr-autofix スキル");
+  });
+
+  test("agent_id なしの agent-pr push はブロックする", () => {
+    expect(runHook({ tool_input: { command: "agent-pr push" } })).toBe(
+      "deny",
+    );
+  });
+
+  test("agent_id が空文字列の agent-pr push はブロックする", () => {
+    expect(
+      runHook({
+        agent_id: "",
+        tool_input: { command: "agent-pr push" },
+      }),
+    ).toBe("deny");
+  });
+
+  test("サブエージェント内の agent-pr push は許可する", () => {
+    expect(
+      runHook({
+        agent_id: "a109396390d6b0cb2",
+        tool_input: { command: "agent-pr push" },
+      }),
+    ).toBeNull();
+  });
+
+  describe("push 系の deny reason は commit-pusher を案内する", () => {
+    test.each([
+      ["agent-pr push", "agent-pr push"],
+      ["git push", "git push"],
+    ])("%s", (_name, command) => {
+      const reason = reasonOf({ tool_input: { command } });
+      expect(reason).toContain("commit-pusher");
+    });
+  });
+
+  describe("commit / publish の deny reason には commit-pusher を含めない", () => {
+    test.each([
+      ["agent-pr commit", 'agent-pr commit -m "feat: x"'],
+      ["agent-pr publish", "agent-pr publish"],
+    ])("%s", (_name, command) => {
+      const reason = reasonOf({ tool_input: { command } });
+      expect(reason).not.toContain("commit-pusher");
+    });
   });
 });

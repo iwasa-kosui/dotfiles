@@ -1,5 +1,5 @@
 import { afterEach, expect, test } from "bun:test";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 
@@ -204,4 +204,61 @@ test("agent-pr rejects a different origin push repository before contacting GitH
   const result = cli("agent-pr", ["publish", "--title", "test", "--body-file", "body.md"], dir, { ...process.env, PATH: `${bin}:${process.env.PATH}` });
   expect(result.code, result.err).toBe(2);
   expect(result.err).toContain("origin push URL");
+});
+
+test("agent-pr push rejects positional arguments", () => {
+  const dir = repo();
+  const before = run(["git", "rev-parse", "HEAD"], dir).out;
+  const result = cli("agent-pr", ["push", "extra"], dir);
+  expect(result.code).toBe(2);
+  expect(run(["git", "rev-parse", "HEAD"], dir).out).toBe(before);
+});
+
+test("agent-pr push rejects unknown options", () => {
+  const dir = repo();
+  const result = cli("agent-pr", ["push", "--force"], dir);
+  expect(result.code).toBe(2);
+});
+
+test("agent-pr push refuses a protected branch and never calls git push", () => {
+  const dir = repo();
+  expect(run(["git", "checkout", "-b", "main"], dir).code).toBe(0);
+  const bin = join(dir, "bin"); mkdirSync(bin);
+  const calls = join(dir, "calls.jsonl");
+  const git = Bun.which("git")!;
+  // Record every git invocation while still delegating to the real binary, so we can assert push was never attempted.
+  writeFileSync(join(bin, "git"), `#!${process.execPath}\nimport { appendFileSync } from 'node:fs';\nconst a=process.argv.slice(2); appendFileSync(${JSON.stringify(calls)},JSON.stringify(a)+'\\n');\nprocess.exit(Bun.spawnSync([${JSON.stringify(git)},...a],{stdin:'inherit',stdout:'inherit',stderr:'inherit'}).exitCode);\n`, { mode: 0o755 });
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+  const result = cli("agent-pr", ["push"], dir, env);
+  expect(result.code).toBe(2);
+  expect(result.err).toContain("feature branch");
+  const logged = readFileSync(calls, "utf8").trim().split("\n").filter(Boolean).map((line) => JSON.parse(line));
+  expect(logged.some((args) => args[0] === "push")).toBe(false);
+});
+
+test("agent-pr push updates the remote branch without ever calling gh", () => {
+  const dir = repo();
+  const remote = join(dir, "remote.git");
+  expect(run(["git", "init", "--bare", remote], dir).code).toBe(0);
+  run(["git", "remote", "add", "origin", "https://github.com/test/repo.git"], dir);
+  run(["git", "config", `url.${remote}.insteadOf`, "https://github.com/test/repo.git"], dir);
+  const bin = join(dir, "bin"); mkdirSync(bin);
+  // Redirect the actual Git push to the local bare fixture while retaining GitHub URL metadata.
+  const git = Bun.which("git")!;
+  writeFileSync(join(bin, "git"), `#!${process.execPath}\nconst a=process.argv.slice(2);\nif(a.join(' ')==='remote get-url --push --all origin') console.log('https://github.com/test/repo.git');\nelse process.exit(Bun.spawnSync([${JSON.stringify(git)},...a],{stdin:'inherit',stdout:'inherit',stderr:'inherit'}).exitCode);\n`, { mode: 0o755 });
+  const calls = join(dir, "gh-calls.jsonl");
+  writeFileSync(join(bin, "gh"), `#!${process.execPath}\nimport { appendFileSync } from 'node:fs';\nconst a=process.argv.slice(2); appendFileSync(${JSON.stringify(calls)},JSON.stringify(a)+'\\n'); process.exit(9);\n`, { mode: 0o755 });
+  const env = { ...process.env, PATH: `${bin}:${process.env.PATH}` };
+  const result = cli("agent-pr", ["push"], dir, env);
+  expect(result.code, result.err).toBe(0);
+  expect(result.out).toContain("codex/example");
+  expect(run(["git", "--git-dir", remote, "rev-parse", "codex/example"], dir).out).toBe(run(["git", "rev-parse", "HEAD"], dir).out);
+  expect(existsSync(calls)).toBe(false);
+});
+
+test("agent-pr dispatches push instead of falling back to Unknown command", () => {
+  const dir = repo();
+  const result = cli("agent-pr", ["push"], dir);
+  expect(result.code).toBe(1);
+  expect(result.err).not.toContain("Unknown command");
 });
