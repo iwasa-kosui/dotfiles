@@ -9,6 +9,11 @@
         "subagents": "独立した調査や診断を Codex の利用可能なサブエージェントへ委譲する"
       },
       "hookRoles": {
+        "completion-notify": {
+          "path": "dot_codex/hooks/executable_completion-notify.ts",
+          "status": "active",
+          "responsibility": "子セッションを除外し、メインセッションの完了だけを通知する"
+        },
         "force-push-guard": {
           "path": "dot_codex/hooks/executable_force-push-guard.ts",
           "status": "active",
@@ -72,6 +77,11 @@
         "subagents": "Agent ツールと設定済み実行モデルを使って独立した調査や診断を委譲する"
       },
       "hookRoles": {
+        "completion-notify": {
+          "path": "dot_claude/hooks/executable_completion-notify.ts",
+          "status": "active",
+          "responsibility": "子セッションを除外し、メインセッションの完了だけを通知する"
+        },
         "bash-guard": {
           "path": "dot_claude/hooks/executable_bash-guard.ts",
           "status": "active",

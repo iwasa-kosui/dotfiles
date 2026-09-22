@@ -515,7 +515,7 @@ managed='
         "hooks": [
           {
             "type": "command",
-            "command": "terminal-notifier -title '\''Claude Code'\'' -message '\''タスクが完了しました'\'' -sound Glass -sender com.apple.Terminal"
+            "command": "bun ~/.claude/hooks/completion-notify.ts"
           }
         ]
       }
