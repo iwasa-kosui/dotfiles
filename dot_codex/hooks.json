@@ -93,7 +93,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "terminal-notifier -title 'Codex' -message 'タスクが完了しました' -sound Glass -sender com.apple.Terminal"
+            "command": "bun ~/.codex/hooks/completion-notify.ts"
           }
         ]
       }
