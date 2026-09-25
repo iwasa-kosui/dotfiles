@@ -34,7 +34,7 @@
             "showUnits": true
           },
           "today": {
-            "enabled": true,
+            "enabled": false,
             "type": "cost",
             "showUnits": true
           },
