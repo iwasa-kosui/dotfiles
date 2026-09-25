@@ -37,12 +37,18 @@ const FG = [86, 95, 137] as const;
 // tokyo-night テーマの contextCritical と同色
 const WARN_BG = [247, 118, 142] as const;
 const WARN_FG = [26, 27, 38] as const;
+// tokyo-night テーマの green / teal。費用 capsule だけ DIM をやめてはっきり見せる。
+// PR・effort（DIM のグレー系）、警告（赤系）と被らない色を選んでいる
+const COST_FG = [158, 206, 106] as const;
+const COST_FG_TODAY = [115, 218, 202] as const;
 
 const fgC = (c: readonly number[]) => `\x1b[38;2;${c[0]};${c[1]};${c[2]}m`;
 const bgC = (c: readonly number[]) => `\x1b[48;2;${c[0]};${c[1]};${c[2]}m`;
 const RESET = "\x1b[0m";
 const DIM = "\x1b[2m";
 const BOLD = "\x1b[1m";
+// 太字だけを解除し、色は変えずに残す（capsule の背景色を RESET で壊さないため）
+const NORMAL = "\x1b[22m";
 // Nerd Font の Private Use Area はエディタやツールを通すと欠落しやすいためエスケープで書く
 const CAP_LEFT = "\ue0b6"; // nf-pl-left_half_circle_thick
 const CAP_RIGHT = "\ue0b4"; // nf-pl-right_half_circle_thick
@@ -242,9 +248,15 @@ if (effortLevel) {
 
 if (sessionCost !== null || todayCost !== null) {
   const parts: string[] = [];
-  if (sessionCost !== null) parts.push(`$${sessionCost.toFixed(2)}`);
-  if (todayCost !== null) parts.push(`(today $${todayCost.toFixed(2)})`);
-  extras.push(capsule(BG, FG, `${COST_ICON} ${parts.join(" ")}`, DIM));
+  // セッション費用は太字の green で強調し、today 費用は teal で区別する。
+  // どちらも DIM は使わず、capsule の背景に対して十分なコントラストを保つ
+  if (sessionCost !== null)
+    parts.push(`${BOLD}$${sessionCost.toFixed(2)}${NORMAL}`);
+  if (todayCost !== null)
+    parts.push(
+      `${fgC(COST_FG_TODAY)}(today $${todayCost.toFixed(2)})${fgC(COST_FG)}`,
+    );
+  extras.push(capsule(BG, COST_FG, `${COST_ICON} ${parts.join(" ")}`, ""));
 }
 
 if (contextTokens !== null && contextTokens > CONTEXT_WARN_TOKENS) {
