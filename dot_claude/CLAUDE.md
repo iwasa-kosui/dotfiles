@@ -61,12 +61,13 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 
 ドメイン特化。
 
-- `gh-collector` — PR の基本情報、CI 失敗ログ、レビューコメント、ブランチのコミット群と差分の要約
+- `gh-collector` — PR の基本情報、CI 失敗ログ、レビューコメント、ブランチのコミット群と差分の要約。ローカルの `git status` / `git diff` / `git log` などの状況確認も担う。収集専任で、commit と push はしない
 - `fact-checker` — 主張を一次情報と照合し、判定・根拠 URL・原文引用を返す
 - `atlassian-collector` — Jira 課題と Confluence ページの取得・検索・要約
 
-PR スキル用。`pr-autofix-runner` は `pr-autofix` スキルが `context: fork` で起動する。司令塔が直接指名するものではない。
+PR スキル用。`pr-runner` は `pr` スキル、`pr-autofix-runner` は `pr-autofix` スキルが `context: fork` で起動する。司令塔が直接指名するものではない。
 
+- `pr-runner` — `pr` スキルの実行役。変更内容の判断、コミットメッセージと PR 本文の執筆、`agent-pr commit` / `publish` / `push` の実行を自分で行う。PR を作らず commit と push だけ行う場合も担当する
 - `pr-autofix-runner` — `pr-autofix` スキルの統括役。CI 失敗とレビュー指摘の収集・判断とレビュー返信文の執筆。コードとドキュメントの修正は `code-editor` / `doc-editor` に再委譲し、commit と push の `agent-pr` CLI は自分で実行する
 
 builtin で使うのは `Plan`（実装方針の設計）だけ。コード探索は `Explore` ではなく `code-analyzer`、雑多な作業も `general-purpose` ではなく役割別のエージェントに振る。
@@ -78,7 +79,12 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - ユーザーとの対話。ヒアリング、確認、承認
 - サブエージェントのディスパッチ。プロンプトの組み立てと Agent tool 呼び出し
 - サブエージェントの結果を統合して最終成果物を組み立てる
-- 読み取り系の git / gh コマンド、`chezmoi apply`、`agent-pr commit` の実行。`git status`、`git diff --stat`、`gh pr view` などの状況確認や `agent-pr commit` はサブエージェントに任せない。commit・push・Draft PR 作成は `pr` スキルに従い、メインが `agent-pr` で実行する。PR の CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。`pr-autofix` スキルは `context: fork` で `pr-autofix-runner` に委譲される。Ready 化・merge・force-push・保護ブランチへの push と PR コメントの投稿は `bash-guard` hook が deny する
+- `chezmoi apply` と worktree 作成（`git-wt`）の実行。git / gh の状況確認は自分で叩かない
+  - `git status`、`git diff`、`git log`、`gh pr view` などの状況確認は `gh-collector` に委譲する。出力がメインの文脈に残り続け、以降の全コールで読み直されるため
+  - commit・push・Draft PR の作成と更新は `pr` スキルに任せる。`pr` スキルは `context: fork` で `pr-runner` が実行する
+  - PR の CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。`pr-autofix` スキルは `context: fork` で `pr-autofix-runner` が実行する
+  - メインからの `agent-pr commit` / `agent-pr publish` / `agent-pr push`、`git push`、gh の書き込み系は `bash-guard` hook（pr-delegation-guard）が deny する
+  - Ready 化・merge・force-push・保護ブランチへの push と PR コメントの投稿は、引き続き `bash-guard` hook が deny する。実行するにはユーザーの明示的な承認が要る
 
 ### サブエージェント（Sonnet / Haiku）の責務
 
@@ -96,17 +102,19 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - コードと設定ファイルを書き換える、新規作成する → `code-editor`
 - Markdown を書き換える、新規作成する → `doc-editor`
 - PR、CI、レビューコメントの状況を知る → `gh-collector`
+- git / gh の状況確認（status, diff, log, PR 情報）→ `gh-collector`
 - Jira 課題と Confluence ページを読む → `atlassian-collector`
 - 主張の裏取り → `fact-checker`
+- コミット、push、Draft PR の作成・更新 → `pr` スキル
 - PR の CI 失敗とレビュー指摘の修正、レビューコメントへの返信 → `pr-autofix` スキル
 
-コミットして push する、Draft PR を作る、既存 PR を更新する作業は委譲せず、`pr` スキルに従ってメインが `agent-pr` で実行する。`pr-autofix` は `context: fork` で統括エージェントへ委譲するため、司令塔は Agent tool を直接呼ばずスキルを起動する。
+`pr` と `pr-autofix` は `context: fork` で統括エージェント（`pr-runner` / `pr-autofix-runner`）へ委譲するため、司令塔は Agent tool を直接呼ばずスキルを起動する。
 
 独立した複数の作業は、同一メッセージで並列に起動する。
 
 委譲の代償は把握しておく。サブエージェントは起動ごとに固定文脈を払うため、1行の修正でも1回分かかり、メインで Read と Edit を続けたほうが安く済むケースは残る。それでも委譲に寄せるのは、毎回コストを比べる運用だと判断が漏れ、漏れたときの損失が大きいからである。メインに載ったファイル全文は以降の全コールで読み直され、会話が続くかぎり課金され続ける。
 
-編集を委譲すると司令塔は差分を直接読まない。だから `code-editor` と `doc-editor` には、変更した `file:line` と変更後の該当行の引用を返させる。それでも足りないときは `git diff --stat` で範囲を確認する。
+編集を委譲すると司令塔は差分を直接読まない。だから `code-editor` と `doc-editor` には、変更した `file:line` と変更後の該当行の引用を返させる。それでも足りないときは `gh-collector` に `git diff --stat` 相当の範囲確認を頼む。
 
 ### プロンプトの書き方
 

@@ -3,6 +3,7 @@ name: gh-collector
 description: >-
   PR にまつわるデータを gh / git CLI で収集し、構造化して返す専門エージェント。PR の基本情報、CI 失敗ログ、
   レビューコメント、ブランチ上のコミット群と差分の要約を担当する。
+  ローカルの git status / git diff / git log などの状況確認も担当する。
   生ログや diff 全文は返さず、エラー本文と file:line に絞って要約する。
   PR の状態を知りたいとき、CI 失敗の原因を特定したいとき、未解決レビューコメントを一覧したいとき、
   gh run view --log-failed の出力を解析したいときは proactively このエージェントに委譲すること。
