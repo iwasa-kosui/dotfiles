@@ -1,19 +1,47 @@
 ---
 name: pr
 description: Git の変更をコミットし、Draft PR を作成または既存PRを更新する。
-allowed-tools: Agent
+allowed-tools: Bash, Read, Write
 ---
 
 # PR
 
-`pr-runner` サブエージェントを起動します。手順と禁止事項は `pr-runner` の定義側に持たせてあるため、ここには起動の仕方だけを書きます。
+メインエージェントが `agent-pr` を使って、commit、push、Draft PR の作成・更新を直接実行します。
 
-1. Agent tool を `subagent_type: "pr-runner"` で呼びます。`model` は渡しません。`pr-runner` の定義側で Sonnet に固定してあります
-2. タスクメッセージに次を渡します。`pr-runner` に会話履歴は渡らないため、ここに書かなかったことは伝わりません
-   - 作業ディレクトリの絶対パス
-   - 何をなぜ変更したかの要約。`pr-runner` は `agent-pr context` で diff を読めますが、変更の意図は diff からは読めません
-   - ユーザーから PR のタイトル・本文・base ブランチの希望があれば、そのまま添えます
-   - 新規 PR の作成か既存 PR の更新かが分かっている場合は、その旨を書きます
-3. 返ってきた報告をユーザーに伝えます。コミットの有無、PR の URL、スキップした手順は省略しません
+## 手順
 
-コミットメッセージと PR 本文の執筆は `pr-runner` の担当なので、ここでは書きません。Ready 化・merge・force-push・保護ブランチへの直接変更は、`pr-runner` も行いません。
+1. `agent-pr --help` を実行し、サブコマンドの入出力を確認します。
+2. `agent-pr context [--base <ref>]` を実行します。出力は JSON で、`root` / `branch` / `base` / `status` / `diff` / `branchDiff` / `commits` / `templates` を含みます。
+   - `diff` と `branchDiff` は truncate されず、巨大になりえます。全文を会話に貼らないでください。メインの文脈を太らせないため、まず `git diff --stat` で範囲を掴み、必要なファイルだけを読みます。
+3. 差分から What と Why を判断し、コミット対象のファイルを決めます。
+4. コミットメッセージを `$(git rev-parse --git-dir)/AGENT_PR_COMMIT_MSG`、PR 本文を `$(git rev-parse --git-dir)/AGENT_PR_BODY.md` に Write で書き出します。git dir 配下なので、worktree でも正しい場所に置け、作業ツリーを汚しません。
+5. コミットメッセージの末尾に、セッションで指示された `Co-Authored-By` 行をそのまま書きます。
+   - `agent-pr commit` は、メッセージに `Co-Authored-By` があれば追記しません。
+   - `--model` と `--email` は渡しません。
+   - モデル名やバージョンをハードコードしません。
+6. `agent-pr commit --message-file <path> -- <files...>` を実行します。
+7. 続きは目的で分かれます。
+   - PR を作る、または更新する場合は `agent-pr publish --title <title> --body-file <path> [--base <branch>]` を実行します。
+   - PR に触れず push だけする場合は `agent-pr push` を実行します。
+   - commit だけで止める指示なら、ここで終えます。
+8. commit SHA と PR URL をユーザーに報告します。コミットの有無、スキップした手順も省略しません。
+
+## 書き方の規約
+
+- コミットメッセージは Conventional Commits の `<type>(<scope>): <description>` 形式です。scope は必須です。
+- 変更の What と Why を書きます。「レビューコメントに基づき」のようなトリガーは書きません。リポジトリの CLAUDE.md の Commit Message Rules に従います。
+- `context` の `templates` に PR テンプレートがあれば、その節構成に従います。
+- 地の文はです・ます調です。コミットメッセージと PR タイトルは体言止め・言い切りでかまいません。
+
+## `agent-pr commit` の性質
+
+- 明示したファイルだけをステージし、意図しないファイルの混入を検証します。
+- Conventional Commits でないメッセージを拒否します。
+- main / master / develop へのコミットを拒否します。
+
+## 禁止事項
+
+- Ready 化、merge、force-push、保護ブランチへの直接変更は、ユーザーの明示的な承認なしに行いません。
+- amend しません。
+- `git commit`、`git push`、`gh pr create` を直接実行せず、`agent-pr` 経由にします。
+- コードとドキュメントの内容は、このスキルでは変更しません。

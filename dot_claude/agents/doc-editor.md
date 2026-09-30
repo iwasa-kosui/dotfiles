@@ -10,7 +10,7 @@ description: >-
   何を書くかの判断は司令塔の責務なので、指示された範囲外は変更しない。commit と push は行わない。
 tools: Read, Edit, Write, Grep, Glob
 model: sonnet
-effort: medium
+effort: high
 ---
 
 # doc-editor

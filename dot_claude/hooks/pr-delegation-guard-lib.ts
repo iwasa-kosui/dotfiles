@@ -1,11 +1,11 @@
-// メインの会話から直接実行された PR 操作（commit / push / PR 作成・更新 / コメント投稿）を
-// 判定するロジック。hook 本体から切り離してテストできるようにしている。
+// メインの会話から直接実行された gh 経由の PR 操作（PR 作成・更新 / Ready 化 / merge /
+// コメント投稿）を判定するロジック。hook 本体から切り離してテストできるようにしている。
 //
-// PR 操作は pr / pr-autofix スキル経由でサブエージェントに実行させる方針のため、
-// メインの会話から agent-pr / gh / git push が直接呼ばれたら拒否する。
+// commit / push / Draft PR の作成は agent-pr（commit / publish）経由でメインが直接行う。
+// それ以外の gh による PR 操作（Ready 化・merge・コメント投稿など）は承認が必要なため、
+// メインの会話から直接呼ばれたら拒否する。
 
 import { allow, deny, type GuardInput, type GuardResult } from "./guard-lib.ts";
-import { GIT_PREFIX } from "./shell-hook-lib.ts";
 
 export type BlockedPrOperation = {
   readonly name: string;
@@ -13,9 +13,6 @@ export type BlockedPrOperation = {
 };
 
 const blockedOperations: BlockedPrOperation[] = [
-  { name: "agent-pr commit", pattern: /\bagent-pr\s+commit\b/ },
-  { name: "agent-pr publish", pattern: /\bagent-pr\s+publish\b/ },
-  { name: "agent-pr push", pattern: /\bagent-pr\s+push\b/ },
   { name: "gh pr create", pattern: /\bgh\s+pr\s+create\b/ },
   { name: "gh pr edit", pattern: /\bgh\s+pr\s+edit\b/ },
   { name: "gh pr ready", pattern: /\bgh\s+pr\s+ready\b/ },
@@ -23,7 +20,6 @@ const blockedOperations: BlockedPrOperation[] = [
   { name: "gh pr comment", pattern: /\bgh\s+pr\s+comment\b/ },
   { name: "gh pr review", pattern: /\bgh\s+pr\s+review\b/ },
   { name: "gh issue comment", pattern: /\bgh\s+issue\s+comment\b/ },
-  { name: "git push", pattern: new RegExp(`${GIT_PREFIX.source}push\\b`) },
 ];
 
 // gh api のコメント系エンドポイント。gh-comment-format-guard.ts の GH_API_COMMENT と同一。
@@ -71,17 +67,13 @@ export function isMainConversation(input: { agent_id?: unknown }): boolean {
 }
 
 export function reasonFor(name: string): string {
-  const isPushOnly = name === "git push" || name === "agent-pr push";
-  const pushLine = isPushOnly
-    ? "- コミットして push するだけなら（PR は作らない） → commit-pusher サブエージェントに委譲する\n"
-    : "";
   return `メインの会話から PR 操作を直接実行することはできません（検出: ${name}）。
 
-PR 操作はスキル経由でサブエージェントに実行させること。
-- PR まで作るなら → pr スキルを起動する
-${pushLine}- CI 失敗とレビュー指摘の修正 / レビューコメントへの返信 → pr-autofix スキルを起動する
+- PR の作成・更新 → agent-pr publish --title <title> --body-file <path> [--base <branch>] を使う
+- Ready 化・merge → ユーザーの明示的な承認が必要。承認を得たうえでユーザー自身が実行する
+- レビューコメントへの返信 → pr-autofix スキルを起動する
 
-いずれもサブエージェント内ではこの hook は発火しないため、同じコマンドがそのまま実行できる。`;
+サブエージェント内ではこの hook は発火しないため、pr-autofix スキルの中では同じコマンドがそのまま実行できる。`;
 }
 
 export function checkPrDelegation(input: GuardInput): GuardResult {

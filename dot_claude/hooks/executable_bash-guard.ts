@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// PreToolUse hook: Bash 実行前に走る6つのガードを1プロセスに集約したディスパッチャ。
+// PreToolUse hook: Bash 実行前に走る8つのガードを1プロセスに集約したディスパッチャ。
 //
 // 以前は main-branch-guard / force-push-guard / commit-message-guard /
 // gh-comment-format-guard / lint-outgoing-body / pr-delegation-guard が

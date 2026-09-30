@@ -1,10 +1,10 @@
-// executable_bash-guard.ts（6つのガードを1プロセスに集約したディスパッチャ）の回帰テスト。
+// executable_bash-guard.ts（8つのガードを1プロセスに集約したディスパッチャ）の回帰テスト。
 // `bun test` でリポジトリルートから実行する。
 //
 // 各ガード個別の判定ロジックの回帰は force-push-guard.test.ts / commit-message-guard.test.ts /
 // gh-comment-format-guard.test.ts / pr-delegation-guard.test.ts / branch-guard-lib.test.ts に
 // 既にある。このファイルで固定したいのはディスパッチャ固有の3点。
-//   1. 6つのガードすべてが配線されていること（各ガードが deny する入力を1件ずつ確認する）
+//   1. 8つのガードすべてが配線されていること（各ガードが deny する入力を1件ずつ確認する）
 //   2. dot_claude/modify_settings.json.tmpl の旧登録順（main-branch → force-push →
 //      commit-message → gh-comment-format → lint-outgoing-body → pr-delegation）が
 //      維持されていること
@@ -44,7 +44,7 @@ function runHook(input: Record<string, unknown>): {
   };
 }
 
-describe("6つのガードすべてが配線されている", () => {
+describe("8つのガードすべてが配線されている", () => {
   test("main-branch-guard: 保護ブランチでのコミットを拒否する", () => {
     const tempParent = mkdtempSync(join(tmpdir(), "bash-guard-"));
     const mainRepo = join(tempParent, "main-repo");
@@ -126,19 +126,29 @@ describe("6つのガードすべてが配線されている", () => {
     expect(decision).toBe("deny");
     expect(reason).toContain("メインの会話から PR 操作");
   });
+
+  test("protected-branch-push-guard: 保護ブランチ宛の push を拒否する", () => {
+    const { decision, reason } = runHook({
+      cwd: "/tmp",
+      agent_id: "test-subagent",
+      tool_input: { command: "git push origin main" },
+    });
+    expect(decision).toBe("deny");
+    expect(reason).toContain("保護ブランチ(main)への git push");
+  });
 });
 
 describe("実行順序を維持する", () => {
-  test("force-push-guard と pr-delegation-guard の両方に該当する入力は force-push-guard の理由を返す", () => {
-    // agent_id なしの git push --force は force-push-guard（2番目）と
-    // pr-delegation-guard（6番目）の両方に該当する。先の順序のガードの理由が返るはず。
+  test("force-push-guard と protected-branch-push-guard の両方に該当する入力は force-push-guard の理由を返す", () => {
+    // 保護ブランチ宛の force push は force-push-guard（2番目）と
+    // protected-branch-push-guard（3番目）の両方に該当する。先の順序のガードの理由が返るはず。
     const { decision, reason } = runHook({
       cwd: "/tmp",
-      tool_input: { command: "git push --force origin feat/x" },
+      tool_input: { command: "git push --force origin main" },
     });
     expect(decision).toBe("deny");
     expect(reason).toContain("force push（");
-    expect(reason).not.toContain("メインの会話から PR 操作");
+    expect(reason).not.toContain("保護ブランチ");
   });
 });
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# modify script: 管理対象フィールド(autoCompactEnabled, effortLevel, env, permissions, hooks,
+# modify script: 管理対象フィールド(autoCompactEnabled, model, effortLevel, env, permissions, hooks,
 # statusLine, language)をソースから上書きし、それ以外(enabledPlugins等)は既存の値を保持する。
 #
 # autoCompactEnabled を false にするのは、自動圧縮が履歴を要約に置き換えてしまい、何が失われたかを
@@ -25,7 +25,8 @@ fi
 managed='
 {
   "autoCompactEnabled": false,
-  "effortLevel": "xhigh",
+  "model": "opus[1m]",
+  "effortLevel": "medium",
   "env": {
     "CLAUDE_CODE_SUBAGENT_MODEL": "inherit"{{- if eq .profile "work" }},
     "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": "1",

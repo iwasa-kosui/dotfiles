@@ -11,8 +11,8 @@ tools: Bash, Read
 skills:
   - jira-cli:jira
   - confluence-cli:confluence
-model: sonnet
-effort: medium
+model: haiku
+effort: low
 ---
 
 # atlassian-collector

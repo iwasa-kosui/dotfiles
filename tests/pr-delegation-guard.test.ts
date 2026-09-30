@@ -2,8 +2,10 @@
 // `bun test` でリポジトリルートから実行する。
 //
 // 主に固定したいのは次の2点。
-//   1. メインの会話からの commit / push / PR 作成・更新 / コメント投稿をブロックすること
-//   2. 読み取り専用の gh コマンドとサブエージェント内の実行は許可すること
+//   1. メインの会話からの gh による PR 作成・更新 / Ready 化 / merge / コメント投稿をブロックすること
+//   2. agent-pr（commit / publish / push）、feature ブランチへの push、読み取り専用の gh コマンド、
+//      サブエージェント内の実行は許可すること
+// 保護ブランチ宛の push は protected-branch-push-guard.test.ts で固定する。
 
 import { describe, expect, test } from "bun:test";
 import { execFileSync } from "node:child_process";
@@ -55,10 +57,6 @@ function reasonOf(input: Record<string, unknown>): string | null {
 
 describe("PR操作をブロックする", () => {
   test.each([
-    ["agent-pr commit", 'agent-pr commit -m "feat: x"'],
-    ["agent-pr publish", "agent-pr publish"],
-    ["agent-pr publish フルパス", "~/.local/bin/agent-pr publish --draft"],
-    ["agent-pr push", "agent-pr push"],
     ["gh pr create", "gh pr create --draft --title x"],
     ["gh pr edit", "gh pr edit 164 --add-label x"],
     ["gh pr ready", "gh pr ready 164"],
@@ -66,10 +64,6 @@ describe("PR操作をブロックする", () => {
     ["gh pr comment", 'gh pr comment 164 --body "x"'],
     ["gh pr review", "gh pr review 164 --approve"],
     ["gh issue comment", 'gh issue comment 10 --body "x"'],
-    ["git push", "git push"],
-    ["git push origin HEAD", "git push origin HEAD"],
-    ["git -C を挟む push", "git -C /tmp/wt push"],
-    ["cd && git push", "cd /tmp/wt && git push -u origin feat/x"],
     [
       "gh api -X POST でコメント作成",
       "gh api -X POST repos/o/r/pulls/1/comments -f body=x",
@@ -94,6 +88,16 @@ describe("PR操作をブロックする", () => {
 describe("PR操作以外はブロックしない", () => {
   test.each([
     ["agent-pr context", "agent-pr context"],
+    ["agent-pr commit", "agent-pr commit --message-file /tmp/msg -- a.ts"],
+    [
+      "agent-pr publish",
+      "agent-pr publish --title x --body-file /tmp/body.md",
+    ],
+    ["agent-pr push", "agent-pr push"],
+    ["git push", "git push"],
+    ["git push origin HEAD", "git push origin HEAD"],
+    ["git -C を挟む push", "git -C /tmp/wt push"],
+    ["cd && git push", "cd /tmp/wt && git push -u origin feat/x"],
     ["pr-autofix collect", "pr-autofix collect"],
     ["gh pr view", "gh pr view 164 --json state"],
     ["gh pr list", "gh pr list"],
@@ -127,10 +131,6 @@ describe("isMainConversation", () => {
 });
 
 describe("hook 本体", () => {
-  test("agent_id なしの git push はブロックする", () => {
-    expect(runHook({ tool_input: { command: "git push" } })).toBe("deny");
-  });
-
   test("agent_id が空文字列の gh pr create はブロックする", () => {
     expect(
       runHook({
@@ -140,11 +140,11 @@ describe("hook 本体", () => {
     ).toBe("deny");
   });
 
-  test("サブエージェント内の git push は許可する", () => {
+  test("サブエージェント内の gh pr create は許可する", () => {
     expect(
       runHook({
         agent_id: "a109396390d6b0cb2",
-        tool_input: { command: "git push" },
+        tool_input: { command: "gh pr create --draft --title x" },
       }),
     ).toBeNull();
   });
@@ -155,53 +155,30 @@ describe("hook 本体", () => {
     ).toBeNull();
   });
 
-  test("deny の reason に pr / pr-autofix スキルの両方が含まれる", () => {
-    const reason = reasonOf({ tool_input: { command: "git push" } });
-    expect(reason).toContain("pr スキル");
+  test.each([
+    ["agent-pr push", "agent-pr push"],
+    ["agent-pr commit", "agent-pr commit --message-file /tmp/msg -- a.ts"],
+    ["agent-pr publish", "agent-pr publish --title x --body-file /tmp/body.md"],
+    ["feature ブランチへの git push", "git push -u origin feat/x"],
+  ])("メインの会話からの %s は許可する", (_name, command) => {
+    expect(runHook({ cwd: "/tmp", tool_input: { command } })).toBeNull();
+  });
+
+  test("deny の reason に agent-pr publish と pr-autofix スキルの案内が含まれる", () => {
+    const reason = reasonOf({
+      tool_input: { command: "gh pr create --draft" },
+    });
+    expect(reason).toContain("agent-pr publish");
     expect(reason).toContain("pr-autofix スキル");
+    expect(reason).toContain("承認");
   });
 
-  test("agent_id なしの agent-pr push はブロックする", () => {
-    expect(runHook({ tool_input: { command: "agent-pr push" } })).toBe(
-      "deny",
-    );
-  });
-
-  test("agent_id が空文字列の agent-pr push はブロックする", () => {
-    expect(
-      runHook({
-        agent_id: "",
-        tool_input: { command: "agent-pr push" },
-      }),
-    ).toBe("deny");
-  });
-
-  test("サブエージェント内の agent-pr push は許可する", () => {
-    expect(
-      runHook({
-        agent_id: "a109396390d6b0cb2",
-        tool_input: { command: "agent-pr push" },
-      }),
-    ).toBeNull();
-  });
-
-  describe("push 系の deny reason は commit-pusher を案内する", () => {
-    test.each([
-      ["agent-pr push", "agent-pr push"],
-      ["git push", "git push"],
-    ])("%s", (_name, command) => {
-      const reason = reasonOf({ tool_input: { command } });
-      expect(reason).toContain("commit-pusher");
+  test("deny の reason に廃止したサブエージェントを含めない", () => {
+    const reason = reasonOf({
+      tool_input: { command: "gh pr merge 164 --squash" },
     });
-  });
-
-  describe("commit / publish の deny reason には commit-pusher を含めない", () => {
-    test.each([
-      ["agent-pr commit", 'agent-pr commit -m "feat: x"'],
-      ["agent-pr publish", "agent-pr publish"],
-    ])("%s", (_name, command) => {
-      const reason = reasonOf({ tool_input: { command } });
-      expect(reason).not.toContain("commit-pusher");
-    });
+    expect(reason).not.toContain("commit-pusher");
+    expect(reason).not.toContain("pr-shipper");
+    expect(reason).not.toContain("pr-runner");
   });
 });

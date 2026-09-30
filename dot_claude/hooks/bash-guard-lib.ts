@@ -9,6 +9,7 @@ import { checkGhCommentFormat } from "./gh-comment-format-guard-lib.ts";
 import type { Guard } from "./guard-lib.ts";
 import { checkOutgoingBody } from "./lint-outgoing-body-lib.ts";
 import { checkPrDelegation } from "./pr-delegation-guard-lib.ts";
+import { checkProtectedBranchPush } from "./protected-branch-push-guard-lib.ts";
 
 // executable_bash-guard.ts が逐次実行する順序。
 // dot_claude/modify_settings.json.tmpl の旧6件登録の順序をそのまま引き継ぐ。
@@ -20,6 +21,7 @@ export const guards: readonly Guard[] = [
     check: (input) => checkMainBranchGuard(input.normalizedCommand, input.cwd),
   },
   { name: "force-push-guard", check: checkForcePush },
+  { name: "protected-branch-push-guard", check: checkProtectedBranchPush },
   { name: "commit-message-guard", check: checkCommitMessage },
   { name: "gh-comment-format-guard", check: checkGhCommentFormat },
   { name: "lint-outgoing-body", check: checkOutgoingBody },
