@@ -1,6 +1,6 @@
 ---
 name: pr-autofix
-description: PR の CI 失敗とレビュー指摘を収集し、修正する。
+description: PR の CI 失敗とレビュー指摘を収集し、修正する。起動時は対象 PR の番号か URL と、作業ディレクトリ（worktree）の絶対パスを引数に含める。
 context: fork
 agent: pr-autofix-runner
 model: sonnet
@@ -11,6 +11,19 @@ allowed-tools: Agent, Bash, Read, Write
 # PR Autofix
 
 このスキルは `context: fork` により `pr-autofix-runner`（Sonnet）のサブエージェント内で実行されます。手順の詳細と禁止事項は `pr-autofix-runner` の定義側に持たせてあるため、ここには手順の骨子だけを書きます。
+
+## 引数と対象 PR
+
+引数: $ARGUMENTS
+
+fork 先にはメインの会話履歴が渡らないため、対象 PR は次の優先順位で決めます。
+
+1. 引数に PR 番号か URL があれば、それを使います。
+2. 引数に作業ディレクトリの絶対パスがあれば、以降の git / gh / pr-autofix のコマンドはそのディレクトリに `cd` してから実行します。
+3. PR の指定がなければ、作業ディレクトリで `gh pr view --json number,url,headRefName` を実行して現在のブランチの PR を特定し、その番号を `pr-autofix collect` に渡します。
+4. それでも見つからなければ推測せず、PR を特定できなかったことを報告して終了します。
+
+## 手順
 
 1. `pr-autofix --help` で入出力を確認します。
 2. `pr-autofix collect` で CI 失敗とレビュー指摘を収集します。標準出力の要約で全体を把握し、`ci-failures.json` と `review-comments.json` は必要な項目だけ読みます。
