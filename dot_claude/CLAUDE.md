@@ -34,7 +34,7 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 
 ## コマンド/スキル設計原則: サブエージェント駆動
 
-コマンドやスキルを設計する際は、Opus（司令塔）と、より安価なモデル（実行者）の役割を分離する。実行者は既定で Sonnet、整形や書き出しのように判断を伴わない作業は Haiku にする。
+コマンドやスキルを設計する際は、Opus（司令塔）と、より安価なモデル（実行者）の役割を分離する。実行者は Sonnet に統一し、Haiku は使わない。
 
 ### モデルと effort の決まり方
 
@@ -44,19 +44,21 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 
 **builtin の `Explore` / `Plan` / `general-purpose` は frontmatter を持たない。** 指定しないとセッションのモデル（Opus）を継承するので、builtin を使う場合は Agent 呼び出し時に `model: "sonnet"` を明示する。役割別の専用エージェントを定義してあるのは、この明示を忘れる余地を消すためでもある。
 
-`effort` frontmatter はセッションの `effortLevel` を上書きする。サブエージェントは既定でセッションの effort を継承するため、機械的な収集作業には `effort: low` / `medium` を明示してコストを抑える。判断を伴う照合には `high` を残す。
+メイン（司令塔）は Opus 5.5 / effort medium で動く。settings の `model: "opus[1m]"` と `effortLevel: "medium"` で決まる。
+
+`effort` frontmatter はセッションの `effortLevel` を上書きする。サブエージェントは既定でセッションの effort（medium）を継承するが、全エージェントの frontmatter に `effort: high` を明示しているので、メインが medium でもサブエージェントは high で動く。司令塔は方針の判断に絞って effort を抑え、実行者は調査・編集・照合を high で丁寧にこなす分担である。
 
 ### 定義済みサブエージェント
 
-`~/.claude/agents/` に配置。
+`~/.claude/agents/` に配置。全エージェントの frontmatter は `model: sonnet` / `effort: high` で揃えているため、以下では個別に記載しない。
 
 役割別。読み取り・調査・編集はすべてここに委譲する。
 
-- `doc-reader` — ドキュメント・設定ファイル・ログの読み取りと要約。結論と `file:line` の根拠だけを返す。Haiku
+- `doc-reader` — ドキュメント・設定ファイル・ログの読み取りと要約。結論と `file:line` の根拠だけを返す
 - `code-analyzer` — コードの調査と分析。定義箇所の特定、呼び出し関係の追跡、条件分岐の洗い出し、不具合の原因箇所の絞り込み
 - `code-editor` — コードと設定ファイルの編集・新規作成。適用した変更を `file:line` と変更後の該当行の引用で返す
 - `doc-editor` — Markdown の編集・新規作成。指定された内容を文書に反映する
-- `commit-pusher` — 変更をコミットして push する。PR の作成・更新とその要否判定は行わない。差分から Conventional Commits 形式のメッセージを執筆し、`agent-pr commit` と `agent-pr push` を実行する。Sonnet / effort: medium
+- `commit-pusher` — 変更をコミットして push する。PR の作成・更新とその要否判定は行わない。差分から Conventional Commits 形式のメッセージを執筆し、`agent-pr commit` と `agent-pr push` を実行する
 
 ドメイン特化。
 
@@ -66,9 +68,9 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 
 PR スキル用。`pr-runner` は `pr` スキルが Agent tool で指名し、`pr-autofix-runner` は `pr-autofix` スキルが `context: fork` で起動する。いずれも司令塔が直接指名するものではない。`pr-shipper` も同様で、司令塔からではなく `pr-runner` / `pr-autofix-runner` から再委譲される。
 
-- `pr-runner` — `pr` スキルの統括役。変更内容の判断、コミットメッセージと PR 本文の執筆。`agent-pr` CLI の実行は `pr-shipper` に委譲する。Sonnet / effort: medium
-- `pr-autofix-runner` — `pr-autofix` スキルの統括役。CI 失敗とレビュー指摘の収集・判断とレビュー返信文の執筆。コードとドキュメントの修正は `code-editor` / `doc-editor` に、`agent-pr` CLI の実行は `pr-shipper` に再委譲する。Sonnet / effort: high
-- `pr-shipper` — `pr-runner` / `pr-autofix-runner` から指名される commit と push の実行役。`agent-pr commit` / `agent-pr publish` を渡された引数のまま叩く。Haiku / effort: low
+- `pr-runner` — `pr` スキルの統括役。変更内容の判断、コミットメッセージと PR 本文の執筆。`agent-pr` CLI の実行は `pr-shipper` に委譲する
+- `pr-autofix-runner` — `pr-autofix` スキルの統括役。CI 失敗とレビュー指摘の収集・判断とレビュー返信文の執筆。コードとドキュメントの修正は `code-editor` / `doc-editor` に、`agent-pr` CLI の実行は `pr-shipper` に再委譲する
+- `pr-shipper` — `pr-runner` / `pr-autofix-runner` から指名される commit と push の実行役。`agent-pr commit` / `agent-pr publish` を渡された引数のまま叩く
 
 builtin で使うのは `Plan`（実装方針の設計）だけ。コード探索は `Explore` ではなく `code-analyzer`、雑多な作業も `general-purpose` ではなく役割別のエージェントに振る。
 
@@ -81,12 +83,12 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - サブエージェントの結果を統合して最終成果物を組み立てる
 - 読み取り系の git / gh コマンド、`chezmoi apply`、`git commit` の実行。`git status`、`git diff --stat`、`gh pr view` などの状況確認や `git commit` はサブエージェントに任せない。一方、`git push` や PR の作成・更新・Ready 化・merge、PR コメントの投稿はメインの会話から実行すると `bash-guard` hook が deny するため、commit から Draft PR までの一連の流れは `pr` スキルに、CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。`pr` スキルは Agent tool で `pr-runner` を起動し、`pr-autofix` スキルは `context: fork` で `pr-autofix-runner` に委譲される。どちらも司令塔はスキルを呼ぶだけでよく、`agent-pr commit` や `agent-pr publish` を自分で直接叩かない。PR まで作る・更新する必要があるなら `pr` スキルを使い、PR には触れずコミットして push するだけでよいときは `commit-pusher` を Agent tool で直接呼ぶ
 
-### サブエージェント（Sonnet / Haiku）の責務
+### サブエージェント（Sonnet）の責務
 
 - ファイルの読み取りと要約。全文をメインに載せない
 - 調査・診断・データ収集を実行し、構造化された結果を返す
 - コードとドキュメントの編集。司令塔が確定した変更内容を適用する
-- 司令塔が確定した内容の整形とファイルへの書き出し。判断が要らないので Haiku で足りる
+- 司令塔が確定した内容の整形とファイルへの書き出し
 
 ### 必ず委譲する作業
 

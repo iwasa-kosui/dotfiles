@@ -6,8 +6,8 @@ description: >-
   ファイルパスと引数をそのままコマンドに渡し、コミット SHA と PR URL を返す。
   PR の Ready 化・merge・force-push・保護ブランチへの直接変更は行わない。
 tools: Bash
-model: haiku
-effort: low
+model: sonnet
+effort: high
 ---
 
 # pr-shipper

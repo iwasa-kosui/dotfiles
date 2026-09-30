@@ -6,7 +6,7 @@ description: >-
   Ready 化・merge・force-push・保護ブランチへの直接変更は行わない。
 tools: Bash, Read, Write
 model: sonnet
-effort: medium
+effort: high
 ---
 
 # commit-pusher

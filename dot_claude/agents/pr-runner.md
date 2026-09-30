@@ -7,7 +7,7 @@ description: >-
   PR の Ready 化・merge・force-push・保護ブランチへの直接変更はユーザーの明示的な承認が必要なので行わない。
 tools: Bash, Read, Write, Agent
 model: sonnet
-effort: medium
+effort: high
 ---
 
 # pr-runner

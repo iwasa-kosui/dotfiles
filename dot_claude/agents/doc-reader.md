@@ -7,8 +7,8 @@ description: >-
   全文をメインの会話に持ち込ませないことが役割なので、返すのは結論と `file:line` の根拠に絞る。
   ファイルの編集は行わない。コードの構造や挙動の分析は `code-analyzer` の担当なので引き受けない。
 tools: Read, Glob, Grep
-model: haiku
-effort: low
+model: sonnet
+effort: high
 ---
 
 # doc-reader
