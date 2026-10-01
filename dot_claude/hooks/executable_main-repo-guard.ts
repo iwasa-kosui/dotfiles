@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 // PreToolUse hook: メインリポジトリ（非worktree）の保護ブランチでファイル変更をブロック
 
+import { resolve } from "node:path";
 import { readInput, runSafe } from "./lib.ts";
 
 // stdinからツール入力を取得
@@ -16,6 +17,19 @@ if (!filePath) {
 const repoRoot = await runSafe(["git", "rev-parse", "--show-toplevel"]);
 if (repoRoot && !filePath.startsWith(repoRoot + "/") && filePath !== repoRoot) {
   process.exit(0);
+}
+
+// .git/worktrees/<name>/配下ならリンクされたworktree固有のgit dirなので許可
+// （メインのブランチへの変更ではない）。".."で.git/config等に抜けるパスは解決後に判定する
+if (repoRoot) {
+  const worktreeGitDirs = resolve(repoRoot, ".git", "worktrees") + "/";
+  const resolved = resolve(filePath);
+  if (
+    resolved.startsWith(worktreeGitDirs) &&
+    resolved.slice(worktreeGitDirs.length).includes("/")
+  ) {
+    process.exit(0);
+  }
 }
 
 // 操作対象が.wt/配下なら許可
