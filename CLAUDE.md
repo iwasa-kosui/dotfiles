@@ -57,7 +57,7 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 ## Worktree Workflow
 
 - 既にworktree内でセッションを開始した場合は、新規作成せずそのworktreeで作業を続行する
-- 以降のすべてのファイル操作（Read, Edit, Write, Glob, Grep等）はworktree内の絶対パスを使用すること
+- worktreeの作成には組み込みの `EnterWorktree` ツールを使う。`git-wt` や `git worktree add` を直接実行しない
 - セッション終了後のworktree削除は `git wt -d <ブランチ名>` で手動管理
 
 ### Worktree作成手順（セッション開始時にworktreeが未作成の場合）
@@ -71,27 +71,16 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
    - ブランチ名に迷う場合はユーザーに確認する。ユーザーが空の応答を返した場合は、次のプロンプトまで何もせず待機する
 
 2. **Worktree作成**
-   ```bash
-   # 新規ブランチの場合
-   wt_path=$(git-wt "<ブランチ名>" --nocd)
 
-   # リモートブランチが存在する場合
-   git fetch origin <ブランチ名>
-   wt_path=$(git-wt "<ブランチ名>" "origin/<ブランチ名>" --nocd)
-   ```
+   `EnterWorktree` に `name: <ブランチ名>` を渡す。登録済みの WorktreeCreate hook（`dot_claude/hooks/executable_worktree.ts`）が `<repo>/.wt/<ブランチ名>` に worktree を作る。リモートに同名ブランチがあればそれをチェックアウトし、無ければリモートのデフォルトブランチを起点に新規作成する。リモートブランチの `git fetch` や `cd` は不要で、セッションの cwd は自動で worktree に移る。
 
 3. **settings.local.json には触らない**
 
-   `wt.hook` に登録した `wt-link-local-settings` が worktree 作成直後に走り、
+   WorktreeCreate hook から呼ばれる `wt-link-local-settings` が worktree 作成直後に走り、
    `.claude/settings.local.json` をメインリポジトリのファイルへの symlink にする。
    `additionalDirectories` もそこで設定される。
    worktree 側で `cat >` などで上書きすると symlink 越しにメインリポジトリのファイルを
    壊すので、このファイルを直接書き換えてはならない。
-
-4. **worktreeへ移動**
-   ```bash
-   cd "$wt_path"
-   ```
 
 ## Language and Conventions
 
