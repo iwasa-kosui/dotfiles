@@ -76,7 +76,11 @@ if (isGitRepo) {
 `;
   } else {
     output += `## Worktree
-- **未作成**: プロンプト内容に基づいてworktreeを作成してください（CLAUDE.mdのWorktree Workflowを参照）
+- **未作成**: EnterWorktree ツールで worktree を作成し、そこで作業してください。git-wt や \`git worktree add\` は直接使わないでください
+- \`name\` にはプロンプト内容から推定した Conventional Commits 風のブランチ名（例: \`fix/nvim-keymap-conflict\`）を渡してください
+- PR の URL や既存ブランチへの言及がある場合は、そのブランチ名（\`gh pr view <URL> --json headRefName\` などで取得）を渡してください。リモートに同名ブランチがあればそれがチェックアウトされます
+- 対象ブランチの worktree が下記「Git情報」のワークツリー一覧に既にある場合は、\`name\` ではなく \`path\` にその worktree の絶対パスを渡して EnterWorktree を呼んでください
+- ブランチ名に迷う場合はユーザーに確認してください
 `;
   }
 

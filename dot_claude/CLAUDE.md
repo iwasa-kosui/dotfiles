@@ -79,7 +79,7 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - ユーザーとの対話。ヒアリング、確認、承認
 - サブエージェントのディスパッチ。プロンプトの組み立てと Agent tool 呼び出し
 - サブエージェントの結果を統合して最終成果物を組み立てる
-- `chezmoi apply` と worktree 作成（`git-wt`）の実行。git / gh の状況確認は自分で叩かない
+- `chezmoi apply` の実行と、`EnterWorktree` による worktree 作成。git / gh の状況確認は自分で叩かない
   - `git status`、`git diff`、`git log`、`gh pr view` などの状況確認は `gh-collector` に委譲する。出力がメインの文脈に残り続け、以降の全コールで読み直されるため
   - commit・push・Draft PR の作成と更新は `pr` スキルに任せる。`pr` スキルは `context: fork` で `pr-runner` が実行する
   - PR の CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。`pr-autofix` スキルは `context: fork` で `pr-autofix-runner` が実行する
