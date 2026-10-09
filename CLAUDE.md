@@ -74,6 +74,8 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 
    `EnterWorktree` に `name: <ブランチ名>` を渡す。登録済みの WorktreeCreate hook（`dot_claude/hooks/executable_worktree.ts`）が `<repo>/.wt/<ブランチ名>` に worktree を作る。リモートに同名ブランチがあればそれをチェックアウトし、無ければリモートのデフォルトブランチを起点に新規作成する。リモートブランチの `git fetch` や `cd` は不要で、セッションの cwd は自動で worktree に移る。
 
+   対象ブランチの worktree が既に存在する場合は、`name` ではなく `path` にその worktree の絶対パス（`.wt/<ブランチ名>` 配下）を渡して `EnterWorktree` を呼ぶ。存在の有無は、SessionStart hook が出力する `git worktree list` に対象ブランチがあるかで判断する。`name` で既存ブランチを指定すると WorktreeCreate hook の `git worktree add` が失敗するためである。`path` なら `.claude/worktrees/` 外の worktree にも入れ、セッションの cwd が切り替わる。Bash の `cd` では Claude Code 本体の作業ディレクトリ（statusline・hook の cwd）が切り替わらないので使わない。
+
 3. **settings.local.json には触らない**
 
    WorktreeCreate hook から呼ばれる `wt-link-local-settings` が worktree 作成直後に走り、
