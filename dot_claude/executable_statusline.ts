@@ -191,7 +191,7 @@ try {
 const todayDate = jstDateString();
 const todayCostCachePromise = readTodayCostCache();
 
-const proc = Bun.spawn(["claude-powerline"], {
+const proc = Bun.spawn([`${process.env.HOME}/.bun/bin/claude-powerline`], {
   stdin: new Response(raw),
   stdout: "pipe",
   stderr: "inherit",
