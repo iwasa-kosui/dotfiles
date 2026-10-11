@@ -7,9 +7,11 @@ import { readInput } from "./lib.ts";
 // 直近の assistant エントリの usage から算出する。
 
 // autoCompactEnabled を false にしているため、上限に達したときに履歴を圧縮して逃がす仕組みが無い。
-// 5万は導出値ではなく運用上の指定値。早めに知らせて handoff の判断をこちらに寄せる意図で、
-// 大きめのファイルを数件読むだけで到達する。頻度が煩わしければこの値を上げる。
-const WARN_TOKENS = 50_000;
+// 固定文脈だけで毎コール約5万トークンあるため、5万では毎回警告が出て意味がなかった。
+// 1M context は200k超でも単価が変わらない（https://platform.claude.com/docs/en/about-claude/pricing）ので、
+// 読み直しの費用は文脈量に比例するだけで、閾値を遅らせても費用は跳ねない。
+// 40万で handoff を促す。頻度が煩わしければこの値を上げる。
+const WARN_TOKENS = 400_000;
 
 // transcript は長時間セッションで数十MBに達する。直近の usage を拾うには末尾だけで足りる。
 const TAIL_BYTES = 2_000_000;
