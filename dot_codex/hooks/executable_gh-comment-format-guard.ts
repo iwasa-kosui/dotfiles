@@ -1,22 +1,19 @@
 #!/usr/bin/env bun
 // PreToolUse hook: gh コマンドで PR/Issue のコメントを投稿・更新するとき、
-// エージェントの発言を `> 🤖 Codex` の署名行以降、引用記法で
-// 囲むことを強制する
+// 本文に `🤖 Codex` の署名行が入っていることを強制する
 
 import { homedir } from "node:os";
 import { isAbsolute, resolve } from "node:path";
 
 import { readInput } from "./lib.ts";
 
-const SIGNATURE_LINE = "> 🤖 Codex";
+const SIGNATURE_LINE = "🤖 Codex";
 
-const REASON = `GitHub の PR/Issue コメント本文は、エージェントの発言を引用記法で囲む必要があります（github-review.md ルール）。次の形式にしてください。
+const REASON = `GitHub へのコメント本文には署名行「🤖 Codex」を1行入れてください。引用記法（行頭の >）は不要です。次の形式にしてください。
 
-> 🤖 Codex
->
-> 修正しました (e4dcbb406)
+🤖 Codex
 
-\`> 🤖 Codex\` の行以降は、空行を含めてすべて行頭を \`>\` にします。署名行より上は引用の外に置けるので、ユーザーの追記はそこに入ります。`;
+修正しました (e4dcbb406)`;
 
 const input = await readInput<{
   cwd?: string;
@@ -131,17 +128,8 @@ function extractJsonBody(text: string): string | null {
   }
 }
 
-function isQuoted(text: string): boolean {
-  const lines = text.split("\n");
-  const signatureIndex = lines.findIndex(
-    (line) => line.trim() === SIGNATURE_LINE,
-  );
-  if (signatureIndex === -1) return false;
-
-  return lines.slice(signatureIndex).every((line) => {
-    const trimmed = line.trim();
-    return trimmed === "" || trimmed.startsWith(">");
-  });
+function hasSignature(text: string): boolean {
+  return text.split("\n").some((line) => line.trim() === SIGNATURE_LINE);
 }
 
 const source = detectBody();
@@ -151,7 +139,7 @@ if (source.kind === "none") {
 }
 
 if (source.kind === "literal") {
-  if (isQuoted(source.text)) allow();
+  if (hasSignature(source.text)) allow();
   block();
 }
 
@@ -170,7 +158,7 @@ const bodyText =
       ? extractJsonBody(fileText)
       : fileText;
 
-if (bodyText !== null && isQuoted(bodyText)) {
+if (bodyText !== null && hasSignature(bodyText)) {
   allow();
 }
 

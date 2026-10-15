@@ -85,7 +85,7 @@
         "bash-guard": {
           "path": "dot_claude/hooks/executable_bash-guard.ts",
           "status": "active",
-          "responsibility": "Bash の PreToolUse を1プロセスに集約し、保護ブランチ・force push・コミットメッセージ・ghコメントの引用記法・送信文面のlint・メインの会話からのPR操作を順に検査する"
+          "responsibility": "Bash の PreToolUse を1プロセスに集約し、保護ブランチ・force push・コミットメッセージ・ghコメントの署名行・送信文面のlint・メインの会話からのPR操作を順に検査する"
         },
         "context-guard": {
           "path": "dot_claude/hooks/executable_context-guard.ts",

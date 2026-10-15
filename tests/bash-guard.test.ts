@@ -98,13 +98,13 @@ describe("8つのガードすべてが配線されている", () => {
     expect(reason).toContain("here-string");
   });
 
-  test("gh-comment-format-guard: 引用記法でない body を拒否する", () => {
+  test("gh-comment-format-guard: 署名行がない body を拒否する", () => {
     const { decision, reason } = runHook({
       cwd: "/tmp",
       tool_input: { command: "gh pr comment 164 --body '普通のコメントです'" },
     });
     expect(decision).toBe("deny");
-    expect(reason).toContain("引用記法で囲む");
+    expect(reason).toContain("署名行");
   });
 
   test("lint-outgoing-body: コマンド置換で渡された本文を拒否する", () => {
