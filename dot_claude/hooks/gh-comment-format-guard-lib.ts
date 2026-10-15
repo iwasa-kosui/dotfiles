@@ -1,5 +1,5 @@
-// gh コマンドで PR/Issue のコメントを投稿・更新するとき、エージェントの発言を
-// `> 🤖 Claude Code` の署名行以降、引用記法で囲むことを強制する判定ロジック。
+// gh コマンドで PR/Issue のコメントを投稿・更新するとき、本文に
+// `🤖 Claude Code` の署名行が入っていることを強制する判定ロジック。
 
 import { existsSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -7,15 +7,13 @@ import { isAbsolute, resolve } from "node:path";
 
 import { allow, deny, type GuardInput, type GuardResult } from "./guard-lib.ts";
 
-const SIGNATURE_LINE = "> 🤖 Claude Code";
+const SIGNATURE_LINE = "🤖 Claude Code";
 
-export const REASON = `GitHub の PR/Issue コメント本文は、エージェントの発言を引用記法で囲む必要があります。次の形式にしてください。
+export const REASON = `GitHub へのコメント本文には署名行「🤖 Claude Code」を1行入れてください。引用記法（行頭の >）は不要です。次の形式にしてください。
 
-> 🤖 Claude Code
->
-> 修正しました (e4dcbb406)
+🤖 Claude Code
 
-\`> 🤖 Claude Code\` の行以降は、空行を含めてすべて行頭を \`>\` にします。署名行より上は引用の外に置けるので、ユーザーの追記はそこに入ります。`;
+修正しました (e4dcbb406)`;
 
 // --- 対象コマンドの判定 ---------------------------------------------------
 
@@ -110,21 +108,12 @@ function extractJsonBody(text: string): string | null {
   }
 }
 
-export function isQuoted(text: string): boolean {
-  const lines = text.split("\n");
-  const signatureIndex = lines.findIndex(
-    (line) => line.trim() === SIGNATURE_LINE,
-  );
-  if (signatureIndex === -1) return false;
-
-  return lines.slice(signatureIndex).every((line) => {
-    const trimmed = line.trim();
-    return trimmed === "" || trimmed.startsWith(">");
-  });
+export function hasSignature(text: string): boolean {
+  return text.split("\n").some((line) => line.trim() === SIGNATURE_LINE);
 }
 
 export function checkGhCommentFormat(input: GuardInput): GuardResult {
-  // isQuoted は body 内の改行で行頭を判定するため、正規化前の生のコマンドを使う。
+  // hasSignature は body 内の改行で行頭を判定するため、正規化前の生のコマンドを使う。
   // 正規化すると改行が空白に潰れ、判定が反転する。
   const { command, cwd } = input;
 
@@ -145,7 +134,7 @@ export function checkGhCommentFormat(input: GuardInput): GuardResult {
   }
 
   if (source.kind === "literal") {
-    return isQuoted(source.text) ? allow : deny(REASON);
+    return hasSignature(source.text) ? allow : deny(REASON);
   }
 
   if (source.kind === "opaque") {
@@ -162,7 +151,7 @@ export function checkGhCommentFormat(input: GuardInput): GuardResult {
         ? extractJsonBody(fileText)
         : fileText;
 
-  if (bodyText !== null && isQuoted(bodyText)) {
+  if (bodyText !== null && hasSignature(bodyText)) {
     return allow;
   }
 
