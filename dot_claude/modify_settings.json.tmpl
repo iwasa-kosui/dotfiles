@@ -468,6 +468,16 @@ managed='
     ],
     "defaultMode": "default"
   },
+  "autoMode": {
+    "environment": [
+      "$defaults",
+      "Key internal services: the company'\''s Atlassian Confluence, operated through the `confluence` CLI. Confluence is the user'\''s own workspace, not an external third party."
+    ],
+    "allow": [
+      "$defaults",
+      "Creating and editing Confluence pages with the `confluence` CLI (`confluence create`, `confluence edit`) is pre-approved by the user. Do not block these as writes to an external system."
+    ]
+  },
   "hooks": {
     "SessionStart": [
       {
