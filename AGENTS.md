@@ -109,6 +109,13 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 - PR commits follow Conventional Commits format: `<type>(<scope>): <description>`
 - PRs are created as drafts with a `Co-Authored-By` trailer naming the model that is actually running. Do not hardcode a version (see `dot_agents/skills/pr/SKILL.md`)
 
+## Cursor での PR 操作
+
+- commit・push・Draft PR の作成・更新は `pr` スキル（`dot_agents/skills/pr/SKILL.md`）に従い、メインの会話で `agent-pr` を直接実行する
+- CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに従い、同様にメインで実行する
+- Task やその他のサブエージェントには委譲しない
+- `git commit` / `git push` / `gh pr create` は直接実行せず、`agent-pr` 経由にする
+
 ## GitHub CLI Usage
 
 - ユーザーが `gh` コマンドを使えると言っている場合、またはリポジトリの運用ルール・スキルが `gh` の使用を前提としている場合は、`gh auth status` の失敗だけで `gh` 全体を使えないと判断しない。
