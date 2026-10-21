@@ -10,7 +10,12 @@ allowed-tools: Bash, Read, Write
 
 # PR
 
-このスキルは `context: fork` により `pr-runner`（Sonnet）のサブエージェント内で実行されます。`pr-runner` が `agent-pr` を使って、commit、push、Draft PR の作成・更新を実行します。git の差分と出力は Sonnet 側の文脈で消化し、メインには短い報告だけを返します。
+`agent-pr` で commit、push、Draft PR の作成・更新を行います。実行場所は runtime で分かれます。
+
+## Runtime
+
+- **Claude Code**: `context: fork` により `pr-runner`（Sonnet）のサブエージェント内で実行します。git の差分と出力は Sonnet 側の文脈で消化し、メインには短い報告だけを返します。
+- **Cursor**: メインの会話でこの手順をそのまま実行します。Task やその他のサブエージェントには委譲しません。Cursor には Claude Code の `pr-delegation-guard` が無いため、メインから `agent-pr` を直接実行できます。
 
 ## 手順
 
