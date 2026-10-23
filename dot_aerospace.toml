@@ -161,3 +161,7 @@ run = "layout floating"
 if.app-id = "com.apple.finder"
 run = "layout floating"
 
+[[on-window-detected]]
+if.app-id = "dev.recordly.app"
+run = "layout floating"
+
