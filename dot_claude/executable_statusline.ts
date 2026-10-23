@@ -5,7 +5,7 @@
 // 4つを capsule として追記する。PR番号は OSC 8 でリンクし、PR番号と effort
 // level は stdin の JSON に該当フィールドがあるときだけ出す。コンテキスト警告は、
 // context segment の色が残り割合の固定閾値でしか変わらず、1Mコンテキストで
-// 0.2Mを超えたことを絶対トークン数で警告できないため自前で持つ。
+// 0.4Mを超えたことを絶対トークン数で警告できないため自前で持つ。
 // さらに session segment のトークン数を、後処理で万・億表記に置き換える。
 //
 // 費用は claude-powerline の today セグメントを使わず自前で出す。claude-powerline
@@ -13,10 +13,10 @@
 // 費用が実際の約2倍で表示されるため。claude-powerline.json では today セグメント
 // を無効化している。
 
-// 1Mコンテキストのセッションでも0.2Mを超えたら警告する。
-// 割合ではなく絶対トークン数で判定するのは、1Mでは0.2Mが20%にすぎず
-// claude-powerline の閾値（残り40%以下で警告）に到達しないため。
-const CONTEXT_WARN_TOKENS = 200_000;
+// 1Mコンテキストのセッションでも0.4Mを超えたら警告する。
+// 割合ではなく絶対トークン数で判定するのは、1Mでは0.4Mが使用率40%（残り60%）にすぎず
+// claude-powerline の閾値（残り40%以下で警告）にまだ届かないため。
+const CONTEXT_WARN_TOKENS = 400_000;
 
 interface StdinInput {
   context_window?: {
