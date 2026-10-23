@@ -26,8 +26,8 @@
   },
   "shortcuts": {
     "bindings": {
-      "newTab": "cmd+shift+t",
-      "reopenClosedBrowserPanel": "cmd+n"
+      "newTab": "cmd+n",
+      "reopenClosedBrowserPanel": "cmd+shift+t"
     }
   }
 }
