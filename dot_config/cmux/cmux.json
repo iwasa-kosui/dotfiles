@@ -23,5 +23,11 @@
   },
   "customSidebars": {
     "renderer": "inProcess"
+  },
+  "shortcuts": {
+    "bindings": {
+      "newTab": "cmd+shift+t",
+      "reopenClosedBrowserPanel": "cmd+n"
+    }
   }
 }
