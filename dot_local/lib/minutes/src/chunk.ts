@@ -177,9 +177,13 @@ export function chunkMarkdown(markdown: string): Chunk[] {
     flushRun();
     if (structure.kind === "single") {
       const unit = makeUnit(block.body, null);
-      if (unit) chunks.push(unitToChunk(unit, structure.section, block.heading.no));
+      if (unit) {
+        splitUnit(unit).forEach((piece, index) => {
+          chunks.push(unitToChunk(piece, structure.section, index === 0 ? block.heading.no : undefined));
+        });
+      }
     } else {
-      for (const unit of splitListItems(block.body)) chunks.push(unitToChunk(unit, structure.section));
+      for (const unit of splitListItems(block.body).flatMap(splitUnit)) chunks.push(unitToChunk(unit, structure.section));
     }
   }
   flushRun();

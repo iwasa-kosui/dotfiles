@@ -4,9 +4,9 @@ import { chunkMarkdown } from "./chunk.ts";
 import type { Config } from "./config.ts";
 import { getMeta, openDb, setMeta } from "./db.ts";
 import { parseFrontmatter, sha256 } from "./document.ts";
-import { EMBED_BATCH, embedBatch, embedInput, toBlob } from "./embed.ts";
+import { EMBED_BATCH, EmbedRejectedError, embedBatch, embedInput, toBlob } from "./embed.ts";
 
-type PendingChunk = { id: number; section: string; text: string; title: string; date: string };
+type PendingChunk = { id: number; path: string; start_line: number; end_line: number; section: string; text: string; title: string; date: string };
 
 async function listMarkdown(dir: string): Promise<string[]> {
   const files: string[] = [];
@@ -75,24 +75,42 @@ export async function runIndex(config: Config): Promise<number> {
     setMeta(db, "model", config.embedModel);
 
     const pending = db.query<PendingChunk, []>(
-      `SELECT c.id, c.section, c.text, d.title, d.date FROM chunks c
+      `SELECT c.id, c.path, c.start_line, c.end_line, c.section, c.text, d.title, d.date FROM chunks c
        JOIN documents d ON d.path = c.path WHERE c.embedding IS NULL ORDER BY c.id`,
     ).all();
     const update = db.query("UPDATE chunks SET embedding = ? WHERE id = ?");
-    for (let i = 0; i < pending.length; i += EMBED_BATCH) {
-      const batch = pending.slice(i, i + EMBED_BATCH);
-      const vectors = await embedBatch(
-        batch.map((chunk) => embedInput(chunk.title, chunk.date, chunk.section, chunk.text)),
-        { host: config.ollamaHost, model: config.embedModel },
-      );
+    const options = { host: config.ollamaHost, model: config.embedModel };
+    const inputOf = (chunk: PendingChunk) => embedInput(chunk.title, chunk.date, chunk.section, chunk.text);
+    const store = (chunks: PendingChunk[], vectors: Float32Array[]) => {
       db.transaction(() => {
-        batch.forEach((chunk, index) => update.run(toBlob(vectors[index]), chunk.id));
+        chunks.forEach((chunk, index) => update.run(toBlob(vectors[index]), chunk.id));
       })();
       setMeta(db, "dimension", String(vectors[0].length));
+    };
+    const failed: PendingChunk[] = [];
+    for (let i = 0; i < pending.length; i += EMBED_BATCH) {
+      const batch = pending.slice(i, i + EMBED_BATCH);
+      try {
+        store(batch, await embedBatch(batch.map(inputOf), options));
+      } catch (error) {
+        if (!(error instanceof EmbedRejectedError)) throw error;
+        for (const chunk of batch) {
+          try {
+            store([chunk], await embedBatch([inputOf(chunk)], options));
+          } catch (single) {
+            if (!(single instanceof EmbedRejectedError)) throw single;
+            failed.push(chunk);
+          }
+        }
+      }
+    }
+    if (failed.length > 0) {
+      console.error(`埋め込みに失敗したチャンク: ${failed.length} 件`);
+      for (const chunk of failed) console.error(`  ${chunk.path}:${chunk.start_line}-${chunk.end_line}`);
     }
 
     const seconds = ((performance.now() - started) / 1000).toFixed(1);
-    console.log(`index: ドキュメント更新 ${updated} 件、削除 ${removed} 件、埋め込み ${pending.length} チャンク (${seconds} 秒)`);
+    console.log(`index: ドキュメント更新 ${updated} 件、削除 ${removed} 件、埋め込み ${pending.length - failed.length} チャンク (${seconds} 秒)`);
     return 0;
   } finally {
     db.close();
