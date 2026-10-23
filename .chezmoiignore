@@ -30,6 +30,7 @@ dot_config/nvim/README.md
 # macOS 専用の LaunchAgent は他 OS へ配置しない
 {{ if ne .chezmoi.os "darwin" -}}
 Library/LaunchAgents/me.kosui.ollama-keep-alive.plist
+Library/LaunchAgents/com.kosui.ghq-pull-default-branches.plist
 {{ end -}}
 
 # 共通CLIの依存はインストールフックで復元します。

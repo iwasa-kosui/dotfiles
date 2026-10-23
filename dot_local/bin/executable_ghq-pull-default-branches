@@ -1,0 +1,175 @@
+#!/usr/bin/env bash
+# ghq 配下の kkhs リポジトリで main / master / develop のローカルブランチを fast-forward のみで更新する。
+# usage: ghq-pull-default-branches [--dry-run]
+set -u
+
+ROOT="$HOME/ghq/github.com/kkhs"
+LOG="$HOME/Library/Logs/ghq-pull-default-branches.log"
+LOCK=/tmp/ghq-pull-default-branches.lock
+BRANCHES=(main master develop)
+MAX_LOG_BYTES=$((5 * 1024 * 1024))
+PARALLEL=8
+SELF="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+
+export PATH=/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin
+export GIT_TERMINAL_PROMPT=0
+export GIT_SSH_COMMAND="ssh -o BatchMode=yes -o ConnectTimeout=10"
+
+DRY_RUN=0
+WORKER_REPO=
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --dry-run) DRY_RUN=1 ;;
+    --worker) shift; WORKER_REPO=${1:-} ;;
+    *) echo "unknown option: $1" >&2; exit 2 ;;
+  esac
+  shift
+done
+
+timestamp() { date +%Y-%m-%dT%H:%M:%S%z; }
+
+# log LEVEL REPO BRANCH REASON [DETAIL]
+log() {
+  local line
+  line="$(timestamp) $1 $2 $3 $4${5:+ $5}"
+  printf '%s %s\n' "$1" "$4" >> "$RUN_TMP/events"
+  if [[ $DRY_RUN -eq 1 ]]; then
+    printf '%s\n' "$line"
+  else
+    printf '%s\n' "$line" >> "$LOG"
+  fi
+}
+
+worker() {
+  local repo=$1 name out b ref up old new wt main_wt gitdir marker
+  name=$(basename "$repo")
+  cd "$repo" || return
+
+  # dry-run ではリモート参照を動かさず、取得済みの参照だけで判定する
+  if [[ $DRY_RUN -eq 0 ]]; then
+    if ! out=$(git fetch --prune --quiet origin 2>&1); then
+      log ERROR "$name" - fetch-failed "$(tr '\n' ' ' <<<"$out")"
+      return
+    fi
+  fi
+
+  local wt_list
+  wt_list=$(git worktree list --porcelain 2>/dev/null)
+  main_wt=$(awk '/^worktree /{print substr($0,10); exit}' <<<"$wt_list")
+
+  for b in "${BRANCHES[@]}"; do
+    ref=refs/heads/$b
+    git show-ref --verify --quiet "$ref" || continue
+    wt=$(awk -v ref="$ref" '/^worktree /{p=substr($0,10)} $0=="branch " ref{print p; exit}' <<<"$wt_list")
+    [[ -n $wt && $wt != "$main_wt" ]] && continue
+    up=$(git for-each-ref --format='%(upstream)' "$ref")
+    [[ -n $up ]] || continue
+    if ! new=$(git rev-parse --verify --quiet "$up^{commit}"); then
+      log SKIP "$name" "$b" upstream-missing "$up"
+      continue
+    fi
+    old=$(git rev-parse "$ref")
+    [[ $old == "$new" ]] && continue
+
+    if ! git merge-base --is-ancestor "$old" "$new"; then
+      if git merge-base --is-ancestor "$new" "$old"; then
+        log SKIP "$name" "$b" local-ahead "$up"
+      else
+        log SKIP "$name" "$b" diverged "$up"
+      fi
+      continue
+    fi
+
+    if [[ -n $wt ]]; then
+      if [[ ! -d $wt ]]; then
+        log SKIP "$name" "$b" worktree-missing "$wt"
+        continue
+      fi
+      if ! { git -C "$wt" diff --quiet && git -C "$wt" diff --cached --quiet; }; then
+        log SKIP "$name" "$b" dirty "$wt"
+        continue
+      fi
+      gitdir=$(git -C "$wt" rev-parse --absolute-git-dir)
+      marker=
+      for f in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply; do
+        [[ -e $gitdir/$f ]] && marker=$f
+      done
+      if [[ -n $marker ]]; then
+        log SKIP "$name" "$b" op-in-progress "$wt $marker"
+        continue
+      fi
+      if [[ $DRY_RUN -eq 1 ]]; then
+        log DRYRUN "$name" "$b" would-pull "$(git rev-parse --short "$old") -> $(git rev-parse --short "$new") $wt"
+      elif out=$(git -C "$wt" pull --ff-only --quiet 2>&1); then
+        log UPDATE "$name" "$b" pull "$(git rev-parse --short "$old") -> $(git rev-parse --short "$ref")"
+      else
+        log ERROR "$name" "$b" pull-failed "$(tr '\n' ' ' <<<"$out")"
+      fi
+    else
+      if [[ $DRY_RUN -eq 1 ]]; then
+        log DRYRUN "$name" "$b" would-update-ref "$(git rev-parse --short "$old") -> $(git rev-parse --short "$new")"
+      elif out=$(git update-ref -m "ghq-pull-default-branches: fast-forward" "$ref" "$new" "$old" 2>&1); then
+        log UPDATE "$name" "$b" update-ref "$(git rev-parse --short "$old") -> $(git rev-parse --short "$new")"
+      else
+        log ERROR "$name" "$b" update-ref-failed "$(tr '\n' ' ' <<<"$out")"
+      fi
+    fi
+  done
+}
+
+if [[ -n $WORKER_REPO ]]; then
+  worker "$WORKER_REPO"
+  exit 0
+fi
+
+mkdir -p "$(dirname "$LOG")"
+if [[ $DRY_RUN -eq 0 && -f $LOG && $(wc -c < "$LOG") -gt $MAX_LOG_BYTES ]]; then
+  mv -f "$LOG" "$LOG.1"
+fi
+
+if ! mkdir "$LOCK" 2>/dev/null; then
+  pid=$(cat "$LOCK/pid" 2>/dev/null)
+  # kill -9 などで trap が走らなかった場合に備えて、プロセスが居なければロックを奪う
+  if [[ -z $pid ]] || kill -0 "$pid" 2>/dev/null; then
+    echo "already running (lock: $LOCK)" >&2
+    exit 0
+  fi
+  rm -rf "$LOCK"
+  mkdir "$LOCK" || exit 0
+fi
+echo $$ > "$LOCK/pid"
+RUN_TMP=$(mktemp -d)
+export RUN_TMP
+trap 'rm -rf "$RUN_TMP" "$LOCK"' EXIT
+trap 'exit 130' INT TERM
+: > "$RUN_TMP/events"
+
+repos=()
+for d in "$ROOT"/*/; do
+  d=${d%/}
+  [[ -e $d/.git ]] && repos+=("$d")
+done
+
+if [[ $DRY_RUN -eq 1 ]]; then
+  echo "$(timestamp) START (dry-run) repos=${#repos[@]}"
+else
+  printf '%s START repos=%d\n' "$(timestamp)" "${#repos[@]}" >> "$LOG"
+fi
+
+if [[ ${#repos[@]} -gt 0 ]]; then
+  worker_args=(--worker)
+  [[ $DRY_RUN -eq 1 ]] && worker_args=(--dry-run --worker)
+  printf '%s\0' "${repos[@]}" | xargs -0 -n1 -P "$PARALLEL" bash "$SELF" "${worker_args[@]}"
+fi
+
+updated=$(grep -c '^UPDATE ' "$RUN_TMP/events")
+skipped=$(grep -c '^SKIP ' "$RUN_TMP/events")
+errors=$(grep -c '^ERROR ' "$RUN_TMP/events")
+if [[ $DRY_RUN -eq 1 ]]; then
+  would=$(grep -c '^DRYRUN ' "$RUN_TMP/events")
+  echo "$(timestamp) END (dry-run) repos=${#repos[@]} would-update=$would skipped=$skipped errors=$errors"
+  sort "$RUN_TMP/events" | uniq -c | sed 's/^/  /'
+else
+  printf '%s END repos=%d updated=%d skipped=%d errors=%d\n' \
+    "$(timestamp)" "${#repos[@]}" "$updated" "$skipped" "$errors" >> "$LOG"
+fi
