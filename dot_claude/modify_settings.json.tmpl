@@ -1,6 +1,6 @@
 #!/bin/bash
 # modify script: 管理対象フィールド(autoCompactEnabled, model, effortLevel, env, permissions, hooks,
-# statusLine, language)をソースから上書きし、それ以外(enabledPlugins等)は既存の値を保持する。
+# statusLine, language, tui)をソースから上書きし、それ以外(enabledPlugins等)は既存の値を保持する。
 #
 # autoCompactEnabled を false にするのは、自動圧縮が履歴を要約に置き換えてしまい、何が失われたかを
 # こちらから把握できないためである。代わりに handoff スキルで結論だけを書き出し、新しいセッションで
@@ -603,7 +603,8 @@ managed='
     "type": "command",
     "command": "bun ~/.claude/statusline.ts"
   },
-  "language": "日本語"
+  "language": "日本語",
+  "tui": "fullscreen"
 }
 '
 
