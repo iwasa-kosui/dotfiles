@@ -5,6 +5,8 @@ export const EMBED_TEXT_LIMIT = 4000;
 
 export type OllamaOptions = { host: string; model: string };
 
+export class EmbedRejectedError extends ExternalError {}
+
 export function l2normalize(vector: ArrayLike<number>): Float32Array {
   const out = Float32Array.from(vector);
   let sum = 0;
@@ -53,10 +55,10 @@ export async function embedBatch(input: string[], options: OllamaOptions): Promi
   }
   if (!response.ok) {
     const body = (await response.text()).trim();
-    const reason = response.status === 404
-      ? `ollama にモデル ${options.model} がありません: ${body}`
-      : `ollama がエラーを返しました (HTTP ${response.status}): ${body}`;
-    throw new ExternalError(`${reason}\n${hint}`);
+    if (response.status === 404) {
+      throw new ExternalError(`ollama にモデル ${options.model} がありません: ${body}\n${hint}`);
+    }
+    throw new EmbedRejectedError(`ollama がエラーを返しました (HTTP ${response.status}): ${body}`);
   }
   const json = (await response.json()) as { embeddings?: number[][] };
   if (!Array.isArray(json.embeddings) || json.embeddings.length !== input.length) {
