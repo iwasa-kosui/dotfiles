@@ -85,6 +85,7 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
   - PR の CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。`pr-autofix` スキルは `context: fork` で `pr-autofix-runner` が実行する
   - メインからの `agent-pr commit` / `agent-pr publish` / `agent-pr push`、`git push`、gh の書き込み系は `bash-guard` hook（pr-delegation-guard）が deny する
   - Ready 化・merge・force-push・保護ブランチへの push と PR コメントの投稿は、引き続き `bash-guard` hook が deny する。実行するにはユーザーの明示的な承認が要る
+  - `slack-cli` の `send` / `edit` を実行するコマンドに「🤖 Claude Code」が入っていなければ、`bash-guard` hook（slack-signature-guard）が deny する
 
 ### サブエージェント（Sonnet / Haiku）の責務
 
