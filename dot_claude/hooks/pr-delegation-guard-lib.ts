@@ -4,9 +4,16 @@
 // git / gh の操作はスキル経由でサブエージェントに実行させる方針のため、
 // メインの会話から agent-pr / gh / git push が直接呼ばれたら拒否する。
 // サブエージェント内ではこの hook は発火しない（PreToolUse の stdin に agent_id が渡る）。
+//
+// Cursor Agent（CURSOR_AGENT=1）では pr スキルがメイン会話で agent-pr を直接実行する
+// 方針なので、このガードは適用しない。
 
 import { allow, deny, type GuardInput, type GuardResult } from "./guard-lib.ts";
 import { GIT_PREFIX } from "./shell-hook-lib.ts";
+
+export function isCursorAgent(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.CURSOR_AGENT === "1";
+}
 
 export type BlockedPrOperation = {
   readonly name: string;
@@ -83,6 +90,10 @@ git / gh の操作はスキルまたはサブエージェントに実行させ�
 }
 
 export function checkPrDelegation(input: GuardInput): GuardResult {
+  if (isCursorAgent()) {
+    return allow;
+  }
+
   if (!isMainConversation({ agent_id: input.agentId })) {
     return allow;
   }

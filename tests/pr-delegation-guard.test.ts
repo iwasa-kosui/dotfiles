@@ -12,6 +12,7 @@ import { join } from "node:path";
 
 import {
   findBlockedPrOperation,
+  isCursorAgent,
   isMainConversation,
 } from "../dot_claude/hooks/pr-delegation-guard-lib.ts";
 
@@ -23,11 +24,23 @@ const hookPath = join(
   "dot_claude/hooks/executable_bash-guard.ts",
 );
 
+// Cursor Agent のシェルから bun test したときに親の CURSOR_AGENT が引き継がれないよう消す。
+// 上書きしたい値は extra で後から足す。
+function hookEnv(extra: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv {
+  const env = { ...process.env };
+  delete env.CURSOR_AGENT;
+  return { ...env, ...extra };
+}
+
 // hook 本体を実行して permissionDecision を取り出す
-function runHook(input: Record<string, unknown>): string | null {
+function runHook(
+  input: Record<string, unknown>,
+  env: NodeJS.ProcessEnv = hookEnv(),
+): string | null {
   const stdout = execFileSync("bun", [hookPath], {
     input: JSON.stringify(input),
     encoding: "utf8",
+    env,
   });
   if (stdout.trim() === "") return null;
   return (
@@ -43,6 +56,7 @@ function reasonOf(input: Record<string, unknown>): string | null {
   const stdout = execFileSync("bun", [hookPath], {
     input: JSON.stringify(input),
     encoding: "utf8",
+    env: hookEnv(),
   });
   if (stdout.trim() === "") return null;
   return (
@@ -127,6 +141,16 @@ describe("isMainConversation", () => {
   });
 });
 
+describe("isCursorAgent", () => {
+  test("CURSOR_AGENT=1 のとき true", () => {
+    expect(isCursorAgent({ CURSOR_AGENT: "1" })).toBe(true);
+  });
+
+  test("未設定のとき false", () => {
+    expect(isCursorAgent({})).toBe(false);
+  });
+});
+
 describe("hook 本体", () => {
   test("agent_id なしの git push はブロックする", () => {
     expect(
@@ -190,5 +214,19 @@ describe("hook 本体", () => {
     });
     expect(reason).not.toContain("commit-pusher");
     expect(reason).not.toContain("pr-shipper");
+  });
+
+  test("CURSOR_AGENT=1 のとき agent-pr は許可する", () => {
+    expect(
+      runHook(
+        {
+          cwd: "/tmp",
+          tool_input: {
+            command: "agent-pr commit --message-file /tmp/msg -- a.ts",
+          },
+        },
+        hookEnv({ CURSOR_AGENT: "1" }),
+      ),
+    ).toBeNull();
   });
 });
