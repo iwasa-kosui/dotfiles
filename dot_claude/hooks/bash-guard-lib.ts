@@ -10,6 +10,7 @@ import type { Guard } from "./guard-lib.ts";
 import { checkOutgoingBody } from "./lint-outgoing-body-lib.ts";
 import { checkPrDelegation } from "./pr-delegation-guard-lib.ts";
 import { checkProtectedBranchPush } from "./protected-branch-push-guard-lib.ts";
+import { checkSlackSignature } from "./slack-signature-guard-lib.ts";
 
 // executable_bash-guard.ts が逐次実行する順序。
 // dot_claude/modify_settings.json.tmpl の旧6件登録の順序をそのまま引き継ぐ。
@@ -27,4 +28,5 @@ export const guards: readonly Guard[] = [
   { name: "lint-outgoing-body", check: checkOutgoingBody },
   { name: "pr-delegation-guard", check: checkPrDelegation },
   { name: "aws-cli-guard", check: checkAwsCli },
+  { name: "slack-signature-guard", check: checkSlackSignature },
 ];
