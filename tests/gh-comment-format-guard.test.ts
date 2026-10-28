@@ -32,12 +32,8 @@ function runHook(
   cwd = "/tmp",
 ): { decision: string | null; reason: string | null } {
   const stdout = execFileSync("bun", [hookPath], {
-    // agent_id を渡し pr-delegation-guard を allow にすることで、検査対象の
-    // gh-comment-format-guard 単体の挙動だけを見る（agent_id が無いと
-    // gh pr comment が pr-delegation-guard にも deny される）。
     input: JSON.stringify({
       cwd,
-      agent_id: "test-subagent",
       tool_input: { command },
     }),
     encoding: "utf8",

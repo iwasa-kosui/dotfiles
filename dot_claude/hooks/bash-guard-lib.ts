@@ -8,7 +8,6 @@ import { checkForcePush } from "./force-push-guard-lib.ts";
 import { checkGhCommentFormat } from "./gh-comment-format-guard-lib.ts";
 import type { Guard } from "./guard-lib.ts";
 import { checkOutgoingBody } from "./lint-outgoing-body-lib.ts";
-import { checkPrDelegation } from "./pr-delegation-guard-lib.ts";
 import { checkProtectedBranchPush } from "./protected-branch-push-guard-lib.ts";
 import { checkSlackSignature } from "./slack-signature-guard-lib.ts";
 
@@ -26,7 +25,6 @@ export const guards: readonly Guard[] = [
   { name: "commit-message-guard", check: checkCommitMessage },
   { name: "gh-comment-format-guard", check: checkGhCommentFormat },
   { name: "lint-outgoing-body", check: checkOutgoingBody },
-  { name: "pr-delegation-guard", check: checkPrDelegation },
   { name: "aws-cli-guard", check: checkAwsCli },
   { name: "slack-signature-guard", check: checkSlackSignature },
 ];

@@ -24,11 +24,8 @@ function runHook(command: string): {
   reason: string | null;
 } {
   const stdout = execFileSync("bun", [hookPath], {
-    // agent_id を渡し pr-delegation-guard などの他のガードを allow にすることで、
-    // 検査対象の aws-cli-guard 単体の挙動だけを見る。
     input: JSON.stringify({
       cwd: "/tmp",
-      agent_id: "test-subagent",
       tool_input: { command },
     }),
     encoding: "utf8",

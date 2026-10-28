@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
-// PreToolUse hook: Bash 実行前に走る9つのガードを1プロセスに集約したディスパッチャ。
+// PreToolUse hook: Bash 実行前に走る8つのガードを1プロセスに集約したディスパッチャ。
 //
 // 以前は main-branch-guard / force-push-guard / commit-message-guard /
-// gh-comment-format-guard / lint-outgoing-body / pr-delegation-guard が
+// gh-comment-format-guard / lint-outgoing-body が
 // それぞれ独立した executable_*.ts として settings.json に登録され、
-// Bash を叩くたびに bun プロセスが6つ起動していた。判定ロジックは各
+// Bash を叩くたびに bun プロセスが複数起動していた。判定ロジックは各
 // *-guard-lib.ts に切り出し済みなので、ここでは stdin を1回だけ読み取って
 // GuardInput を組み立て、bash-guard-lib.ts の guards 配列を順に評価するだけにし、
 // hook を1件・bun 起動を1回に減らす。
@@ -20,7 +20,7 @@ import {
   type ShellHookInput,
 } from "./shell-hook-lib.ts";
 
-const input = await readInput<ShellHookInput & { agent_id?: unknown }>();
+const input = await readInput<ShellHookInput>();
 
 const command = input.command ?? input.tool_input?.command ?? "";
 if (!command) {
@@ -31,7 +31,6 @@ const guardInput = {
   command,
   normalizedCommand: normalizeShellCommand(input),
   cwd: resolveShellHookCwd(input),
-  agentId: input.agent_id,
 };
 
 for (const guard of guards) {

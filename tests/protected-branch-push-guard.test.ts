@@ -34,16 +34,11 @@ afterAll(() => {
   rmSync(tempParent, { recursive: true, force: true });
 });
 
-async function decisionOf(
-  command: string,
-  cwd: string,
-  agentId: unknown = undefined,
-): Promise<string> {
+async function decisionOf(command: string, cwd: string): Promise<string> {
   const result = await checkProtectedBranchPush({
     command,
     normalizedCommand: command.replace(/\s+/g, " ").trim(),
     cwd,
-    agentId,
   });
   return result.action;
 }
@@ -75,18 +70,11 @@ describe("保護ブランチ宛の push を拒否する", () => {
     expect(await decisionOf(command, featureRepo)).toBe("deny");
   });
 
-  test("サブエージェント内でも拒否する", async () => {
-    expect(
-      await decisionOf("git push origin main", featureRepo, "a109396390d6b0cb2"),
-    ).toBe("deny");
-  });
-
   test("拒否理由に保護ブランチ名が含まれる", async () => {
     const result = await checkProtectedBranchPush({
       command: "git push origin HEAD:develop",
       normalizedCommand: "git push origin HEAD:develop",
       cwd: featureRepo,
-      agentId: undefined,
     });
     expect(result).toEqual({
       action: "deny",

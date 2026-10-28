@@ -65,7 +65,7 @@ describe("Claude main-repo-guard hook", () => {
   test("allows writes under .git/worktrees/<name>/ on a protected branch", async () => {
     const result = await runGuard(
       repo,
-      join(repo, ".git", "worktrees", "foo", "AGENT_PR_COMMIT_MSG"),
+      join(repo, ".git", "worktrees", "foo", "PR_COMMIT_MSG"),
     );
     expect(result).toEqual({ exitCode: 0, blocked: false });
   });
