@@ -38,3 +38,9 @@
 .agents/skills/web-fetch/bun.lock
 .claude/agents/handoff-writer.md
 .claude/agents/doc-style-checker.md
+
+# agent-pr と、PR 操作をサブエージェントへ委譲する仕組みを削除します。
+.local/bin/agent-pr
+.local/lib/agent-cli/pr.ts
+.claude/agents/pr-runner.md
+.claude/hooks/pr-delegation-guard-lib.ts

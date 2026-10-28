@@ -15,7 +15,6 @@ function runHook(command: string, cwd: string): string | null {
   const stdout = execFileSync("bun", [hookPath], {
     input: JSON.stringify({
       cwd,
-      agent_id: "test-subagent",
       tool_input: { command },
     }),
     encoding: "utf8",

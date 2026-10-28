@@ -44,11 +44,8 @@ function filePaths(command: string): string[] {
 // hook 本体を実行して permissionDecision を取り出す
 function runHook(command: string, cwd: string): string | null {
   const stdout = execFileSync("bun", [hookPath], {
-    // agent_id を渡し pr-delegation-guard を allow にすることで、検査対象の
-    // commit-message-guard 単体の挙動だけを見る。
     input: JSON.stringify({
       cwd,
-      agent_id: "test-subagent",
       tool_input: { command },
     }),
     encoding: "utf8",

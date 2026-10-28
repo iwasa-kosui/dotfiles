@@ -65,27 +65,28 @@ Ready 化、merge、force-push、保護ブランチへの直接変更は、ユ�
 - `fact-checker` — 主張を一次情報と照合し、判定・根拠 URL・原文引用を返す
 - `atlassian-collector` — Jira 課題と Confluence ページの取得・検索・要約
 
-PR スキル用。`pr-runner` は `pr` スキル、`pr-autofix-runner` は `pr-autofix` スキルが `context: fork` で起動する。司令塔が直接指名するものではない。
+PR スキル用。`pr-autofix-runner` は `pr-autofix` スキルが `context: fork` で起動する。司令塔が直接指名するものではない。
 
-- `pr-runner` — `pr` スキルの実行役。変更内容の判断、コミットメッセージと PR 本文の執筆、`agent-pr commit` / `publish` / `push` の実行を自分で行う。PR を作らず commit と push だけ行う場合も担当する
-- `pr-autofix-runner` — `pr-autofix` スキルの統括役。CI 失敗とレビュー指摘の収集・判断とレビュー返信文の執筆。コードとドキュメントの修正は `code-editor` / `doc-editor` に再委譲し、commit と push の `agent-pr` CLI は自分で実行する
+- `pr-autofix-runner` — `pr-autofix` スキルの統括役。CI 失敗とレビュー指摘の収集・判断とレビュー返信文の執筆。コードとドキュメントの修正は `code-editor` / `doc-editor` に再委譲し、commit と push は自分で実行する
 
 builtin で使うのは `Plan`（実装方針の設計）だけ。コード探索は `Explore` ではなく `code-analyzer`、雑多な作業も `general-purpose` ではなく役割別のエージェントに振る。
 
 ### 司令塔（Opus）の責務
 
-司令塔が自分でツールを叩くのは、この4つだけ。
+司令塔が自分でツールを叩くのは、この5つだけ。
 
 - ユーザーとの対話。ヒアリング、確認、承認
 - サブエージェントのディスパッチ。プロンプトの組み立てと Agent tool 呼び出し
 - サブエージェントの結果を統合して最終成果物を組み立てる
-- `chezmoi apply` の実行と、`EnterWorktree` による worktree 作成。git / gh の状況確認は自分で叩かない
-  - `git status`、`git diff`、`git log`、`gh pr view` などの状況確認は `gh-collector` に委譲する。出力がメインの文脈に残り続け、以降の全コールで読み直されるため
-  - commit・push・Draft PR の作成と更新は `pr` スキルに任せる。`pr` スキルは `context: fork` で `pr-runner` が実行する
-  - PR の CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。`pr-autofix` スキルは `context: fork` で `pr-autofix-runner` が実行する
-  - メインからの `agent-pr commit` / `agent-pr publish` / `agent-pr push`、`git push`、gh の書き込み系は `bash-guard` hook（pr-delegation-guard）が deny する
-  - Ready 化・merge・force-push・保護ブランチへの push と PR コメントの投稿は、引き続き `bash-guard` hook が deny する。実行するにはユーザーの明示的な承認が要る
-  - `slack-cli` の `send` / `edit` を実行するコマンドに「🤖 Claude Code」が入っていなければ、`bash-guard` hook（slack-signature-guard）が deny する
+- `chezmoi apply` の実行と、`EnterWorktree` による worktree 作成
+- `pr` スキルによる commit・push・Draft PR の作成と更新。スキルの手順に含まれる `git status` や `git diff` もメインで実行する
+
+git / gh と外部への送信は、次のように扱う。
+
+- `pr` スキルの外で行う `git status`、`git diff`、`git log`、`gh pr view` などの状況確認は `gh-collector` に委譲する。出力がメインの文脈に残り続け、以降の全コールで読み直されるため
+- PR の CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。`pr-autofix` スキルは `context: fork` で `pr-autofix-runner` が実行する
+- Ready 化と merge は、permissions の `ask` が承認プロンプトを出す。force-push は `bash-guard` hook（force-push-guard）が、保護ブランチへの push は `bash-guard` hook（protected-branch-push-guard）が deny する。どの操作も、ユーザーの明示的な承認なしに実行しない
+- `slack-cli` の `send` / `edit` を実行するコマンドに「🤖 Claude Code」が入っていなければ、`bash-guard` hook（slack-signature-guard）が deny する
 
 ### サブエージェント（Sonnet / Haiku）の責務
 
@@ -106,10 +107,9 @@ builtin で使うのは `Plan`（実装方針の設計）だけ。コード探�
 - git / gh の状況確認（status, diff, log, PR 情報）→ `gh-collector`
 - Jira 課題と Confluence ページを読む → `atlassian-collector`
 - 主張の裏取り → `fact-checker`
-- コミット、push、Draft PR の作成・更新 → `pr` スキル
 - PR の CI 失敗とレビュー指摘の修正、レビューコメントへの返信 → `pr-autofix` スキル
 
-`pr` と `pr-autofix` は `context: fork` で統括エージェント（`pr-runner` / `pr-autofix-runner`）へ委譲するため、司令塔は Agent tool を直接呼ばずスキルを起動する。
+`pr-autofix` は `context: fork` で統括エージェント（`pr-autofix-runner`）へ委譲するため、司令塔は Agent tool を直接呼ばずスキルを起動する。
 
 独立した複数の作業は、同一メッセージで並列に起動する。
 

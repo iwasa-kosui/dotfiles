@@ -1,12 +1,12 @@
-// executable_bash-guard.ts（9つのガードを1プロセスに集約したディスパッチャ）の回帰テスト。
+// executable_bash-guard.ts（8つのガードを1プロセスに集約したディスパッチャ）の回帰テスト。
 // `bun test` でリポジトリルートから実行する。
 //
 // 各ガード個別の判定ロジックの回帰は force-push-guard.test.ts / commit-message-guard.test.ts /
-// gh-comment-format-guard.test.ts / pr-delegation-guard.test.ts / branch-guard-lib.test.ts に
+// gh-comment-format-guard.test.ts / branch-guard-lib.test.ts に
 // 既にある。このファイルで固定したいのはディスパッチャ固有の3点。
-//   1. 9つのガードすべてが配線されていること（各ガードが deny する入力を1件ずつ確認する）
+//   1. 8つのガードすべてが配線されていること（各ガードが deny する入力を1件ずつ確認する）
 //   2. dot_claude/modify_settings.json.tmpl の旧登録順（main-branch → force-push →
-//      commit-message → gh-comment-format → lint-outgoing-body → pr-delegation）が
+//      commit-message → gh-comment-format → lint-outgoing-body）が
 //      維持されていること
 //   3. どのガードにも該当しない入力・空のコマンドでは何も出力しないこと
 
@@ -44,7 +44,7 @@ function runHook(input: Record<string, unknown>): {
   };
 }
 
-describe("9つのガードすべてが配線されている", () => {
+describe("8つのガードすべてが配線されている", () => {
   test("main-branch-guard: 保護ブランチでのコミットを拒否する", () => {
     const tempParent = mkdtempSync(join(tmpdir(), "bash-guard-"));
     const mainRepo = join(tempParent, "main-repo");
@@ -127,19 +127,9 @@ describe("9つのガードすべてが配線されている", () => {
     expect(reason).toContain("コマンド置換");
   });
 
-  test("pr-delegation-guard: メインの会話からの gh pr create を拒否する", () => {
-    const { decision, reason } = runHook({
-      cwd: "/tmp",
-      tool_input: { command: "gh pr create --draft --title x" },
-    });
-    expect(decision).toBe("deny");
-    expect(reason).toContain("メインの会話から PR 操作");
-  });
-
   test("protected-branch-push-guard: 保護ブランチ宛の push を拒否する", () => {
     const { decision, reason } = runHook({
       cwd: "/tmp",
-      agent_id: "test-subagent",
       tool_input: { command: "git push origin main" },
     });
     expect(decision).toBe("deny");
@@ -165,6 +155,8 @@ describe("該当するガードが無い場合は素通しする", () => {
   test.each([
     ["ls -la", "ls -la"],
     ["bun test", "bun test"],
+    ["メインの会話からの Draft PR 作成", "gh pr create --draft --fill"],
+    ["メインの会話からの feature ブランチへの push", "git push -u origin HEAD"],
   ])("%s", (_name, command) => {
     const { decision } = runHook({
       cwd: "/tmp",

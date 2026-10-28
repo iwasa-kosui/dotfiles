@@ -35,7 +35,7 @@ Claude Code の fork 先にはメインの会話履歴が渡らないため、�
 3. 各指摘の妥当性と対応方針を判断します。判断できない指摘、設計方針が変わる指摘、承認が必要な指摘は修正せず報告します。
 4. 修正は、Claude Code ではコードと設定ファイルを `code-editor`、Markdown を `doc-editor` に委譲します。Cursor ではメインで直接編集します。
 5. コミットメッセージとレビュー返信文は実行役が自分で執筆します。
-6. コミットと PR 更新は `agent-pr --help` の指示に従います。レビュー返信の投稿は CLI に機能がないため `gh api` を直接使います。
+6. コミットは、`git add -- <files...>` で修正したファイルだけをステージしてから `git commit -F <file>` で行い、`git push -u origin HEAD` で push します。PR 本文の更新は `gh pr edit --body-file <file>`、レビュー返信の投稿は `gh api` で行います。
 7. `pr-autofix collect` を再実行し、CI の状態と未解決の指摘を確認します。
 8. 対応した内容と残る問題を報告します。
 

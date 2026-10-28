@@ -26,12 +26,8 @@ function runHook(command: string): {
   reason: string | null;
 } {
   const stdout = execFileSync("bun", [hookPath], {
-    // agent_id を渡し pr-delegation-guard を allow にすることで、検査対象の
-    // force-push-guard 単体の挙動だけを見る（agent_id が無いと git push が
-    // pr-delegation-guard にも deny される）。
     input: JSON.stringify({
       cwd: "/tmp",
-      agent_id: "test-subagent",
       tool_input: { command },
     }),
     encoding: "utf8",

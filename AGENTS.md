@@ -111,10 +111,9 @@ Core config in `dot_config/nvim/lua/config/`: `keymaps.lua`, `options.lua`, `aut
 
 ## Cursor での PR 操作
 
-- commit・push・Draft PR の作成・更新は `pr` スキル（`dot_agents/skills/pr/SKILL.md`）に従い、メインの会話で `agent-pr` を直接実行する
+- commit・push・Draft PR の作成・更新は `pr` スキル（`dot_agents/skills/pr/SKILL.md`）に従い、メインの会話で `git` と `gh` を直接実行する
 - CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに従い、同様にメインで実行する
 - Task やその他のサブエージェントには委譲しない
-- `git commit` / `git push` / `gh pr create` は直接実行せず、`agent-pr` 経由にする
 
 ## GitHub CLI Usage
 

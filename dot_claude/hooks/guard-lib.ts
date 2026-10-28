@@ -15,8 +15,6 @@ export type GuardInput = {
    */
   readonly normalizedCommand: string;
   readonly cwd: string;
-  /** PreToolUse の stdin の agent_id。サブエージェント内でのみ渡る */
-  readonly agentId: unknown;
 };
 
 export const allow: GuardResult = { action: "allow" };
