@@ -81,31 +81,50 @@ test("handoff writes failed, questions and references sections in order", () => 
   for (const item of ["失敗C", "質問E", "参照F"]) expect(content).toContain(`- ${item}`);
 });
 
-const secrets: [string, string][] = [
-  ["GitHub token", "ghp_" + "A1b2C3d4E5".repeat(3)],
-  ["GitHub token", "github_pat_" + "A1b2C3d4E5_".repeat(3)],
-  ["API key", "sk-" + "A1b2C3d4E5".repeat(3)],
-  ["AWS access key", "AKIA" + "0123456789ABCDEF"],
-  ["Slack token", "xoxb-" + "0123456789-abcdef"],
-  ["Private key", "-----BEGIN " + "RSA PRIVATE KEY-----"],
+const secrets: [string, string, string][] = [
+  ["GitHub token (ghp_)", "GitHub token (ghp_)", "ghp_" + "A1b2C3d4E5".repeat(3)],
+  ["GitHub token (github_pat_)", "GitHub token (github_pat_)", "github_pat_" + "A1b2C3d4E5_".repeat(3)],
+  ["API key (sk-)", "API key (sk-)", "sk-" + "A1b2C3d4E5".repeat(3)],
+  ["AWS access key", "AWS access key", "AKIA" + "0123456789ABCDEF"],
+  ["AWS access key (ASIA)", "AWS access key", "ASIA" + "0123456789ABCDEF"],
+  ["Slack token", "Slack token", "xoxb-" + "0123456789-abcdef"],
+  ["Slack token (xoxe-)", "Slack token", "xoxe-" + "0123456789-abcdef"],
+  ["npm token", "npm token", "npm_" + "A1b2C3d4E5".repeat(3) + "A1b2C3"],
+  ["Google API key", "Google API key", "AIza" + "A1b2C3d4E5".repeat(3) + "A1b2C"],
+  ["URL credentials", "URL credentials", "https" + "://" + "deploy" + ":" + "hunter2pass" + "@" + "example.test"],
+  ["Private key", "Private key", "-----BEGIN " + "RSA PRIVATE KEY-----"],
 ];
-for (const [name, value] of secrets) {
+const listFields = ["facts", "decisions", "failed", "pending", "questions", "references"];
+for (const [name, expected, value] of secrets) {
   test(`handoff rejects a brief containing a ${name} before writing an output directory`, () => {
     const dir = repo();
     const output = join(dir, "output");
-    for (const brief of [
+    const briefs: Record<string, unknown>[] = [
+      { title: `引き継ぎ ${value}`, goal: "目的" },
       { title: "引き継ぎ", goal: `目的 ${value}` },
-      { title: "引き継ぎ", goal: "目的", references: ["ok", `参照 ${value}`] },
-    ]) {
+      { title: "引き継ぎ", goal: "目的", resume: `再開 ${value}` },
+      ...listFields.map((field) => ({ title: "引き継ぎ", goal: "目的", [field]: ["ok", `項目 ${value}`] })),
+    ];
+    for (const brief of briefs) {
       writeFileSync(join(dir, "brief.json"), JSON.stringify(brief));
       const result = cli("handoff", ["write", "--brief", "brief.json", "--out-dir", output], dir);
-      expect(result.code).toBe(2);
-      expect(result.err).toContain(name);
+      expect(result.code, JSON.stringify(Object.keys(brief))).toBe(2);
+      expect(result.err).toContain(expected);
       expect(result.err).not.toContain(value);
       expect(existsSync(output)).toBe(false);
     }
   });
 }
+
+test("handoff does not flag identifiers that merely contain sk-", () => {
+  const dir = repo();
+  const names = ["feat/disk-usage-monitoring-dashboard", "dot_agents/skills/task-runner-orchestration-skill", "risk-assessment-for-production-rollout"];
+  for (const field of ["references", "pending"]) {
+    writeFileSync(join(dir, "brief.json"), JSON.stringify({ title: "引き継ぎ", goal: "目的", [field]: names }));
+    const result = cli("handoff", ["write", "--brief", "brief.json", "--out-dir", join(dir, `out-${field}`)], dir);
+    expect(result.code, result.err).toBe(0);
+  }
+});
 
 test("web-fetch help explains errors without accessing the allowlist or network", () => {
   const result = cli("web-fetch", ["--help"], tmpdir());

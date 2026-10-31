@@ -8,7 +8,7 @@ const HELP = `Usage: handoff write --brief <json-file> [--out-dir <directory>]
 
 Write a handoff document and print JSON containing its absolute path.
 Default: ~/.claude/handoffs/<repo>/<branch>/<timestamp>.md
-The existing session hook discovers this location. Existing files are never replaced.
+The session hook discovers files only in this default location, not in --out-dir. Existing files are never replaced.
 
 Brief JSON:
   {"title":"Task title","goal":"Original request",
@@ -16,7 +16,8 @@ Brief JSON:
    "failed":["Attempt and why it failed"],"pending":["Next action"],
    "questions":["Question for the user"],"references":["path/to/file:line or URL"],
    "resume":"How to continue"}
-title and goal are required strings. facts, decisions, failed, pending, questions, references are optional string arrays.
+title and goal are required strings; title must be a single line. facts, decisions, failed, pending, questions, references are optional string arrays.
+Unknown fields are rejected.
 resume is an optional string. Omitted sections are left out.
 Briefs containing token-like or private-key strings are rejected with exit code 2.
 Git status, branch, checkout, stash and available base diff metadata are added automatically.
@@ -24,11 +25,14 @@ Exit codes: 0 success, 1 filesystem/process failure, 2 invalid input.
 `;
 
 const SECRET_PATTERNS: [string, RegExp][] = [
-  ["GitHub token", /gh[pousr]_[A-Za-z0-9]{20,}/],
-  ["GitHub token", /github_pat_[A-Za-z0-9_]{20,}/],
-  ["API key", /sk-[A-Za-z0-9_-]{20,}/],
-  ["AWS access key", /AKIA[0-9A-Z]{16}/],
-  ["Slack token", /xox[abprs]-[A-Za-z0-9-]{10,}/],
+  ["GitHub token (ghp_)", /gh[pousr]_[A-Za-z0-9]{20,}/],
+  ["GitHub token (github_pat_)", /github_pat_[A-Za-z0-9_]{20,}/],
+  ["API key (sk-)", /(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}/],
+  ["AWS access key", /(?:AKIA|ASIA)[0-9A-Z]{16}/],
+  ["Slack token", /xox[a-z]-[A-Za-z0-9-]{10,}/],
+  ["npm token", /npm_[A-Za-z0-9]{36}/],
+  ["Google API key", /AIza[0-9A-Za-z_-]{35}/],
+  ["URL credentials", /:\/\/[^\s:/@]+:[^\s@]+@/],
   ["Private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
 ];
 type Brief = { title: string; goal: string; facts?: string[]; decisions?: string[]; failed?: string[]; pending?: string[]; questions?: string[]; references?: string[]; resume?: string };
