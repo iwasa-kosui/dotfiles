@@ -16,13 +16,14 @@ description: cmux で作業セッションとレビューセッションを起�
 ## 手順
 
 1. 管理役は ListAgents で自分の宛先名を確認します。ListAgents の出力に「This session is <名前>」と表示されます。管理役はこの名前を共通ルールのプロンプトに書きます。
-2. 管理役は、`git worktree add` で `<リポジトリ>/.wt/<ブランチ名>` にワークツリーを先に作ります。作業セッションには EnterWorktree を使わせません。作業セッションが EnterWorktree を使うと、`.claude/worktrees/` の外への移動を確かめる権限確認が出てセッションが止まり、ユーザーの操作が必要になります。
-3. 管理役はプロンプトを Write ツールでファイルに書きます。共通ルールと個別の指示は別のファイルにします。Bash の heredoc ではプロンプトを書きません。heredoc で書くと、本文に含まれる語（AWS の CLI 名など）に bash-guard の hook が反応して、コマンドが拒否されることがあります。
-4. 管理役は起動スクリプトを書き、cmux でワークスペースを作ってセッションを起動します。
+2. 管理役は、「ダッシュボード」の節の基準でダッシュボードを作るかを決めます。作る場合、管理役はセッションを起動する前に最初の版を公開します。
+3. 管理役は、`git worktree add` で `<リポジトリ>/.wt/<ブランチ名>` にワークツリーを先に作ります。作業セッションには EnterWorktree を使わせません。作業セッションが EnterWorktree を使うと、`.claude/worktrees/` の外への移動を確かめる権限確認が出てセッションが止まり、ユーザーの操作が必要になります。
+4. 管理役はプロンプトを Write ツールでファイルに書きます。共通ルールと個別の指示は別のファイルにします。Bash の heredoc ではプロンプトを書きません。heredoc で書くと、本文に含まれる語（AWS の CLI 名など）に bash-guard の hook が反応して、コマンドが拒否されることがあります。
+5. 管理役は起動スクリプトを書き、cmux でワークスペースを作ってセッションを起動します。
    - `CMUX_QUIET=1 cmux new-workspace --name <ワークスペース名> --cwd <ワークツリーのパス> --command "<起動スクリプト>" --focus false` を実行します。`CMUX_QUIET=1` を付けると、エイリアス変更の通知が出なくなります。
    - 起動スクリプトは `claude -n <セッション名> --permission-mode auto "$(cat <共通ルールのファイル> <個別の指示のファイル>)"` を実行します。`-n` で付けた名前が SendMessage の宛先になります。
-5. 管理役は報告を待ちます。待ち方は「監視」の節に従います。
-6. 管理役は、承認を受けた PR に `gh pr ready <PR>` を実行し、続けて `gh pr merge <PR> --squash --match-head-commit <承認された head SHA>` を実行します。
+6. 管理役は報告を待ちます。待ち方は「監視」の節に従います。
+7. 管理役は、承認を受けた PR に `gh pr ready <PR>` を実行し、続けて `gh pr merge <PR> --squash --match-head-commit <承認された head SHA>` を実行します。
 
 ## 監視
 
@@ -40,6 +41,47 @@ description: cmux で作業セッションとレビューセッションを起�
 
 - ワークスペースは管理役が閉じます。管理役は、セッションへの完了の連絡を SendMessage で送ってから、`cmux close-workspace --workspace <ワークスペースの ref>` でワークスペースを閉じます。
 - 閉じた後のセッションには、メッセージが届きません。管理役は、セッションへの連絡をすべて閉じる前に送ります。
+
+## ダッシュボード
+
+ダッシュボードは、ユーザーが作業の状況を一目で把握するための HTML のページです。管理役が作成と更新を担います。
+
+### 作るかどうかの基準
+
+管理役は、次のどれか1つに当てはまる場合にダッシュボードを作ります。どれにも当てはまらない場合、管理役はテキストのバックログだけで進めます。
+
+- 同時に動かすセッションが4つ以上ある。作業セッションとレビューセッションが2組以上ある状態です。
+- 作業全体で PR が3件以上になる見込みがある。
+- 作業期間が2日以上にわたる。
+
+### 載せる内容
+
+管理役は、ページの上から次の順に節を置きます。
+
+1. ユーザーの操作が必要なもの。権限確認で止まったセッション、Environment の承認待ち、ユーザーの判断待ちを、ワークスペース名と選ぶべき操作とともに並べます。該当するものがないときは「なし」と書きます。管理役はこの節を目立つ枠と色で囲みます。
+2. 目標と現在地の要約。
+3. 構成図。移行作業では移行前と移行後の構成を並べて描きます。移行以外の作業では対象システムの構成を描きます。管理役は図をインライン SVG で描きます。
+4. バックログの表（ID、内容、依存、担当セッション、状態）と、項目間の依存関係の図。
+5. セッションの一覧（作業セッションとレビューセッションの対応、cmux のワークスペース、状態）。
+6. PR の一覧（作業担当、レビュー担当、状態、merge のコミット）。
+7. 決定事項の記録（日付、決めた人、内容）。
+
+### 公開と更新
+
+- 管理役は、Claude Code の Artifact ツールでダッシュボードを公開します。公開したページは private で始まります。ページのリンクを誰に共有するかは、ユーザーが決めます。
+- 管理役は、ダッシュボードの HTML を置くファイルパスを最初に1つ決めます。管理役は状態が変わるたびに、同じファイルパスで再公開します。同じファイルパスで公開すると、同じ URL のページが更新されます。
+- 管理役は、次のときにダッシュボードを更新します。
+  - セッションを起動したとき、閉じたとき
+  - PR が作られたとき、merge されたとき
+  - 判断を記録したとき
+  - ユーザーの操作が必要な事態が起きたとき、解消したとき
+- 管理役は、図を描く前に artifact-design と artifact-diagramming の skill を読み込みます。どちらかの skill が使えない場合は、読み込まずに進めます。
+
+### 二重管理を避ける
+
+- バックログと決定事項の正本は Markdown のファイルにします。各セッションはプロンプトの指示でこの Markdown を読むので、管理役は正本をセッションが読める形式にしておきます。
+- 管理役は、更新のたびに Markdown の正本からダッシュボードの表へ内容を書き写します。管理役は、ダッシュボードの表だけを直接書き換えません。
+- セッションの状態と PR の状態には正本を作りません。管理役は、更新のたびに `cmux read-screen` と `gh pr view` で確かめた値をダッシュボードに載せます。
 
 ## 雛形
 
@@ -119,4 +161,111 @@ exec claude -n <作業セッション名> --permission-mode auto \
 set -euo pipefail
 exec claude -n <レビューセッション名> --permission-mode auto \
   "$(cat <共通ルールのファイル> <レビューセッションの指示のファイル>)"
+```
+
+### ダッシュボード
+
+この雛形では、HTML のタグと区別するために `{{...}}` をプレースホルダにします。管理役は、表の行と一覧の項目を件数に合わせて複製します。
+
+```html
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{作業名}} 進捗</title>
+<style>
+:root { --bg: #ffffff; --fg: #1a1a1a; --muted: #666666; --line: #dddddd; --alert-bg: #fff4e5; --alert-line: #e8590c; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #16181d; --fg: #e8e8e8; --muted: #a0a0a0; --line: #333333; --alert-bg: #3a2410; --alert-line: #ff922b; }
+}
+:root[data-theme="dark"] { --bg: #16181d; --fg: #e8e8e8; --muted: #a0a0a0; --line: #333333; --alert-bg: #3a2410; --alert-line: #ff922b; }
+body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font-family: system-ui, sans-serif; line-height: 1.6; }
+main { max-width: 1100px; margin: 0 auto; }
+.alert { border: 2px solid var(--alert-line); background: var(--alert-bg); padding: 12px 16px; border-radius: 8px; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; }
+th, td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+svg { max-width: 100%; height: auto; }
+.updated { color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>{{作業名}}</h1>
+  <p class="updated">最終更新: {{更新日時}}</p>
+
+  <section class="alert" id="needs-user">
+    <h2>ユーザーの操作が必要なもの</h2>
+    <ul>
+      <li>{{ワークスペース名}}: {{止まっている理由}} → {{選ぶべき操作}}</li>
+    </ul>
+  </section>
+
+  <section id="summary">
+    <h2>目標と現在地</h2>
+    <p>{{目標}}</p>
+    <p>{{現在地}}</p>
+  </section>
+
+  <section id="architecture">
+    <h2>構成図</h2>
+    <svg viewBox="0 0 800 320" role="img" aria-label="{{図の説明}}">
+      <!-- {{移行前と移行後の構成、または対象システムの構成}} -->
+    </svg>
+  </section>
+
+  <section id="backlog">
+    <h2>バックログ</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>ID</th><th>内容</th><th>依存</th><th>担当セッション</th><th>状態</th></tr></thead>
+        <tbody>
+          <tr><td>{{ID}}</td><td>{{内容}}</td><td>{{依存する ID}}</td><td>{{作業セッション名}}</td><td>{{状態}}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <svg viewBox="0 0 800 240" role="img" aria-label="バックログの依存関係">
+      <!-- {{バックログの項目間の依存関係}} -->
+    </svg>
+  </section>
+
+  <section id="sessions">
+    <h2>セッション</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>作業セッション</th><th>レビューセッション</th><th>cmux のワークスペース</th><th>状態</th></tr></thead>
+        <tbody>
+          <tr><td>{{作業セッション名}}</td><td>{{レビューセッション名}}</td><td>{{ワークスペースの ref}}</td><td>{{状態}}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="prs">
+    <h2>PR</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>PR</th><th>作業担当</th><th>レビュー担当</th><th>状態</th><th>merge のコミット</th></tr></thead>
+        <tbody>
+          <tr><td><a href="{{PR URL}}">{{PR 番号}}</a></td><td>{{作業セッション名}}</td><td>{{レビューセッション名}}</td><td>{{状態}}</td><td>{{merge のコミット}}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="decisions">
+    <h2>決定事項</h2>
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>日付</th><th>決めた人</th><th>内容</th></tr></thead>
+        <tbody>
+          <tr><td>{{日付}}</td><td>{{決めた人}}</td><td>{{内容}}</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+</body>
+</html>
 ```
