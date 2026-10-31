@@ -85,7 +85,7 @@ git / gh と外部への送信は、次のように扱う。
 
 - `pr` スキルの外で行う `git status`、`git diff`、`git log`、`gh pr view` などの状況確認は `gh-collector` に委譲する。出力がメインの文脈に残り続け、以降の全コールで読み直されるため
 - PR の CI 失敗とレビュー指摘への対応は `pr-autofix` スキルに任せる。`pr-autofix` スキルは `context: fork` で `pr-autofix-runner` が実行する
-- Ready 化と merge は、permissions の `ask` が承認プロンプトを出す。force-push は `bash-guard` hook（force-push-guard）が、保護ブランチへの push は `bash-guard` hook（protected-branch-push-guard）が deny する。どの操作も、ユーザーの明示的な承認なしに実行しない
+- Ready 化と merge は、仕事環境（chezmoi の `profile` が `work`）では permissions の `ask` が承認プロンプトを出す。個人環境では `allow` に入れているため承認プロンプトは出ない。force-push は `bash-guard` hook（force-push-guard）が、保護ブランチへの push は `bash-guard` hook（protected-branch-push-guard）が deny する。どの操作も、ユーザーの明示的な承認なしに実行しない
 - `slack-cli` の `send` / `edit` を実行するコマンドに「🤖 Claude Code」が入っていなければ、`bash-guard` hook（slack-signature-guard）が deny する
 
 ### サブエージェント（Sonnet / Haiku）の責務
