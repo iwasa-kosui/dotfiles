@@ -1,0 +1,208 @@
+<title>判断デスク試作</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+/* 1 列の操作卓: 判断待ち → 連絡 → 現況 の順に、上ほど手を動かす場所 */
+:root {
+  --bg: #f3f5f4; --panel: #ffffff; --fg: #1d2523; --muted: #5d6b67; --line: #d5dcd9;
+  --accent: #1f6f5c; --accent-fg: #ffffff; --wait: #a15c00; --wait-bg: #fff3df; --done: #2e6b3a; --err: #a42828;
+  --display: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121816; --panel: #1a2220; --fg: #e3ebe8; --muted: #95a6a0; --line: #2d3a36;
+  --accent: #5fc3a6; --accent-fg: #0d1513; --wait: #f0b45a; --wait-bg: #2e2412; --done: #7fcf8c; --err: #ff8a80; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #121816; --panel: #1a2220; --fg: #e3ebe8; --muted: #95a6a0; --line: #2d3a36;
+  --accent: #5fc3a6; --accent-fg: #0d1513; --wait: #f0b45a; --wait-bg: #2e2412; --done: #7fcf8c; --err: #ff8a80; color-scheme: dark }
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 15px; line-height: 1.7;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 24px 48px; }
+main { max-width: 760px; margin: 0 auto; display: grid; gap: 32px; }
+header { display: grid; gap: 4px; }
+h1 { font-family: var(--display); font-size: 1.6rem; margin: 0; text-wrap: balance; }
+h2 { font-family: var(--display); font-size: 1.1rem; margin: 0; display: flex; gap: 8px; align-items: baseline; }
+.meta { color: var(--muted); font-size: .85rem; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.note { color: var(--muted); font-size: .85rem; margin: 0; }
+section { display: grid; gap: 12px; }
+.count { font-family: var(--mono); font-size: .8rem; color: var(--wait); }
+.card { background: var(--panel); border: 1px solid var(--line); border-left: 4px solid var(--wait); border-radius: 6px; padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.card.answered { border-left-color: var(--done); }
+.card h3 { margin: 0; font-size: 1rem; }
+.qid { font-family: var(--mono); font-size: .75rem; color: var(--muted); }
+.ctx { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.opts { display: grid; gap: 8px; }
+.opt { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; align-items: start; padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px; cursor: pointer; }
+.opt:has(input:checked) { border-color: var(--accent); outline: 1px solid var(--accent); }
+.opt input { margin-top: 6px; accent-color: var(--accent); }
+.opt b { font-weight: 700; }
+.opt span { grid-column: 2; color: var(--muted); font-size: .88rem; }
+textarea { width: 100%; box-sizing: border-box; min-height: 72px; font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; }
+button { font: inherit; font-weight: 700; border: 0; border-radius: 6px; padding: 8px 16px; background: var(--accent); color: var(--accent-fg); cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+button:focus-visible, textarea:focus-visible, .opt:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.status { font-size: .85rem; color: var(--muted); }
+.status.err { color: var(--err); }
+.answer { margin: 0; font-size: .9rem; }
+.empty { border: 1px dashed var(--line); border-radius: 6px; padding: 16px; color: var(--muted); margin: 0; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 400; font-size: .8rem; letter-spacing: .04em; }
+td.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pill { font-family: var(--mono); font-size: .75rem; padding: 1px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.wait { color: var(--wait); } .pill.ok { color: var(--done); } .pill.run { color: var(--accent); }
+details summary { cursor: pointer; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<main>
+  <header>
+    <h1>判断デスク試作</h1>
+    <p class="note">管理役からの質問に答え、指示を送るページの試作です。データはこのページの db に入り、管理役は ArtifactData で読みます。</p>
+    <div class="meta" id="conn">接続を確認しています…</div>
+  </header>
+
+  <section aria-labelledby="h-q">
+    <h2 id="h-q">判断待ち <span class="count" id="q-count"></span></h2>
+    <div id="q-list"><p class="empty">管理役からの質問はまだありません。質問が届くと、ここに選択肢つきのカードが出ます。</p></div>
+    <details id="done-wrap" hidden><summary>回答済み</summary><div id="done-list" style="display:grid;gap:12px;margin-top:12px"></div></details>
+  </section>
+
+  <section aria-labelledby="h-m">
+    <h2 id="h-m">管理役への連絡</h2>
+    <p class="note">新しい作業の依頼や方針の変更を書きます。管理役は次に起きたときに読みます。</p>
+    <label for="msg" class="note">本文</label>
+    <textarea id="msg"></textarea>
+    <div class="row"><button id="msg-send" type="button">送る</button><span class="status" id="msg-status"></span></div>
+  </section>
+
+  <section aria-labelledby="h-s">
+    <h2 id="h-s">現況</h2>
+    <div class="meta" id="board-at"></div>
+    <p class="ctx" id="board-summary"></p>
+    <div class="tablewrap" id="board-table"><p class="empty">俯瞰役がまだ現況を書いていません。書かれると、セッションと PR の一覧がここに出ます。</p></div>
+  </section>
+</main>
+
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const conn = $("conn");
+  const el = (tag, attrs = {}, ...kids) => {
+    const n = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs)) { if (k === "class") n.className = v; else if (k === "text") n.textContent = v; else n.setAttribute(k, v); }
+    for (const c of kids) if (c) n.append(c);
+    return n;
+  };
+  const fmt = (iso) => { try { return new Date(iso).toLocaleString("ja-JP", { hour12: false }); } catch { return iso || ""; } };
+
+  const timer = setTimeout(() => { conn.textContent = "db に接続できませんでした。ページを開き直してください。"; }, 10000);
+  const db = await claude.use("db");
+  const user = await claude.use("user");
+  const comments = await claude.use("comments");
+  if (!db) { clearTimeout(timer); conn.textContent = "このビューでは db が使えません。claude.ai にサインインして開いてください。"; return; }
+  const isOwner = (await user?.isOwner()) ?? false;
+  const myId = (await user?.id()) ?? null;
+  if (!isOwner) { clearTimeout(timer); conn.textContent = "このページは所有者だけが操作できます。"; return; }
+
+  let questions = [], answers = new Map();
+
+  async function wakeManager(anchorEl, text) {
+    if (!comments || typeof comments.sendToClaude !== "function") return "通知: comments が使えないため、管理役は次の定期確認で読みます";
+    let can = "off";
+    try { can = await comments.canSendToClaude(); } catch {}
+    if (can !== "available") return `通知: 送れません（${can}）。管理役は次の定期確認で読みます`;
+    try {
+      const anchor = await comments.anchorFor(anchorEl);
+      await comments.sendToClaude({ anchor, text });
+      return "通知: 管理役を起こしました";
+    } catch (e) { return `通知に失敗しました（${e?.code || "unknown"}）。管理役は次の定期確認で読みます`; }
+  }
+
+  function renderQuestions() {
+    const open = questions.filter((q) => q.status === "open" && !answers.has(q.id));
+    const done = questions.filter((q) => answers.has(q.id) || q.status !== "open");
+    $("q-count").textContent = open.length ? `${open.length} 件` : "";
+    const list = $("q-list"); list.replaceChildren();
+    if (!open.length) list.append(el("p", { class: "empty", text: "判断待ちの質問はありません。質問が届くと、ここに選択肢つきのカードが出ます。" }));
+    for (const q of open) list.append(questionCard(q));
+    $("done-wrap").hidden = !done.length;
+    const dl = $("done-list"); dl.replaceChildren();
+    for (const q of done) {
+      const a = answers.get(q.id);
+      const label = a ? ((q.options || []).find((o) => o.id === a.choice)?.label || "自由記述のみ") : `状態: ${q.status}`;
+      dl.append(el("div", { class: "card answered" },
+        el("div", { class: "qid", text: q.id }), el("h3", { text: q.title || "" }),
+        el("p", { class: "answer", text: `回答: ${label}${a?.text ? ` / ${a.text}` : ""}` }),
+        a ? el("div", { class: "meta", text: fmt(a.answeredAt) }) : null));
+    }
+  }
+
+  function questionCard(q) {
+    const card = el("article", { class: "card" });
+    const name = `q-${q.id}`;
+    const opts = el("div", { class: "opts", role: "radiogroup", "aria-label": q.title || q.id });
+    for (const o of q.options || []) {
+      const id = `${name}-${o.id}`;
+      const input = el("input", { type: "radio", name, id, value: o.id });
+      opts.append(el("label", { class: "opt", for: id }, input, el("b", { text: o.label }), o.description ? el("span", { text: o.description }) : null));
+    }
+    const freeId = `${name}-free`;
+    const free = el("textarea", { id: freeId, placeholder: "補足や、選択肢にない答え（任意）" });
+    const btn = el("button", { type: "button", text: "回答する" });
+    const st = el("span", { class: "status" });
+    btn.addEventListener("click", async () => {
+      const choice = card.querySelector(`input[name="${name}"]:checked`)?.value || null;
+      const text = free.value.trim();
+      if (!choice && !text) { st.textContent = "選択肢を選ぶか、補足を書いてください。"; st.className = "status err"; return; }
+      btn.disabled = true; st.className = "status"; st.textContent = "保存しています…";
+      try {
+        await db.doc(`answers/${q.id}`).set({ questionId: q.id, choice, text, answeredAt: new Date().toISOString(), by: myId, handled: false });
+      } catch (e) { st.className = "status err"; st.textContent = `保存できませんでした（${e?.code || "unknown"}）。もう一度押してください。`; btn.disabled = false; return; }
+      st.textContent = "保存しました。" + await wakeManager(card, `回答しました: ${q.id}（内容は db の answers/${q.id}）`);
+    });
+    card.append(el("div", { class: "qid", text: `${q.id}${q.askedBy ? ` ・ ${q.askedBy}` : ""}${q.createdAt ? ` ・ ${fmt(q.createdAt)}` : ""}` }),
+      el("h3", { text: q.title || "" }), q.context ? el("p", { class: "ctx", text: q.context }) : null,
+      opts, el("label", { for: freeId, class: "note", text: "補足" }), free, el("div", { class: "row" }, btn, st));
+    return card;
+  }
+
+  function renderBoard(b) {
+    if (!b) return;
+    $("board-at").textContent = b.updatedAt ? `更新 ${fmt(b.updatedAt)}` : "";
+    $("board-summary").textContent = b.summary || "";
+    const rows = b.sessions || [];
+    if (!rows.length) return;
+    const tb = el("tbody");
+    for (const r of rows) {
+      const cls = r.state === "waiting" ? "wait" : r.state === "done" ? "ok" : "run";
+      tb.append(el("tr", {}, el("td", { class: "mono", text: r.name || "" }), el("td", {}, el("span", { class: `pill ${cls}`, text: r.state || "" })),
+        el("td", { text: r.task || "" }), el("td", { class: "mono", text: r.pr || "" })));
+    }
+    $("board-table").replaceChildren(el("table", {}, el("thead", {}, el("tr", {}, ...["セッション", "状態", "作業", "PR"].map((h) => el("th", { text: h })))), tb));
+  }
+
+  let first = true;
+  const settle = () => { if (first) { first = false; clearTimeout(timer); conn.textContent = "接続済み・自動で更新します"; } };
+  const fail = (e) => { clearTimeout(timer); conn.textContent = `読み込みに失敗しました（${e?.code || "unknown"}）`; };
+  db.collection("questions").onSnapshot((s) => { settle(); questions = s.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))); renderQuestions(); }, fail);
+  db.collection("answers").onSnapshot((s) => { answers = new Map(s.docs.map((d) => [d.id, d.data()])); renderQuestions(); }, fail);
+  db.doc("board/current").onSnapshot((s) => { settle(); renderBoard(s.exists ? s.data() : null); }, fail);
+
+  $("msg-send").addEventListener("click", async () => {
+    const t = $("msg").value.trim(), st = $("msg-status");
+    if (!t) { st.className = "status err"; st.textContent = "本文を書いてください。"; return; }
+    const id = `m-${Date.now()}`;
+    $("msg-send").disabled = true; st.className = "status"; st.textContent = "送っています…";
+    try {
+      await db.doc(`inbox/${id}`).set({ text: t, sentAt: new Date().toISOString(), by: myId, handled: false });
+      $("msg").value = "";
+      st.textContent = "保存しました。" + await wakeManager($("h-m"), `連絡を送りました: ${id}（内容は db の inbox/${id}）`);
+    } catch (e) { st.className = "status err"; st.textContent = `送れませんでした（${e?.code || "unknown"}）。`; }
+    $("msg-send").disabled = false;
+  });
+})();
+</script>
