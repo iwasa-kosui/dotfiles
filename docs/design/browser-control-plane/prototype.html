@@ -1,4 +1,4 @@
-<title>判断デスク試作</title>
+<title>操作ページ試作</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Kaku+Gothic+New:wght@400;700&family=IBM+Plex+Mono:wght@400;600&display=swap">
@@ -60,8 +60,9 @@ details summary { cursor: pointer; color: var(--muted); }
 
 <main>
   <header>
-    <h1>判断デスク試作</h1>
-    <p class="note">管理役からの質問に答え、指示を送るページの試作です。データはこのページの db に入り、管理役は ArtifactData で読みます。</p>
+    <h1>操作ページ試作</h1>
+    <p class="note">管理役からの質問に答え、連絡を送るページの試作です。データはこのページの db に入り、管理役は ArtifactData で読みます。</p>
+    <p class="status err" id="hb-warn" hidden></p>
     <div class="meta" id="conn">接続を確認しています…</div>
   </header>
 
@@ -73,10 +74,11 @@ details summary { cursor: pointer; color: var(--muted); }
 
   <section aria-labelledby="h-m">
     <h2 id="h-m">管理役への連絡</h2>
-    <p class="note">新しい作業の依頼や方針の変更を書きます。管理役は次に起きたときに読みます。</p>
+    <p class="note">新しい作業の依頼や方針の変更を書きます。送ると管理役を起こします。merge や削除のような取り消しにくい操作は、ここに書いても実行されず、管理役が質問カードで確かめます。</p>
     <label for="msg" class="note">本文</label>
     <textarea id="msg"></textarea>
     <div class="row"><button id="msg-send" type="button">送る</button><span class="status" id="msg-status"></span></div>
+    <div id="msg-pending" style="display:grid;gap:12px"></div>
   </section>
 
   <section aria-labelledby="h-s">
@@ -108,18 +110,45 @@ details summary { cursor: pointer; color: var(--muted); }
   const myId = (await user?.id()) ?? null;
   if (!isOwner) { clearTimeout(timer); conn.textContent = "このページは所有者だけが操作できます。"; return; }
 
-  let questions = [], answers = new Map();
+  let questions = [], answers = new Map(), inbox = [];
+  // クリック後の await を減らすため、送れるかどうかは描画時に確かめておく
+  let canSend = "off";
+  async function refreshCanSend() {
+    try { canSend = comments && typeof comments.canSendToClaude === "function" ? await comments.canSendToClaude() : "off"; } catch { canSend = "off"; }
+  }
+  await refreshCanSend();
+  setInterval(refreshCanSend, 30000);
 
-  async function wakeManager(anchorEl, text) {
-    if (!comments || typeof comments.sendToClaude !== "function") return "通知: comments が使えないため、管理役は次の定期確認で読みます";
-    let can = "off";
-    try { can = await comments.canSendToClaude(); } catch {}
-    if (can !== "available") return `通知: 送れません（${can}）。管理役は次の定期確認で読みます`;
+  const REASON = {
+    consent_required: "コメントの同意が必要です。表示された同意に答えてから「管理役に知らせる」を押してください",
+    claude_unavailable: "受け取れる管理役のセッションがありません。管理役が起動しているか確かめてから押してください",
+    no_session: "受け取れる管理役のセッションがありません。管理役が起動しているか確かめてから押してください",
+    writers_only: "このアカウントは Send to Claude を使えません",
+    off: "このビューでは Send to Claude を使えません",
+    rate_limited: "送る間隔が短すぎます。少し待ってから押してください",
+  };
+  const reasonText = (code) => REASON[code] || `送れませんでした（${code || "unknown"}）`;
+
+  // 戻り値: null なら届いた。文字列なら届かなかった理由
+  async function wakeManager(anchorEl, text, docPath) {
+    if (canSend !== "available") return reasonText(canSend);
     try {
       const anchor = await comments.anchorFor(anchorEl);
       await comments.sendToClaude({ anchor, text });
-      return "通知: 管理役を起こしました";
-    } catch (e) { return `通知に失敗しました（${e?.code || "unknown"}）。管理役は次の定期確認で読みます`; }
+    } catch (e) { return reasonText(e?.code); }
+    try { await db.doc(docPath).update({ notified: true }); } catch {}
+    return null;
+  }
+
+  function notifyButton(anchorEl, text, docPath, st) {
+    const b = el("button", { type: "button", text: "管理役に知らせる" });
+    b.addEventListener("click", async () => {
+      b.disabled = true; await refreshCanSend();
+      const why = await wakeManager(anchorEl, text, docPath);
+      if (why) { st.className = "status err"; st.textContent = `管理役に届いていません。${why}`; b.disabled = false; }
+      else { st.className = "status"; st.textContent = "管理役に届けました。"; b.remove(); }
+    });
+    return b;
   }
 
   function renderQuestions() {
@@ -134,10 +163,25 @@ details summary { cursor: pointer; color: var(--muted); }
     for (const q of done) {
       const a = answers.get(q.id);
       const label = a ? ((q.options || []).find((o) => o.id === a.choice)?.label || "自由記述のみ") : `状態: ${q.status}`;
-      dl.append(el("div", { class: "card answered" },
+      const card = el("div", { class: "card answered" },
         el("div", { class: "qid", text: q.id }), el("h3", { text: q.title || "" }),
         el("p", { class: "answer", text: `回答: ${label}${a?.text ? ` / ${a.text}` : ""}` }),
-        a ? el("div", { class: "meta", text: fmt(a.answeredAt) }) : null));
+        a ? el("div", { class: "meta", text: `${fmt(a.answeredAt)} ・ 処理: ${a.handled || "未着手"}` }) : null);
+      if (a && !a.notified && a.handled !== "done") {
+        const st = el("span", { class: "status err", text: "管理役に届いていません。" });
+        card.append(el("div", { class: "row" }, notifyButton(card, `回答しました: ${q.id}`, `answers/${q.id}`, st), st));
+      }
+      dl.append(card);
+    }
+  }
+
+  function renderInbox() {
+    const wrap = $("msg-pending"); wrap.replaceChildren();
+    for (const m of inbox.filter((m) => !m.notified && m.handled !== "done")) {
+      const st = el("span", { class: "status err", text: "管理役に届いていません。" });
+      const row = el("div", { class: "card" }, el("div", { class: "qid", text: `${m.id} ・ ${fmt(m.sentAt)}` }), el("p", { class: "ctx", text: m.text || "" }));
+      row.append(el("div", { class: "row" }, notifyButton(row, `連絡を送りました: ${m.id}`, `inbox/${m.id}`, st), st));
+      wrap.append(row);
     }
   }
 
@@ -160,9 +204,11 @@ details summary { cursor: pointer; color: var(--muted); }
       if (!choice && !text) { st.textContent = "選択肢を選ぶか、補足を書いてください。"; st.className = "status err"; return; }
       btn.disabled = true; st.className = "status"; st.textContent = "保存しています…";
       try {
-        await db.doc(`answers/${q.id}`).set({ questionId: q.id, choice, text, answeredAt: new Date().toISOString(), by: myId, handled: false });
+        await db.doc(`answers/${q.id}`).set({ questionId: q.id, choice, text, answeredAt: new Date().toISOString(), by: myId, handled: false, notified: false });
       } catch (e) { st.className = "status err"; st.textContent = `保存できませんでした（${e?.code || "unknown"}）。もう一度押してください。`; btn.disabled = false; return; }
-      st.textContent = "保存しました。" + await wakeManager(card, `回答しました: ${q.id}（内容は db の answers/${q.id}）`);
+      const why = await wakeManager(card, `回答しました: ${q.id}`, `answers/${q.id}`);
+      st.textContent = why ? `保存しました。管理役に届いていません。${why}` : "保存し、管理役に届けました。";
+      if (why) st.className = "status err";
     });
     card.append(el("div", { class: "qid", text: `${q.id}${q.askedBy ? ` ・ ${q.askedBy}` : ""}${q.createdAt ? ` ・ ${fmt(q.createdAt)}` : ""}` }),
       el("h3", { text: q.title || "" }), q.context ? el("p", { class: "ctx", text: q.context }) : null,
@@ -171,8 +217,13 @@ details summary { cursor: pointer; color: var(--muted); }
   }
 
   function renderBoard(b) {
+    const warn = $("hb-warn");
+    const hb = b?.heartbeatAt ? Date.parse(b.heartbeatAt) : NaN;
+    const stale = !b || Number.isNaN(hb) || Date.now() - hb > 7 * 3600 * 1000;
+    warn.hidden = !stale;
+    warn.textContent = stale ? "俯瞰役が7時間以上 heartbeat を書いていません。止まっている可能性があります。連絡欄で管理役に俯瞰役の再起動を頼んでください。" : "";
     if (!b) return;
-    $("board-at").textContent = b.updatedAt ? `更新 ${fmt(b.updatedAt)}` : "";
+    $("board-at").textContent = b.updatedAt ? `更新 ${fmt(b.updatedAt)}${b.heartbeatAt ? ` ・ heartbeat ${fmt(b.heartbeatAt)}` : ""}` : "";
     $("board-summary").textContent = b.summary || "";
     const rows = b.sessions || [];
     if (!rows.length) return;
@@ -190,6 +241,7 @@ details summary { cursor: pointer; color: var(--muted); }
   const fail = (e) => { clearTimeout(timer); conn.textContent = `読み込みに失敗しました（${e?.code || "unknown"}）`; };
   db.collection("questions").onSnapshot((s) => { settle(); questions = s.docs.map((d) => ({ id: d.id, ...d.data() })).sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt))); renderQuestions(); }, fail);
   db.collection("answers").onSnapshot((s) => { answers = new Map(s.docs.map((d) => [d.id, d.data()])); renderQuestions(); }, fail);
+  db.collection("inbox").onSnapshot((s) => { inbox = s.docs.map((d) => ({ id: d.id, ...d.data() })); renderInbox(); }, fail);
   db.doc("board/current").onSnapshot((s) => { settle(); renderBoard(s.exists ? s.data() : null); }, fail);
 
   $("msg-send").addEventListener("click", async () => {
@@ -198,9 +250,11 @@ details summary { cursor: pointer; color: var(--muted); }
     const id = `m-${Date.now()}`;
     $("msg-send").disabled = true; st.className = "status"; st.textContent = "送っています…";
     try {
-      await db.doc(`inbox/${id}`).set({ text: t, sentAt: new Date().toISOString(), by: myId, handled: false });
+      await db.doc(`inbox/${id}`).set({ text: t, sentAt: new Date().toISOString(), by: myId, handled: false, notified: false });
       $("msg").value = "";
-      st.textContent = "保存しました。" + await wakeManager($("h-m"), `連絡を送りました: ${id}（内容は db の inbox/${id}）`);
+      const why = await wakeManager($("h-m"), `連絡を送りました: ${id}`, `inbox/${id}`);
+      st.textContent = why ? `保存しました。管理役に届いていません。${why}` : "保存し、管理役に届けました。";
+      if (why) st.className = "status err";
     } catch (e) { st.className = "status err"; st.textContent = `送れませんでした（${e?.code || "unknown"}）。`; }
     $("msg-send").disabled = false;
   });
