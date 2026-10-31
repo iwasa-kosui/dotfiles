@@ -8,30 +8,51 @@ const HELP = `Usage: handoff write --brief <json-file> [--out-dir <directory>]
 
 Write a handoff document and print JSON containing its absolute path.
 Default: ~/.claude/handoffs/<repo>/<branch>/<timestamp>.md
-The existing session hook discovers this location. Existing files are never replaced.
+The session hook discovers files only in this default location, not in --out-dir. Existing files are never replaced.
 
 Brief JSON:
   {"title":"Task title","goal":"Original request",
    "facts":["Verified fact with a source"],"decisions":["Decision and reason"],
-   "pending":["Next action"],"resume":"How to continue"}
-title and goal are required strings. facts, decisions, pending are optional string arrays.
+   "failed":["Attempt and why it failed"],"pending":["Next action"],
+   "questions":["Question for the user"],"references":["path/to/file:line or URL"],
+   "resume":"How to continue"}
+title and goal are required strings; title must be a single line. facts, decisions, failed, pending, questions, references are optional string arrays.
+Unknown fields are rejected.
 resume is an optional string. Omitted sections are left out.
+Briefs containing token-like or private-key strings are rejected with exit code 2.
 Git status, branch, checkout, stash and available base diff metadata are added automatically.
 Exit codes: 0 success, 1 filesystem/process failure, 2 invalid input.
 `;
 
-type Brief = { title: string; goal: string; facts?: string[]; decisions?: string[]; pending?: string[]; resume?: string };
+const SECRET_PATTERNS: [string, RegExp][] = [
+  ["GitHub token (ghp_)", /gh[pousr]_[A-Za-z0-9]{20,}/],
+  ["GitHub token (github_pat_)", /github_pat_[A-Za-z0-9_]{20,}/],
+  ["API key (sk-)", /(?<![A-Za-z0-9])sk-[A-Za-z0-9_-]{20,}/],
+  ["AWS access key", /(?:AKIA|ASIA)[0-9A-Z]{16}/],
+  ["Slack token", /xox[a-z]-[A-Za-z0-9-]{10,}/],
+  ["npm token", /npm_[A-Za-z0-9]{36}/],
+  ["Google API key", /AIza[0-9A-Za-z_-]{35}/],
+  ["URL credentials", /:\/\/[^\s:/@]+:[^\s@]+@/],
+  ["Private key", /-----BEGIN [A-Z ]*PRIVATE KEY-----/],
+];
+type Brief = { title: string; goal: string; facts?: string[]; decisions?: string[]; failed?: string[]; pending?: string[]; questions?: string[]; references?: string[]; resume?: string };
 function parseBrief(value: unknown): Brief {
   if (!value || typeof value !== "object" || Array.isArray(value)) throw new CliError("Brief must be a JSON object");
   const v = value as Record<string, unknown>;
-  const keys = ["title", "goal", "facts", "decisions", "pending", "resume"];
+  const keys = ["title", "goal", "facts", "decisions", "failed", "pending", "questions", "references", "resume"];
   if (Object.keys(v).some((key) => !keys.includes(key))) throw new CliError("Unknown brief field; see handoff --help");
   for (const key of ["title", "goal"]) if (typeof v[key] !== "string" || !v[key].trim()) throw new CliError(`${key} must be a nonempty string`);
   if (/[\r\n]/.test(v.title as string)) throw new CliError("title must be one line");
-  for (const key of ["facts", "decisions", "pending"]) {
+  for (const key of ["facts", "decisions", "failed", "pending", "questions", "references"]) {
     if (v[key] !== undefined && (!Array.isArray(v[key]) || v[key].some((x: unknown) => typeof x !== "string" || !x.trim()))) throw new CliError(`${key} must be an array of nonempty strings`);
   }
   if (v.resume !== undefined && typeof v.resume !== "string") throw new CliError("resume must be a string");
+  for (const [key, value] of Object.entries(v)) {
+    for (const text of Array.isArray(value) ? value : [value]) {
+      const hit = SECRET_PATTERNS.find(([, pattern]) => pattern.test(text as string));
+      if (hit) throw new CliError(`${key} contains a ${hit[0]} pattern; remove the secret from the brief`);
+    }
+  }
   return v as Brief;
 }
 
@@ -54,7 +75,7 @@ export async function runCli(argv: string[]): Promise<number> {
     const now = new Date();
     const metadata = [`- リポジトリ: ${repo}`, `- ブランチ: ${branch}`, `- worktree: ${inRepo ? checkout.out : process.cwd()}`, `- 作成: ${now.toISOString()}`];
     const sections = [`# ${brief.title}`, metadata.join("\n"), `## ゴール\n\n${brief.goal}`];
-    for (const [key, heading] of [["facts", "確定した事実"], ["decisions", "決定と却下案"], ["pending", "未完了の作業"]] as const) {
+    for (const [key, heading] of [["facts", "確定した事実"], ["decisions", "決定と却下案"], ["failed", "失敗した試み"], ["pending", "未完了の作業"], ["questions", "ユーザーに確かめること"], ["references", "参照先"]] as const) {
       if (brief[key]?.length) sections.push(`## ${heading}\n\n${brief[key].map((line) => `- ${line}`).join("\n")}`);
     }
     let status = "";
