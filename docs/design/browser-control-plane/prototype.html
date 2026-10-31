@@ -128,6 +128,8 @@ details summary { cursor: pointer; color: var(--muted); }
     rate_limited: "送る間隔が短すぎます。少し待ってから押してください",
   };
   const reasonText = (code) => REASON[code] || `送れませんでした（${code || "unknown"}）`;
+  // 管理役は取り消しにくい操作の前に、この本文の値と db の値を照合する
+  const answerText = (q, choice) => `回答しました: ${q.id} choice=${choice || "-"}${q.headSha ? ` head=${q.headSha}` : ""}`;
 
   // 戻り値: null なら届いた。文字列なら届かなかった理由
   async function wakeManager(anchorEl, text, docPath) {
@@ -169,7 +171,7 @@ details summary { cursor: pointer; color: var(--muted); }
         a ? el("div", { class: "meta", text: `${fmt(a.answeredAt)} ・ 処理: ${a.handled || "未着手"}` }) : null);
       if (a && !a.notified && a.handled !== "done") {
         const st = el("span", { class: "status err", text: "管理役に届いていません。" });
-        card.append(el("div", { class: "row" }, notifyButton(card, `回答しました: ${q.id}`, `answers/${q.id}`, st), st));
+        card.append(el("div", { class: "row" }, notifyButton(card, answerText(q, a.choice), `answers/${q.id}`, st), st));
       }
       dl.append(card);
     }
@@ -206,7 +208,7 @@ details summary { cursor: pointer; color: var(--muted); }
       try {
         await db.doc(`answers/${q.id}`).set({ questionId: q.id, choice, text, answeredAt: new Date().toISOString(), by: myId, handled: false, notified: false });
       } catch (e) { st.className = "status err"; st.textContent = `保存できませんでした（${e?.code || "unknown"}）。もう一度押してください。`; btn.disabled = false; return; }
-      const why = await wakeManager(card, `回答しました: ${q.id}`, `answers/${q.id}`);
+      const why = await wakeManager(card, answerText(q, choice), `answers/${q.id}`);
       st.textContent = why ? `保存しました。管理役に届いていません。${why}` : "保存し、管理役に届けました。";
       if (why) st.className = "status err";
     });
@@ -219,11 +221,11 @@ details summary { cursor: pointer; color: var(--muted); }
   function renderBoard(b) {
     const warn = $("hb-warn");
     const hb = b?.heartbeatAt ? Date.parse(b.heartbeatAt) : NaN;
-    const stale = !b || Number.isNaN(hb) || Date.now() - hb > 7 * 3600 * 1000;
+    const stale = !b?.paused && (!b || Number.isNaN(hb) || Date.now() - hb > 7 * 3600 * 1000);
     warn.hidden = !stale;
     warn.textContent = stale ? "俯瞰役が7時間以上 heartbeat を書いていません。止まっている可能性があります。連絡欄で管理役に俯瞰役の再起動を頼んでください。" : "";
     if (!b) return;
-    $("board-at").textContent = b.updatedAt ? `更新 ${fmt(b.updatedAt)}${b.heartbeatAt ? ` ・ heartbeat ${fmt(b.heartbeatAt)}` : ""}` : "";
+    $("board-at").textContent = b.updatedAt ? `更新 ${fmt(b.updatedAt)}${b.heartbeatAt ? ` ・ heartbeat ${fmt(b.heartbeatAt)}` : ""}${b.paused ? " ・ 俯瞰役は監視を止めています" : ""}` : "";
     $("board-summary").textContent = b.summary || "";
     const rows = b.sessions || [];
     if (!rows.length) return;

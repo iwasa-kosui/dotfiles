@@ -83,10 +83,10 @@
 
 | collection / 文書 | 書く人 | 読む人 | 中身 |
 |---|---|---|---|
-| `questions/{qid}` | 管理役 | ページ | `title`、`context`、`options`（`id`、`label`、`description`）、`status`（`open` / `resolved` / `withdrawn`）、`createdAt`、`askedBy` |
+| `questions/{qid}` | 管理役 | ページ | `title`、`context`、`options`（`id`、`label`、`description`）、`status`（`open` / `resolved` / `withdrawn`）、`createdAt`、`askedBy`、`headSha`（merge と Ready 化の承認カードのときだけ） |
 | `answers/{qid}` | ページ（本文と `notified`）、管理役（`handled`） | 管理役 | `questionId`、`choice`、`text`、`answeredAt`、`by`、`notified`、`handled`（`false` / `processing` / `done`） |
 | `inbox/{mid}` | ページ（本文と `notified`）、管理役（`handled`） | 管理役 | `text`、`sentAt`、`by`、`notified`、`handled`（`false` / `processing` / `done`） |
-| `board/current` | 俯瞰役 | ページ | `updatedAt`、`heartbeatAt`、`summary`、`sessions`、`prs`、`backlog`、`decisions` |
+| `board/current` | 俯瞰役 | ページ | `updatedAt`、`heartbeatAt`、`paused`、`summary`、`sessions`、`prs`、`backlog`、`decisions` |
 
 ページが書く文書と、エージェントが書く文書を分けます。同じ文書をページとエージェントの両方が書くと、`version` の衝突で書き込みが失敗します。例外は `handled` で、管理役が `processing` と `done` を `if_version` つきで書きます。
 
@@ -94,10 +94,10 @@
 
 1. ユーザーが質問カードで選択肢を選び、「回答する」を押す。
 2. ページが `answers/{qid}` に回答を `notified: false` で保存する。
-3. ページは描画時に `canSendToClaude()` を確かめておく。`available` なら、保存の直後に `sendToClaude` で「回答しました: {qid}」というコメントを送り、`notified` を `true` にする。クリックから `sendToClaude` までの待ち時間を短くするため、`canSendToClaude()` の確認はクリックの前に済ませる。
-4. 送れなかったときは、ページが「管理役に届いていません」と理由つきで表示し、「管理役に知らせる」ボタンを出す。ユーザーがボタンを押すと、ページはもう一度 `sendToClaude` を呼ぶ。理由は `consent_required`（同意が必要）、`claude_unavailable` と `no_session`（受け取るセッションがない）、その他に分けて表示する。
+3. ページは描画時に `canSendToClaude()` を確かめておく。`available` なら、保存の直後に `sendToClaude` でコメントを送り、`notified` を `true` にする。コメントの本文には、qid と選ばれた選択肢の id を入れる。質問に head SHA が付いている場合は head SHA も入れる。クリックから `sendToClaude` までの待ち時間を短くするため、`canSendToClaude()` の確認はクリックの前に済ませる。
+4. 送れなかったときは、ページが「管理役に届いていません」と理由つきで表示し、「管理役に知らせる」ボタンを出す。ユーザーがボタンを押すと、ページはもう一度、手順3と同じ本文で `sendToClaude` を呼ぶ。理由は `consent_required`（同意が必要）、`claude_unavailable` と `no_session`（受け取るセッションがない）、その他に分けて表示する。
 5. watch を持つ管理役の新しいターンが始まる。
-6. 管理役は `ArtifactData` の query で `handled == false` の回答と連絡を読む。処理を始める前に、`handled` を `processing` に `if_version` つきで更新する。更新が衝突したら、別のターンが処理中なので何もしない。
+6. 管理役は `ArtifactData` の query で `handled == false` の回答と連絡を読む。処理を始める前に、`handled` を `processing` に `if_version` つきで更新する。更新が衝突したら、管理役は行を読み直す。`handled` が `false` のままなら、ページが `notified` を書き換えただけなので、新しい `version` で `processing` を書き直す。`handled` が `processing` か `done` のときだけ、別のターンが処理中か処理済みなので何もしない。
 7. 処理を終えたら、管理役は `handled` を `done` にし、質問の `status` を `resolved` にする。コメントのスレッドに受け取ったことを返信し、スレッドを resolve する。
 
 コメントは起こすための合図であり、内容の正本ではありません。管理役はコメント本文ではなく db の行を読みます。
@@ -153,7 +153,7 @@
 - 管理役は定期的に起きない。ユーザーの入力と他のセッションからの報告だけで起きる。
 - 俯瞰役は状態が変わったときと、6時間ごとの heartbeat のときだけ起きる。1日あたりの最少の起床は4回である。
 - 監視スクリプトは画面の全文を俯瞰役の文脈に入れない。スクリプトは終了するときに、変わった点の1行の要約だけを出力する。
-- すべての作業セッションが終わり、未処理の回答もないときは、俯瞰役が監視を止める。管理役が新しい作業を始めるときに、俯瞰役に SendMessage で再開を頼む。監視を止めている間は heartbeat も止まるので、ページが俯瞰役の停止を警告する。
+- すべての作業セッションが終わり、未処理の回答もないときは、俯瞰役が監視を止める。管理役が新しい作業を始めるときに、俯瞰役に SendMessage で再開を頼む。俯瞰役は監視を止める前に、`board/current` の `paused` を `true` にする。ページは `paused` が `true` のあいだ heartbeat の警告を出さない。俯瞰役は監視を再開するときに `paused` を `false` にする。
 
 `/loop` と `CronCreate` は7日で失効し、セッションを閉じると止まります。Bash の `run_in_background` もセッション限定です。複数日にわたる運用では、管理役が毎朝の最初のターンで俯瞰役の監視が動いているかを確かめます。
 
@@ -166,14 +166,15 @@
 - rules は、ユーザー本人と、ユーザーとして `ArtifactData` を呼ぶエージェントを区別しない。`by` も書き手が自由に入れられる値であり、本人確認にならない。そのため、db の行だけでは、人間が書いたことを確かめられない。
 - 人間の操作を確かめる手段は、Send to Claude のコメントだけである。`sendToClaude` は編集者だけが、閲覧者自身の直近の操作から呼べる（comments.d.ts:585-586）。エージェント側の `ArtifactComments` は、新しい Send to Claude のコメントを作れない。
 - 管理役は入力を次の3段階に分けて扱う。
-  - 取り消しにくい操作（merge、Ready 化、外部への送信、削除）: db の回答に加え、その qid を本文に含む Send to Claude のコメントが届いたときだけ実行する。俯瞰役の SendMessage や管理役の起動時の読み直しで見つけた回答では、実行しない。ページは `notified: false` の回答に「管理役に知らせる」ボタンを出しているので、ユーザーがボタンを押せば条件を満たす。
+  - 取り消しにくい操作（merge、Ready 化、外部への送信、削除）: 管理役は、qid を含む Send to Claude のコメントが届き、コメントに書かれた選択肢の id と head SHA が db の回答と質問の値に一致したときだけ実行する。一致しなければ、管理役は実行せず質問を出し直す。俯瞰役の SendMessage や管理役の起動時の読み直しで見つけた回答では、実行しない。ページは `notified: false` の回答に「管理役に知らせる」ボタンを出しているので、ユーザーがボタンを押せば条件を満たす。
+  - コメントの本文はユーザーの操作からしか作れないので、`ArtifactData` を持つセッションが db の回答を書き換えても、コメントの値との照合で書き換えを見つけられる。
   - 質問カードへの回答（取り消しやすい操作）: 管理役は、選ばれた選択肢の `description` に書いたとおりに動く。
   - `inbox` の自由記述: 管理役は、バックログへの追加候補として扱う。取り消しにくい操作は、自由記述だけでは実行せず、質問カードを出す。
 - 作業セッション、レビューセッション、俯瞰役が `answers` と `inbox` に書けないことは、「起動の要件」の節の hook と起動引数で守る。俯瞰役は `cmux read-screen` で外部の文章を含みうる画面を読むので、俯瞰役の書き込み先を `board/current` に限る。
 
 ### merge と Ready 化
 
-merge と Ready 化の承認カードには、対象 PR の番号と head SHA を入れます。管理役は、回答の時点から head SHA が変わっていたら実行せず、質問を出し直します。承認カードの回答は、上の「取り消しにくい操作」の条件（qid を含む Send to Claude のコメント）を満たしたときだけ有効にします。ページでの承認を、CLAUDE.md の「ユーザーの明示的な承認」として扱ってよいかは、ユーザーが決めます。この論点は「決めてほしい点」の1番です。
+merge と Ready 化の承認カードには、対象 PR の番号と head SHA を入れます。管理役は、回答の時点から head SHA が変わっていたら実行せず、質問を出し直します。承認カードの回答は、上の「取り消しにくい操作」の条件（qid、選択肢の id、head SHA を含む Send to Claude のコメントと db の値の一致）を満たしたときだけ有効にします。ページでの承認を、CLAUDE.md の「ユーザーの明示的な承認」として扱ってよいかは、ユーザーが決めます。この論点は「決めてほしい点」の1番です。
 
 仕事環境（`profile` が `work`）では、merge と Ready 化に permissions の `ask` が承認プロンプトを出します。ユーザーは、この承認プロンプトにページではなく Remote Control の画面で答えます。
 
@@ -194,7 +195,7 @@ merge と Ready 化の承認カードには、対象 PR の番号と head SHA �
 - 管理役を再起動したとき: 管理役は操作ページの HTML を同じファイルパスで再公開し、`ArtifactComments` の watch の一覧で「auto-replies armed」を確かめる。続けて `handled == false` と `handled == processing` の行を読む。
 - `processing` のまま残った行: 管理役が処理の途中で落ちた可能性がある。管理役は、その行の操作がすでに実行済みかを確かめてから `done` にする。確かめられないときは、質問カードでユーザーに聞く。merge 以外の操作（SendMessage での指示など）にも同じ手順を使う。
 - ユーザーがターミナルで管理役に Ctrl+C で割り込んだとき: 自動返信はユーザーの次のメッセージまで止まる。ブラウザからの起床も止まるので、ユーザーは割り込んだ後に管理役へ何か1つメッセージを送る。
-- 俯瞰役が止まったとき: ページが `heartbeatAt` の古さで警告する。ユーザーは操作ページの連絡欄で管理役に俯瞰役の再起動を頼む。
+- 俯瞰役が止まったとき: ページが `heartbeatAt` の古さで警告する。ユーザーは操作ページの連絡欄で管理役に俯瞰役の再起動を頼む。俯瞰役が自分で監視を止めたときは `paused` が `true` なので、ページは警告を出さない。
 
 ## 既存の cmux-orchestration スキルとの関係
 
@@ -227,7 +228,7 @@ merge と Ready 化の承認カードには、対象 PR の番号と head SHA �
 {"db": {"rules": [{"path": "questions", "read": "owner", "write": "owner"}, {"path": "answers", "read": "owner", "write": "owner"}, {"path": "inbox", "read": "owner", "write": "owner"}, {"path": "board", "read": "owner", "write": "owner"}]}, "user": {}, "comments": {}}
 ```
 
-試作の HTML は、描画時の `canSendToClaude()` の確認、`notified` の記録、「管理役に知らせる」ボタン、`heartbeatAt` の警告を含む版に更新しました。公開中の版は、更新後の版です。
+試作の HTML は、描画時の `canSendToClaude()` の確認、`notified` の記録、「管理役に知らせる」ボタン、`heartbeatAt` の警告、コメント本文への選択肢の id と head SHA の記載、`paused` のあいだ警告を出さない処理を含む版に更新しました。公開中の版は、更新後の版です。
 
 ## 未確認事項
 
@@ -236,7 +237,7 @@ merge と Ready 化の承認カードには、対象 PR の番号と head SHA �
 3. cmux から起動するすべてのセッションで、Remote Control を自動で有効にできるか。
 4. Send to Claude で始まったターンで、`auto` モードの管理役が `ArtifactData` の書き込みと SendMessage を確認なしに実行できるか。
 5. サブエージェントから `ArtifactData` を使えるか。watch はメインのセッションだけが持てる（ArtifactComments ツールの説明）ので、管理役はサブエージェントにできない。俯瞰役は `ArtifactData` が使えればサブエージェントにできる。
-6. PreToolUse hook で `ArtifactData` の入力（collection）を読み、書き込みを止められるか。
+6. PreToolUse hook で `ArtifactData` の入力（collection）を読み、書き込みを止められるか。hook が作れなかった場合も、取り消しにくい操作は Send to Claude のコメントと db の値の照合で守る。
 
 ## 決めてほしい点
 
