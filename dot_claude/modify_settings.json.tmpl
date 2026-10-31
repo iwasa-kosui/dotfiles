@@ -155,7 +155,12 @@ managed='
       "Bash(zip:*)",
       "Skill(create-pr)",
       "Skill(pr)",
-      "WebSearch"
+      "WebSearch"{{- if ne .profile "work" }},
+      "Bash(gh pr ready)",
+      "Bash(gh pr ready:*)",
+      "Bash(gh pr merge)",
+      "Bash(gh pr merge:*)"
+{{- end }}
     ],
     "deny": [
       "Bash(chmod 777 /)",
@@ -463,10 +468,12 @@ managed='
       "Edit(**/*api_key*)"
     ],
     "ask": [
+{{- if eq .profile "work" }}
       "Bash(gh pr ready)",
       "Bash(gh pr ready:*)",
       "Bash(gh pr merge)",
       "Bash(gh pr merge:*)"
+{{- end }}
     ],
     "defaultMode": "auto"
   },
